@@ -32,7 +32,7 @@ docs = [
   "sphinx-autodoc-typehints",
   "sphinx-rtd-theme>3",
   "sphinx>8",
-  "astroid<4"
+  "astroid<5"
 ]
 tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
 
