@@ -17,6 +17,8 @@ jobs:
   uv-audit:
     name: Run uv-audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
