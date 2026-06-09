@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: CC-BY-NC-ND-3.0
+limits:
+  h:
+    type: range
+    values: [-3000, 3000]
+  hdot_own:
+    type: range
+    values: [-3000, 3000]
+  hdot_int:
+    type: range
+    values: [0, 0]
+  tau:
+    type: range
+    values: [0, 40]
+  s_adv:
+    type: discrete
+    values: [0, 1, 2, 3, 4, 5, 6, 7, 8]

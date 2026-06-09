@@ -1,0 +1,244 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: MIT
+
+[build-system]
+build-backend = "uv_build"
+requires = ["uv_build>=0.8.11,<1.0.0"]
+
+[dependency-groups]
+ci = [
+  "anybadge",
+  "codeclimate-test-reporter",
+  "flake8-docstrings-complete",
+  "flake8-docstrings",
+  "flake8-gl-codeclimate",
+  "flake8-pyproject",
+  "flake8",
+  "pylint-gitlab",
+  "pylint-per-file-ignores",
+  "pylint"
+]
+dev = [
+  "commitizen>=4.15.1",
+  "prek>=0.3.5",
+  "reuse>=6.2.0",
+  "ruff>=0.15.16",
+  "ty>=0.0.21",
+  "uv>=0.10.9"
+]
+docs = [
+  "sphinx-autoapi",
+  "sphinx-autodoc-typehints",
+  "sphinx-rtd-theme>3",
+  "sphinx>8",
+  "astroid<4"
+]
+tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
+
+[project]
+authors = [{name = "Johann Christensen", email = "johann.christensen@dlr.de"}]
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Programming Language :: Python :: Implementation :: CPython"
+]
+dependencies = [
+  "annotated-types>=0.7.0",
+  "faiss-cpu>=1.13.2",
+  "jax[cuda13]>=0.6.2",
+  "jaxtyping>=0.3.7",
+  "loguru>=0.7.3",
+  "matplotlib>=3.10.7",
+  "msgspec>=0.20.0",
+  "numpy>=2.2.6",
+  "orjson>=3.11.4",
+  "polars>=1.34.0",
+  "polytope>=0.2.5",
+  "pyarrow>=22.0.0",
+  "rich>=14.1.0",
+  "scikit-learn>=1.7.2",
+  "scipy>=1.15.3",
+  "tqdm>=4.67.1",
+  "typer>=0.16.1"
+]
+description = "Reference implementation of the autoSAFE spec"
+license = "MIT"
+license-files = ["LICENSES/*"]
+name = "autosafe"
+readme = "README.md"
+requires-python = ">=3.10"
+version = "1.0.0"
+
+[project.scripts]
+autosafe = "autosafe.__main__:main"
+
+[tool.codespell]
+ignore-words-list = "astroid"
+
+[tool.commitizen]
+bump_message = "bump: version $current_version -> $new_version"
+gpg_sign = true
+name = "cz_conventional_commits"
+pre_bump_hooks = [
+  "python -c \"import re; from datetime import date; c=open('CITATION.cff').read(); open('CITATION.cff','w').write(re.sub(r'^(date-released: )\\\\d{4}-\\\\d{2}-\\\\d{2}', r'\\\\g<1>' + date.today().isoformat(), c, flags=re.M))\""
+]
+tag_format = "$version"
+version = "1.0.0"
+version_files = [
+  "CITATION.cff:version",
+  "docs/conf.py:release",
+  "pyproject.toml:version"
+]
+version_provider = "commitizen"
+version_scheme = "pep440"
+
+[tool.flake8]
+check-return-types = true
+extend-ignore = ["DCO010", "DCO060"]
+max-complexity = "10"
+max-line-length = "88"
+# Ignore some documentation checks for abstract classes and methods
+per-file-ignores = [
+  "src/autosafe/kernels/kernel.py: DCO020, DCO031",
+  "src/autosafe/odd/comparison/base.py: DCO031"
+]
+select = "DCO, DOC"
+style = "google"
+
+[tool.licensecheck]
+using = "PEP631"
+zero = true
+
+[tool.pylint.MASTER]
+extension-pkg-allow-list = ["orjson"]
+load-plugins = ["pylint_per_file_ignores"]
+
+[tool.pylint.'MESSAGES CONTROL']
+max-line-length = "88"
+
+[tool.pylint.SIMILARITIES]
+ignore-comments = "yes"
+ignore-docstrings = "yes"
+ignore-imports = "yes"
+min-similarity-lines = 10
+
+[tool.pylint-per-file-ignores]
+# docs/conf.py: Ignore constant name not UPPER_CASE (C0103) and redefining built-in (W0622) for copyright notice
+# tests/*: Ignore missing docs (C0114, C0116), too long lines (E501), too few/many public methods (R0903, R0904), access to protected member (W0212)
+"docs/conf.py" = "C0103,W0622"
+"tests/*" = "C0114,C0116,E501,R0903,R0904,W0212"
+
+[tool.pytest.ini_options]
+addopts = "--cov=src/autosafe/ --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml"
+filterwarnings = [
+  "ignore::tqdm.TqdmExperimentalWarning",
+  "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
+  "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
+  "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning"
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+fix = true
+target-version = "py310"
+unsafe-fixes = true
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint]
+fixable = ["ALL"]
+# E203: incorrectly triggers on array slices: <https://github.com/PyCQA/pycodestyle/issues/373>
+# D105: Docstrings in standard magic methods are superfluous
+# D107: Google docstring style prevents docstrings in __init__ function
+ignore = ["E203", "D105", "D107"]
+preview = true
+select = [
+  "A",
+  "ANN",
+  "ARG",
+  "ASYNC",
+  "B",
+  "BLE",
+  "C4",
+  "C90",
+  "D",
+  "DOC",
+  "DTZ",
+  "E",
+  "ERA",
+  "EXE",
+  "F",
+  "FAST",
+  "FBT",
+  "FLY",
+  "FURB",
+  "I",
+  "INP",
+  "ISC",
+  "LOG",
+  "N",
+  "NPY",
+  "PERF",
+  "PIE",
+  "PL",
+  "PLE",
+  "PLR",
+  "PLW",
+  "PT",
+  "PTH",
+  "Q",
+  "RET",
+  "RSE",
+  "RUF",
+  "S",
+  "SIM",
+  "SLF",
+  "T20",
+  "TC",
+  "UP",
+  "W"
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+"docs/conf.py" = ["INP001"]
+"src/autosafe/__init__.py" = ["RUF067"]
+"src/autosafe/kernels/__init__.py" = ["RUF067"]
+"src/autosafe/kernels/kernel.py" = ["ANN002", "ANN003", "RUF100", "RUF102"]
+"tests/*" = [
+  "S101",
+  "ANN201",
+  "ANN205",
+  "D",
+  "E501",
+  "PLR0904",
+  "PLC2701",
+  "PLC0415",
+  "PLR2004",
+  "SLF001",
+  "S307",
+  "W505"
+]
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 72
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.uv]
+default-groups = "all"

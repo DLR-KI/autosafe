@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: MIT
+
+version = 1
+
+[[annotations]]
+SPDX-FileCopyrightText = "1955 Wiliam Wolberg, Olvi Mangasarian, Nick Street, and W. Street (<https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data>)"
+SPDX-License-Identifier = "CC-BY-NC-SA-4.0"
+path = ["breast-cancer-wisconsin.csv"]
+
+[[annotations]]
+SPDX-FileCopyrightText = "1936 R. A. Fisher (<https://www.kaggle.com/datasets/uciml/iris>)"
+SPDX-License-Identifier = "CC0-1.0"
+path = ["iris.csv"]
+
+[[annotations]]
+SPDX-FileCopyrightText = "2025 Kaggle (<https://www.kaggle.com/datasets/yasserh/wine-quality-dataset>)"
+SPDX-License-Identifier = "CC0-1.0"
+path = ["WineQT.csv"]
+
+[[annotations]]
+SPDX-FileCopyrightText = "2026 German Aerospace Center (DLR e.V.) <https://dlr.de>"
+SPDX-License-Identifier = "CC-BY-NC-ND-3.0"
+path = ["hcas_state_variables.csv", "vcas_state_variables.csv"]

@@ -1,0 +1,232 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: MIT
+variables: &global_variables
+  PACKAGENAME: autosafe
+  GIT_SUBMODULE_STRATEGY: recursive
+  FF_USE_FASTZIP: "true"
+  ARTIFACT_COMPRESSION_LEVEL: fast
+  CACHE_COMPRESSION_LEVEL: fast
+  UV_LINK_MODE: copy
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - when: always
+
+stages:
+  - prek
+  - install_deps
+  - lint
+  - test
+  - deploy
+  - prepare
+  - release
+
+# CACHE
+cache:
+  key: ${CI_COMMIT_REF_NAME}
+  paths:
+    - .cache/uv/
+    - .cache/prek/
+
+# uv cache
+.uv-cache: &uv-cache
+  key: uv
+  paths:
+    - .cache/uv/
+  policy: pull
+
+# Python settings template to install dependencies and set up the environment.
+.python_settings_template: &python_settings
+  image: ghcr.io/astral-sh/uv:python3.14-trixie
+  variables:
+    <<: *global_variables
+    UV_CACHE_DIR: ${CI_PROJECT_DIR}/.cache/uv/
+  cache:
+    <<: *uv-cache
+  before_script:
+    - uv sync
+
+# Run pre-commit hooks using prek
+prek:
+  image: ghcr.io/juhannc/prek:3.13-slim
+  stage: prek
+  needs: []
+  rules:
+    - exists:
+        - prek.toml
+  cache:
+    key: prek
+    paths:
+      - .cache/prek/
+  variables:
+    <<: *global_variables
+    PREK_HOME: ${CI_PROJECT_DIR}/.cache/prek/
+  before_script:
+    - apt-get update && apt-get install -y build-essential libatomic1
+  script:
+    - prek run --all-files
+
+# Install dependencies
+#
+# This job installs all dependencies of the package.
+install_deps:
+  stage: install_deps
+  needs: [prek]
+  <<: *python_settings
+  cache:
+    <<: *uv-cache
+    policy: pull-push
+  script:
+    - uv sync
+  after_script:
+    - uv cache prune --ci
+
+# Lint
+#
+# Run pip-audit to check for known vulnerabilities in dependencies.
+# <https://github.com/pypa/pip-audit>
+pip_audit:
+  stage: lint
+  interruptible: true
+  needs: [prek]
+  image: ghcr.io/astral-sh/uv:python3.14-trixie
+  script:
+    - uv tool run pip-audit --output json > pip-audit-report.json || true
+  artifacts:
+    when: always
+    reports:
+      dependency_scanning: pip-audit-report.json
+
+# Run flake8 to look for common mistakes in the style of the code.
+# <https://github.com/awelzel/flake8-gl-codeclimate>
+flake8:
+  stage: lint
+  interruptible: true
+  needs: [install_deps]
+  <<: *python_settings
+  script:
+    - uv run flake8 --exit-zero --format gl-codeclimate --output-file gl-code-quality-report.json src/${PACKAGENAME}
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-report.json
+
+# Run pylint for linting and code quality.
+# <https://pypi.org/project/pylint-gitlab/>
+pylint:
+  stage: lint
+  interruptible: true
+  needs: [install_deps]
+  <<: *python_settings
+  script:
+    - mkdir -p public/badges/ public/lint/
+    - echo undefined > public/badges/pylint.score
+    - uv run pylint --exit-zero --output-format=text src/${PACKAGENAME} | tee public/lint/pylint.log
+    - sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' public/lint/pylint.log > public/badges/pylint.score
+    - uv run pylint --exit-zero --output-format=pylint_gitlab.GitlabCodeClimateReporter src/${PACKAGENAME} > codeclimate.json
+    - uv run pylint --exit-zero --output-format=pylint_gitlab.GitlabPagesHtmlReporter src/${PACKAGENAME} > public/lint/index.html
+    - uv run anybadge --overwrite --label "pylint" --value=$(cat public/badges/pylint.score) --file=public/badges/pylint.svg 4=red 6=orange 8=yellow 10=green
+    - |
+      echo "Your score is: $(cat public/badges/pylint.score)"
+  artifacts:
+    paths:
+      - public
+    reports:
+      codequality: codeclimate.json
+    when: always
+
+# Run ruff for linting and code quality.
+# <https://docs.astral.sh/ruff/integrations/#gitlab-cicd>
+ruff:
+  stage: lint
+  interruptible: true
+  needs: [prek]
+  image: ghcr.io/astral-sh/ruff:alpine
+  before_script:
+    - ruff --version
+  script:
+    - ruff check src/${PACKAGENAME} --output-format=gitlab > code-quality-report.json
+  artifacts:
+    when: always
+    reports:
+      codequality: code-quality-report.json
+
+# Run ty for static type checking.
+# <https://docs.astral.sh/ty/reference/cli/#ty-check>
+ty:
+  stage: lint
+  interruptible: true
+  needs: [install_deps]
+  <<: *python_settings
+  script:
+    - uv run ty --version
+    - uv run ty check src/${PACKAGENAME} --output-format=gitlab > code-quality-report.json
+  artifacts:
+    when: always
+    reports:
+      codequality: code-quality-report.json
+
+# Run typos for typo checking.
+# <https://github.com/crate-ci/typos>
+# <https://github.com/tahv/typos-gitlab-code-quality>
+typos:
+  stage: lint
+  interruptible: true
+  needs: [prek]
+  image: ghcr.io/astral-sh/uv:python3.14-trixie
+  script:
+    - uv tool run typos --format json > typos-report.json || true
+    - uv tool run typos-gitlab-code-quality < typos-report.json > codequality.json
+  artifacts:
+    when: always
+    reports:
+      codequality: codequality.json
+
+# Test
+#
+# Run all tests defined in the `tests` folder and evaluate the coverage.
+# This way we can make sure the package passes all tests.
+# <https://docs.pytest.org/en/7.1.x/>
+pytest:
+  stage: test
+  needs: [install_deps]
+  <<: *python_settings
+  parallel:
+    matrix:
+      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
+  rules:
+    - if: '$PYTHON_VERSION == "3.13t" || $PYTHON_VERSION == "3.14t"'
+      allow_failure: true
+    - when: always
+  image: ghcr.io/astral-sh/uv:debian
+  before_script:
+    - uv python install ${PYTHON_VERSION}
+    - uv python pin ${PYTHON_VERSION}
+  script:
+    - uv run pytest
+  coverage: /^TOTAL.+?(\d+\%)$/
+  artifacts:
+    when: always
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+      junit: report.xml
+
+# Deploy
+#
+# Build the documentation.
+pages:
+  stage: deploy
+  needs: [install_deps]
+  <<: *python_settings
+  script:
+    - uv run sphinx-build -b html ./docs public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH

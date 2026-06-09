@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: CC0-1.0
+dim: 3
+odd_type: box
+odd_lower_limits:
+  - -10
+  - -10
+  - -10
+odd_upper_limits:
+  - 10.0
+  - 10.0
+  - 10.0
+box_lower_limits:
+  - -20
+  - -20
+  - -20
+box_upper_limits:
+  - 20.0
+  - 20.0
+  - 20.0
+odd_anchors: 50
+filename: experiments/results/dim_3d-results.json
+odd:
+  type: polytope
+  dim: 3
+  constraints:
+    - type: linear
+      coefficients:
+        - 1.0
+        - -1
+        - 0.0
+      relation: ">="
+      bound: 4.0
+    - type: linear
+      coefficients:
+        - 0.0
+        - 1.0
+        - -1
+      relation: ">="
+      bound: 4.0

@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: CC0-1.0
+# Batch spec for autosafe experiments run-spec
+# Runs Monte Carlo sampling configs (2D..12D) and dataset evaluation for HCAS/VCAS.
+experiments:
+  - id: mc-sample-2d
+    mode: mc-sample
+    config_file: experiments/dim_2d/sampling_config.yaml
+  - id: mc-sample-3d
+    mode: mc-sample
+    config_file: experiments/dim_3d/sampling_config.yaml
+  - id: mc-sample-4d
+    mode: mc-sample
+    config_file: experiments/dim_4d/sampling_config.yaml
+  - id: mc-sample-5d
+    mode: mc-sample
+    config_file: experiments/dim_5d/sampling_config.yaml
+  - id: mc-sample-6d
+    mode: mc-sample
+    config_file: experiments/dim_6d/sampling_config.yaml
+  - id: mc-sample-7d
+    mode: mc-sample
+    config_file: experiments/dim_7d/sampling_config.yaml
+  - id: mc-sample-8d
+    mode: mc-sample
+    config_file: experiments/dim_8d/sampling_config.yaml
+  - id: mc-sample-9d
+    mode: mc-sample
+    config_file: experiments/dim_9d/sampling_config.yaml
+  - id: mc-sample-10d
+    mode: mc-sample
+    config_file: experiments/dim_10d/sampling_config.yaml
+  - id: mc-sample-11d
+    mode: mc-sample
+    config_file: experiments/dim_11d/sampling_config.yaml
+  - id: mc-sample-12d
+    mode: mc-sample
+    config_file: experiments/dim_12d/sampling_config.yaml
+
+  - id: eval-WineQT
+    mode: dataset
+    dataset_path: data/WineQT.csv
+    threshold_mode: linear
+    threshold_count: 100
+
+  - id: eval-hcas
+    mode: dataset
+    dataset_path: data/hcas_state_variables.csv
+    threshold_mode: linear
+    threshold_count: 100
+
+  - id: eval-vcas
+    mode: dataset
+    dataset_path: data/vcas_state_variables.csv
+    threshold_mode: linear
+    threshold_count: 100

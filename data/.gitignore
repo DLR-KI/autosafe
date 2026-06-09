@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: MIT
+*
+!.gitignore
+!REUSE.toml
+!breast-cancer-wisconsin.csv
+!iris.csv
+!WineQT.csv
+!hcas_state_variables.csv
+!vcas_state_variables.csv
+!hcas_state_variables.yml
+!vcas_state_variables.yml

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: CC-BY-NC-ND-3.0
+limits:
+  rho:
+    type: range
+    values: [0, 50000]
+  theta:
+    type: range
+    values: [-180, 180]
+  psi:
+    type: range
+    values: [-180, 180]
+  v_own:
+    type: range
+    values: [840, 870]
+  v_int:
+    type: range
+    values: [760, 870]
+  tau:
+    type: range
+    values: [0, 80]
+  s_adv:
+    type: discrete
+    values: [0, 1, 2, 3, 4]
