@@ -83,6 +83,12 @@ version = "1.0.0"
 [project.scripts]
 autosafe = "autosafe.__main__:main"
 
+[project.urls]
+Documentation = "https://autosafe.readthedocs.io/"
+Homepage = "https://github.com/DLR-KI/autosafe/"
+Source = "https://github.com/DLR-KI/autosafe/"
+Tracker = "https://github.com/DLR-KI/autosafe/issues"
+
 [tool.codespell]
 ignore-words-list = "astroid"
 

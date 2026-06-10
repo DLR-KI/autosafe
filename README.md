@@ -12,7 +12,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 [![The latest version of autosafe can be found on PyPI.](https://img.shields.io/pypi/v/autosafe.svg)](https://pypi.python.org/pypi/autosafe)
 [![Information on what versions of Python autosafe supports can be found on PyPI.](https://img.shields.io/pypi/pyversions/autosafe.svg)](https://pypi.python.org/pypi/autosafe)
-[![pytest](https://github.com/DLR-KI/autosafe/actions/workflows/pytest.yml/badge.svg)](https://github.com/DLR-KI/autosafe/actions/workflows/pytest.yml)
+[![Python tests (pytest)](https://github.com/DLR-KI/autosafe/actions/workflows/pytest.yaml/badge.svg)](https://github.com/DLR-KI/autosafe/actions/workflows/pytest.yaml)
 [![Docs status](https://readthedocs.org/projects/autosafe/badge/)](https://autosafe.readthedocs.io/)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -27,8 +27,6 @@ autoSAFE can derive semantically correct Operational Design Domains (ODDs) purel
 This allows to automatically generate ODDs for machine learning-based functions.
 The use cases range from data-driven ODD definition over ODD monitoring to retrofitting existing functions with ODDs.
 Moreover, if no ODD is given for a certain dataset, autoSAFE can derive one automatically to ensure safe operations of the resulting AI-based system
-
-[TOC]
 
 ## Installation
 
@@ -53,7 +51,7 @@ uv run autosafe --help
 ```
 
 This will list all available commands and options.
-They are described in detail in the [documentation](https://autosafe-7fd2e5.pages.gitlab.dlr.de/). <!-- TODO: Update the link -->
+They are described in detail in the [documentation](https://autosafe.readthedocs.io/).
 
 ### Common CLI Commands
 
