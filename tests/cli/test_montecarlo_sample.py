@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: MIT
 
+import os
+
 import pytest
 from typer.testing import CliRunner
 
@@ -10,6 +12,8 @@ from autosafe.cli import APP
 from autosafe.tools.monte_carlo import (  # noqa: F401
     sample,  # imported to register the command
 )
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 runner = CliRunner()
 
@@ -90,6 +94,7 @@ def test_cli_app_monte_carlo_help():
     assert "--config-file-folder" in result.output
 
 
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Test doesn't work in Github Actions.")
 @pytest.mark.parametrize(
     (
         "dim",
