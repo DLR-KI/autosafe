@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: CC0-1.0
+* text=auto
+
+# Files with Windows line endings
+*.bat text eol=crlf
