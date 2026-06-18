@@ -124,3 +124,7 @@ To run the test suite, execute the following command from the project root:
 ```shell
 uv run pytest
 ```
+
+## License
+
+Copyright and license information are provided in accordance to the [REUSE Specification 3.3](https://reuse.software/spec-3.3/).
