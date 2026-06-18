@@ -479,8 +479,10 @@ def _resolve_kernel_calibration(
     """
     meta = dict(kernel_kwargs)
     mode = str(meta.pop("calibration", "manual"))
-    c = float(meta.pop("calibration_c", 1.0))  # type: ignore[arg-type]
-    s = float(meta.pop("calibration_s", 3.0))  # type: ignore[arg-type]
+    raw_c = meta.pop("calibration_c", 1.0)
+    c = float(raw_c) if isinstance(raw_c, (int, float)) else 1.0
+    raw_s = meta.pop("calibration_s", 3.0)
+    s = float(raw_s) if isinstance(raw_s, (int, float)) else 3.0
     if mode == "manual":
         return meta
     if mode != "auto":
@@ -1355,7 +1357,7 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
     # Resolve baseline scale parameters
     bp = baseline_params or {}
     resolved_baseline_params: dict[str, dict[str, object]] = {
-        k: dict(v)  # type: ignore[arg-type]
+        k: dict(cast("dict[str, object]", v))
         for k, v in bp.items()
         if isinstance(v, dict)
     }

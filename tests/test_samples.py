@@ -915,8 +915,8 @@ def test_affinity_full_dense_basic():
 
 
 def test_get_tile_unknown_variant_raises():
-    """_get_tile raises ValueError for unknown variant."""
-    from autosafe._affinity import _get_tile
+    """_build_tile raises ValueError for unknown variant."""
+    from autosafe._affinity import _build_tile
 
     with pytest.raises(ValueError, match="unknown variant"):
-        _get_tile("not_a_real_variant_xyz")
+        _build_tile("not_a_real_variant_xyz")

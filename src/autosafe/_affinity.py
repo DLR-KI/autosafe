@@ -4,7 +4,7 @@
 """Batched JAX affinity kernels with anchor-validity masking."""
 
 import functools
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 import jax
 import jax.numpy as jnp
@@ -14,12 +14,15 @@ from autosafe import _jax_config  # noqa: F401  # MUST precede first jnp use
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+StandardVariant = Literal["diag", "full_dense"]
+DualVariant = Literal["diag_dual", "full_dense_dual"]
+
 DEFAULT_ANCHOR_CHUNK = 256
 DEFAULT_POINT_CHUNK = 4096
 
 
 @functools.cache
-def _get_tile(
+def _build_tile(
     variant: str,
 ) -> "Callable[..., jax.Array | tuple[jax.Array, jax.Array]]":
     """Return a jit-compiled per-tile affinity kernel.
@@ -131,13 +134,40 @@ def _get_tile(
     raise ValueError(f"unknown variant {variant!r}")
 
 
+@overload
+def _get_tile(variant: StandardVariant) -> "Callable[..., jax.Array]": ...
+@overload
+def _get_tile(variant: DualVariant) -> "Callable[..., tuple[jax.Array, jax.Array]]": ...
+def _get_tile(
+    variant: str,
+) -> "Callable[..., jax.Array | tuple[jax.Array, jax.Array]]":
+    """Variant-typed accessor for the cached tile builder.
+
+    Overloads narrow the return type per variant (standard variants
+    yield jax.Array; dual variants yield a tuple) while `_build_tile`
+    owns the `functools.cache` memoization of jit compilation.
+
+    Args:
+        variant (str): Kernel variant to compile; one of "diag",
+            "full_dense", "diag_dual", or "full_dense_dual". The dual
+            variants return a tuple (prod_factor, sum_log) per tile.
+
+    Returns:
+        Callable[..., jax.Array | tuple[jax.Array, jax.Array]]:
+            jit-compiled tile function for the requested variant.
+            Standard variants return jax.Array; dual variants return
+            tuple[jax.Array, jax.Array].
+    """
+    return _build_tile(variant)
+
+
 def _affinity(  # noqa: PLR0913, PLR0917
     anchors: jax.Array,
     params: jax.Array,
     x: jax.Array,
     anchor_chunk: int,
     point_chunk: int,
-    variant: str,
+    variant: StandardVariant,
 ) -> jax.Array:
     """Compute batched affinity using jit-compiled tiling.
 
@@ -214,7 +244,7 @@ def _affinity_dual(  # noqa: PLR0913, PLR0914, PLR0917
     x: jax.Array,
     anchor_chunk: int,
     point_chunk: int,
-    variant: str,
+    variant: DualVariant,
 ) -> tuple[jax.Array, jax.Array]:
     """Compute lin. affinity & log-survival in one batched pass.
 
