@@ -248,3 +248,4 @@ convention = "google"
 
 [tool.uv]
 default-groups = "all"
+exclude-newer = "7 days"
