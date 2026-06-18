@@ -20,76 +20,80 @@ cooldown_days = 7
 
 [[repos]]
 hooks = [
-  {id = "check-ast"},
-  {id = "check-builtin-literals"},
-  {id = "check-case-conflict"},
-  {id = "check-executables-have-shebangs"},
-  {id = "check-json"},
-  {id = "check-merge-conflict"},
-  {id = "check-shebang-scripts-are-executable"},
-  {id = "check-toml"},
-  {id = "check-yaml"},
-  {id = "debug-statements"},
-  {id = "end-of-file-fixer"},
+  {id = "check-ast", priority = 9999},
+  {id = "check-builtin-literals", priority = 9999},
+  {id = "check-case-conflict", priority = 9999},
+  {id = "check-executables-have-shebangs", priority = 9999},
+  {id = "check-json", priority = 9999},
+  {id = "check-merge-conflict", priority = 9999},
+  {id = "check-shebang-scripts-are-executable", priority = 9999},
+  {id = "check-toml", priority = 9999},
+  {id = "check-yaml", priority = 9999},
+  {id = "debug-statements", priority = 9999},
+  {id = "end-of-file-fixer", priority = 20},
   {id = "mixed-line-ending", args = [
     "--fix=lf"
-  ], exclude = "docs/make.bat"},
-  {id = "trailing-whitespace"}
+  ], exclude = "docs/make.bat", priority = 30},
+  {id = "trailing-whitespace", priority = 10}
 ]
 repo = "https://github.com/pre-commit/pre-commit-hooks"
 rev = "v6.0.0"
 
 [[repos]]
 hooks = [
-  {id = "commitizen"},
+  {id = "commitizen", priority = 9999},
   {id = "commitizen-branch", stages = [
     "pre-push"
-  ]}
+  ], priority = 9999}
 ]
 repo = "https://github.com/commitizen-tools/commitizen"
 rev = "v4.16.3"
 
 [[repos]]
 hooks = [
-  {id = "uv-sync", name = "Synchronize uv.lock with pyproject.toml"},
+  {id = "uv-sync", name = "Synchronize uv.lock with pyproject.toml", priority = 110},
   {id = "uv-audit", args = [
     "--frozen",
     "--preview-features",
     "audit"
-  ], name = "Audit Python dependencies"}
+  ], name = "Audit Python dependencies", priority = 9999}
 ]
 repo = "https://github.com/astral-sh/uv-pre-commit"
 rev = "0.11.20"
 
 [[repos]]
-hooks = [{id = "reuse", name = "Check license headers (REUSE)"}]
-repo = "https://github.com/fsfe/reuse-tool"
+hooks = [
+  {id = "reuse", name = "Check license headers (REUSE)", priority = 9999}
+]
+repo = "https://codeberg.org/fsfe/reuse-tool"
 rev = "v6.2.0"
 
 [[repos]]
 hooks = [
-  {id = "licensecheck", language = "python", name = "Check licenses of Python dependencies"}
+  {id = "licensecheck", language = "python", name = "Check licenses of Python dependencies", priority = 9999}
 ]
 repo = "https://github.com/FHPythonUtils/LicenseCheck"
 rev = "2025.1.0"
 
 [[repos]]
-hooks = [{id = "validate-cff", name = "Validating CITATION.cff"}]
+hooks = [
+  {id = "validate-cff", name = "Validating CITATION.cff", priority = 9999}
+]
 repo = "https://github.com/citation-file-format/cffconvert"
 rev = "b6045d78aac9e02b039703b030588d54d53262ac"
 
 [[repos]]
-hooks = [{id = "editorconfig-checker"}]
+hooks = [{id = "editorconfig-checker", priority = 9999}]
 repo = "https://github.com/editorconfig-checker/editorconfig-checker.python"
 rev = "3.6.1"
 
 [[repos]]
 hooks = [
-  {id = "check-github-workflows"},
-  {id = "check-github-actions"},
-  {id = "check-dependabot"},
-  {id = "check-gitlab-ci"},
-  {id = "check-readthedocs"}
+  {id = "check-github-workflows", priority = 9999},
+  {id = "check-github-actions", priority = 9999},
+  {id = "check-dependabot", priority = 9999},
+  {id = "check-gitlab-ci", priority = 9999},
+  {id = "check-readthedocs", priority = 9999}
 ]
 repo = "https://github.com/python-jsonschema/check-jsonschema"
 rev = "0.37.2"
@@ -98,7 +102,7 @@ rev = "0.37.2"
 hooks = [
   {id = "zizmor", name = "Lint GitHub workflow files (zizmor)", args = [
     "--fix=all"
-  ]}
+  ], priority = 100}
 ]
 repo = "https://github.com/zizmorcore/zizmor-pre-commit"
 rev = "v1.25.2"
@@ -109,15 +113,15 @@ hooks = [
     "flake8-docstrings",
     "flake8-docstrings-complete",
     "flake8-pyproject"
-  ]}
+  ], priority = 9999}
 ]
 repo = "https://github.com/PyCQA/flake8"
 rev = "7.3.0"
 
 [[repos]]
 hooks = [
-  {id = "ruff-check", name = "Linting Python code (ruff)"},
-  {id = "ruff-format", name = "Formatting Python code (ruff)"}
+  {id = "ruff-check", name = "Linting Python code (ruff)", priority = 40},
+  {id = "ruff-format", name = "Formatting Python code (ruff)", priority = 50}
 ]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
 rev = "v0.15.16"
@@ -126,7 +130,7 @@ rev = "v0.15.16"
 hooks = [
   {id = "codespell", name = "Fixing common spelling mistakes", args = [
     "--write-changes"
-  ], exclude = "uv.lock|^LICENSES/"}
+  ], exclude = "uv.lock|^LICENSES/", priority = 90}
 ]
 repo = "https://github.com/codespell-project/codespell"
 rev = "v2.4.2"
@@ -138,13 +142,16 @@ hooks = [
     "MD013",
     "MD033",
     "--fix"
-  ]}
+  ], priority = 80}
 ]
 repo = "https://github.com/igorshubovych/markdownlint-cli"
 rev = "v0.48.0"
 
 [[repos]]
 hooks = [
+  {id = "pretty-format-toml", args = [
+    "--autofix"
+  ], exclude = "uv.lock", priority = 60},
   {id = "pretty-format-yaml", args = [
     "--autofix",
     "--indent",
@@ -152,10 +159,7 @@ hooks = [
     "--offset",
     "2",
     "--preserve-quotes"
-  ]},
-  {id = "pretty-format-toml", args = [
-    "--autofix"
-  ], exclude = "uv.lock"}
+  ], priority = 70}
 ]
 repo = "https://github.com/macisamuele/language-formatters-pre-commit-hooks"
 rev = "v2.16.0"
