@@ -96,12 +96,12 @@ import autosafe as af
 import numpy as np
 
 # Load data from a CSV file
-odd = af.read_csv("path/to/your/data.csv")
+odd = af.from_csv(af.ROOT_FOLDER / "data" / "iris.csv")
 
 # Query the ODD for a new data point
-affinity = 0.8
-data_point = np.array([[x1, x2, x3, ...]])
-is_within_odd = odd.contains(data_point) >= affinity
+affinity_threshold = 0.8
+data_point = np.array([[5.1, 3.5, 1.4, 0.2]])
+is_within_odd = odd.contains(data_point) >= affinity_threshold
 print(f"The data point is within the ODD: {is_within_odd}")
 ```
 
