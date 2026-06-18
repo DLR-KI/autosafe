@@ -63,6 +63,43 @@ def calculate_confusion_matrix(
     )
 
 
+def calculate_confusion_matrix_log(
+    actually_positive: pl.DataFrame,
+    actually_negative: pl.DataFrame,
+    log_survival_limit: float,
+) -> ConfusionMatrixDict:
+    """Confusion matrix using the log-space decision rule.
+
+    A point is predicted in-ODD iff survival <= log_survival_limit,
+    where survival = log(1 - affinity) and log_survival_limit =
+    log1p(-threshold). Equivalent to affinity >= threshold but exact
+    near threshold = 1 (see docs/log-space-affinity.md).
+
+    Args:
+        actually_positive (pl.DataFrame): Rows whose reference label is
+            True; must contain a 'survival' column.
+        actually_negative (pl.DataFrame): Rows whose reference label is
+            False; must contain a 'survival' column.
+        log_survival_limit (float): log1p(-threshold); -inf at
+            threshold 1.0.
+
+    Returns:
+        ConfusionMatrixDict: Confusion counts.
+    """
+    true_positives = actually_positive.filter(
+        pl.col("survival") <= log_survival_limit
+    ).height
+    false_positives = actually_negative.filter(
+        pl.col("survival") <= log_survival_limit
+    ).height
+    return ConfusionMatrixDict(
+        true_positive=true_positives,
+        false_positive=false_positives,
+        true_negative=actually_negative.height - false_positives,
+        false_negative=actually_positive.height - true_positives,
+    )
+
+
 def calculate_performance_metrics(
     confusion_matrix: ConfusionMatrixDict,
 ) -> PerformanceMetricsDict:

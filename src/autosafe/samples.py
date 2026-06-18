@@ -276,16 +276,31 @@ class Samples:
                     self.samples[closest_idx] for closest_idx in closest_indices[:, idx]
                 ]
 
-    def refresh_kernels(self) -> None:
+    def refresh_kernels(
+        self, kernel_kwargs_override: dict[str, Any] | None = None
+    ) -> None:
         """Update the kernels of the samples in the set.
+
+        Args:
+            kernel_kwargs_override (dict[str, Any] | None): If provided,
+                these kwargs are passed to the kernel instead of
+                ``self.kernel_kwargs``. Used by the calibration path to
+                pass resolved (concrete) kappa/eta arrays while keeping
+                the meta form in ``self.kernel_kwargs`` for cache-key
+                equality checks.
 
         Raises:
             ValueError: If a sample does not have a closest sample.
         """
+        kwargs = (
+            self.kernel_kwargs
+            if kernel_kwargs_override is None
+            else kernel_kwargs_override
+        )
         for sample in tqdm.rich.tqdm(self.samples, desc="Updating kernels"):
             # Update the kernel of each sample
             if sample.kernel is None:
-                sample.kernel = self.kernel_cls(x_i=sample.x, **self.kernel_kwargs)
+                sample.kernel = self.kernel_cls(x_i=sample.x, **kwargs)
             # Only for type checkers, this will not happen at runtime.
             if sample.closest_sample is None:  # pragma: no cover
                 raise ValueError(f"No closest sample found for sample {sample}.")
@@ -295,18 +310,16 @@ class Samples:
                 and len(sample.closest_sample) > 1
             ):
                 # Per-dimension mode: (n_dims, n_dims) matrix, column
-                # j = nearest neighbour in dimension j. Lets the kernel
-                # set sigma[i,i] from the dim-i neighbour's distance in
+                # j = nearest neighbor in dimension j. Lets the kernel
+                # set sigma[i,i] from the dim-i neighbor's distance in
                 # dim i.
                 x_nn_matrix = cast(
                     "Matrix",
                     np.stack([nn.x for nn in sample.closest_sample], axis=1),
                 )
-                sample.kernel.update(x_nn=x_nn_matrix, **self.kernel_kwargs)
+                sample.kernel.update(x_nn=x_nn_matrix, **kwargs)
             else:
-                sample.kernel.update(
-                    x_nn=sample.closest_sample[0].x, **self.kernel_kwargs
-                )
+                sample.kernel.update(x_nn=sample.closest_sample[0].x, **kwargs)
         self._batch_cache_valid = False
 
     def _build_batch_arrays(self) -> None:
@@ -424,6 +437,57 @@ class Samples:
             result = 1.0 - prod
 
         return result[0] if is_single else result
+
+    def affinity_dual(
+        self, x: "Vector | Matrix | NPVector | NPMatrix"
+    ) -> "tuple[Affinity, Affinity] | tuple[AffinityVector, AffinityVector]":
+        """Evaluate affinity in linear and log space in one pass.
+
+        Args:
+            x (Vector | Matrix | NPVector | NPMatrix): Input vector or
+                matrix of evaluation points.
+
+        Returns:
+            tuple: (alpha, survival). alpha is the linear-space
+                affinity (may saturate at exactly 1.0 for many
+                anchors); survival = log(1 - alpha) computed stably
+                (-inf only on exact anchor hits). See
+                docs/log-space-affinity.md.
+        """
+        if len(self.samples) == 0:
+            x_j = jnp.asarray(x)
+            if x_j.ndim == 1:
+                return FloatType(0.0), FloatType(0.0)
+            n_pts = x_j.shape[0] if x_j.shape[1] == self.dim else x_j.shape[1]
+            zeros = jnp.zeros(n_pts, dtype=FloatType)
+            return zeros, zeros
+
+        if not self._batch_cache_valid:
+            self._build_batch_arrays()
+
+        x_j = jnp.asarray(x)
+        is_single = x_j.ndim == 1
+        x_eval = (
+            x_j[None, :] if is_single else (x_j if x_j.shape[1] == self.dim else x_j.T)
+        )
+
+        if self._all_kernels_diagonal_rbf:
+            anchors = jnp.asarray(self._anchors_np)
+            inv_diag = jnp.asarray(self._inv_diag_np)
+            alpha, survival = _affinity.affinity_diag_dual(anchors, inv_diag, x_eval)
+        else:
+            prod = jnp.ones(x_eval.shape[0], dtype=FloatType)
+            log_acc = jnp.zeros(x_eval.shape[0], dtype=FloatType)
+            for s in self.samples:
+                k = jnp.clip(jnp.asarray(s(x_eval)), 0.0, 1.0)
+                prod *= 1.0 - k
+                log_acc += jnp.log1p(-k)
+            alpha = 1.0 - prod
+            survival = log_acc
+
+        if is_single:
+            return alpha[0], survival[0]
+        return alpha, survival
 
     def __eq__(self, value: object) -> bool:
         """Check if two Samples instances are equal.

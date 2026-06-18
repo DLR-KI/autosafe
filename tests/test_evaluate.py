@@ -53,6 +53,12 @@ class _DummyOdd:
     def __call__(self, points: np.ndarray) -> np.ndarray:
         return np.clip(points.mean(axis=1), 0.0, 1.0)
 
+    def affinity_dual(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        a = self(points)
+        with np.errstate(divide="ignore"):
+            s = np.log1p(-np.asarray(a, dtype=float))
+        return a, s
+
 
 def _mc_df() -> pl.DataFrame:
     return pl.DataFrame(
@@ -398,7 +404,7 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     )
     monkeypatch.setattr(
         "autosafe.tools.evaluate.workflows._baseline_memberships",
-        lambda _a, _b, _m: {"knn": np.array([True, False])},
+        lambda _a, _b, _m, **_kw: {"knn": np.array([True, False])},
     )
     monkeypatch.setattr(
         "autosafe.tools.evaluate.workflows.evaluate_affinity_metrics",
@@ -423,7 +429,7 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(
         "autosafe.tools.evaluate.workflows._baseline_memberships",
-        lambda _a, _b, _m: {},
+        lambda _a, _b, _m, **_kw: {},
     )
     with pytest.raises(ValueError, match="No reference labels"):
         evaluate_monte_carlo_results(
@@ -441,7 +447,7 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     )
     monkeypatch.setattr(
         "autosafe.tools.evaluate.workflows._baseline_memberships",
-        lambda _a, _b, _m: {"knn": np.array([True, False])},
+        lambda _a, _b, _m, **_kw: {"knn": np.array([True, False])},
     )
     monkeypatch.setattr(
         "autosafe.tools.evaluate.workflows.evaluate_affinity_metrics",
@@ -469,7 +475,8 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert odd_path.name == "odd.json"
 
     monkeypatch.setattr(
-        "autosafe.tools.evaluate.workflows._baseline_memberships", lambda _a, _b, _m: {}
+        "autosafe.tools.evaluate.workflows._baseline_memberships",
+        lambda _a, _b, _m, **_kw: {},
     )
     with pytest.raises(ValueError, match="No reference labels"):
         evaluate_dataset_mode(
@@ -534,6 +541,32 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "Evaluation completed" in ok_dataset.output
 
 
+def test_evaluate_affinity_metrics_dual_space():
+    """Both spaces emitted when 'survival' column is present."""
+    affinities = [0.0, 0.5, 1.0]
+    survivals = [0.0, float(np.log(0.5)), float("-inf")]
+    labels = np.array([True, True, True])
+    df = pl.DataFrame({"affinity": affinities, "survival": survivals})
+    thresholds = np.array([0.0, 0.5, 1.0])
+
+    out = evaluate_affinity_metrics(df, {"ref": labels}, thresholds, "test")
+
+    # Both spaces must be present
+    assert set(out["affinity_space"].unique().to_list()) == {"linear", "log"}
+
+    # Linear at threshold 1.0: affinity >= 1.0 -> only point with affinity 1.0 qualifies
+    lin_t1 = out.filter(
+        (pl.col("affinity_space") == "linear") & (pl.col("affinity_threshold") == 1.0)  # noqa: RUF069
+    )
+    assert lin_t1["true_positive"][0] == 1
+
+    # Log at threshold 1.0: survival <= -inf -> only exact anchor hit (survival == -inf)
+    log_t1 = out.filter(
+        (pl.col("affinity_space") == "log") & (pl.col("affinity_threshold") == 1.0)  # noqa: RUF069
+    )
+    assert log_t1["true_positive"][0] == 1
+
+
 def test_evaluate_init_exports():
     import autosafe.tools.evaluate as evaluate_pkg
 
@@ -568,7 +601,8 @@ def test_workflows_remaining_default_path_branches(
         ),
     )
     monkeypatch.setattr(
-        "autosafe.tools.evaluate.workflows._baseline_memberships", lambda _a, _b, _m: {}
+        "autosafe.tools.evaluate.workflows._baseline_memberships",
+        lambda _a, _b, _m, **_kw: {},
     )
     monkeypatch.setattr(
         "autosafe.tools.evaluate.workflows.evaluate_affinity_metrics",
@@ -597,7 +631,7 @@ def test_workflows_remaining_default_path_branches(
     )
     monkeypatch.setattr(
         "autosafe.tools.evaluate.workflows._baseline_memberships",
-        lambda _a, _b, _m: {"knn": np.array([True, False])},
+        lambda _a, _b, _m, **_kw: {"knn": np.array([True, False])},
     )
     monkeypatch.setattr(
         "autosafe.tools.evaluate.workflows._ground_truth_labels_from_yaml",
@@ -629,3 +663,47 @@ def test_workflows_remaining_default_path_branches(
     )
     assert csv_path in ds_saved
     assert "evaluation-linear" in csv_path.stem
+
+
+def test_subsample_csv_naming(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Subsampled runs include -sub{n}-seed{seed} in the default CSV name."""
+    ds = tmp_path / "data.csv"
+    ds.write_text("x,y\n" + "\n".join(f"{i},{i}" for i in range(20)), encoding="utf-8")
+
+    def _build_stub(_dataset_path: Path, **_kwargs: object) -> tuple[_DummyOdd, Path]:
+        return _DummyOdd(), tmp_path / "odd.json"
+
+    monkeypatch.setattr(
+        "autosafe.tools.evaluate.workflows._build_or_load_affinity_odd", _build_stub
+    )
+    monkeypatch.setattr(
+        "autosafe.tools.evaluate.workflows._infer_ground_truth_yaml", lambda _p: None
+    )
+    monkeypatch.setattr(
+        "autosafe.tools.evaluate.workflows._baseline_memberships",
+        lambda _a, _b, _m, **_kw: {"knn": np.array([True, False])},
+    )
+    monkeypatch.setattr(
+        "autosafe.tools.evaluate.workflows.evaluate_affinity_metrics",
+        lambda **_k: pl.DataFrame({
+            "source": ["d"],
+            "reference": ["knn"],
+            "affinity_threshold": [0.5],
+            "affinity_space": ["linear"],
+        }),
+    )
+    monkeypatch.setattr(
+        "autosafe.tools.evaluate.workflows.save_metrics_csv", lambda _r, p: p
+    )
+
+    sub_n = 5
+    seed = 0
+    _df, csv_path, _odd = evaluate_dataset_mode(
+        dataset_path=ds,
+        n_samples=2,
+        references=["knn"],
+        subsample_anchors=sub_n,
+        seed=seed,
+        csv_output=None,
+    )
+    assert f"-sub{sub_n}-seed{seed}" in csv_path.name

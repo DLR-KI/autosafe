@@ -7,7 +7,7 @@ import hashlib
 import json
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
 import jax.numpy as jnp
 import numpy as np
@@ -20,6 +20,11 @@ import typer
 import autosafe
 from autosafe import ROOT_FOLDER
 from autosafe.kernels import KernelDict
+from autosafe.kernels.rbf import (
+    SIGMA_FLOOR_RATIO,
+    RBFKernel,
+    calibrate_rbf_scale_isotropic,
+)
 from autosafe.preprocessing import RangeNormalizer, create_robust_normalization_pipeline
 from autosafe.sample import Sample
 from autosafe.samples import (
@@ -204,6 +209,7 @@ def _default_odd_json_path(  # noqa: PLR0913
     kernel_kwargs: dict[str, object],
     normalize_data: bool,
     yaml_normalize: bool = False,
+    filename_tag: str = "",
 ) -> Path:
     """Build a deterministic ODD cache path.
 
@@ -219,15 +225,20 @@ def _default_odd_json_path(  # noqa: PLR0913
         normalize_data (bool): Whether the data is normalized.
         yaml_normalize (bool): Whether normalization used YAML bounds
             rather than the data's own range.
+        filename_tag (str): Optional tag inserted before ".json" to
+            separate subsampled from full-data caches.
 
     Returns:
         Path: Default cache path for the ODD JSON.
     """
-    kernel_digest = _kernel_kwargs_digest(kernel_kwargs)
+    digest_kwargs = dict(kernel_kwargs)
+    if "calibration" in digest_kwargs:
+        digest_kwargs["_calibration_version"] = _CALIBRATION_VERSION
+    kernel_digest = _kernel_kwargs_digest(digest_kwargs)
     norm_tag = "yaml" if yaml_normalize else str(int(normalize_data))
     return dataset_path.with_name(
         f"{dataset_path.stem}-odd-{closest_sample_mode}-{kernel_type}-"
-        f"norm-{norm_tag}-{kernel_digest}.json"
+        f"norm-{norm_tag}-{kernel_digest}{filename_tag}.json"
     )
 
 
@@ -256,6 +267,7 @@ def _default_neighbor_cache_path(
     dataset_path: Path,
     *,
     closest_sample_mode: "ClosestSampleModeType",
+    filename_tag: str = "",
 ) -> Path:
     """Build deterministic path for nearest-neighbor cache.
 
@@ -263,11 +275,17 @@ def _default_neighbor_cache_path(
         dataset_path (Path): Path to the dataset file.
         closest_sample_mode (ClosestSampleModeType): Mode for nearest-
             neighbor assignment, e.g., "global" or "per_dimension".
+        filename_tag (str): Optional tag to separate subsampled from
+            full-data caches (indices are into the anchor array — a
+            full-data npz applied to a subsampled array yields wrong
+            kernels).
 
     Returns:
         Path: File path used for nearest-neighbor index cache.
     """
-    return dataset_path.with_name(f"{dataset_path.stem}-nn-{closest_sample_mode}.npz")
+    return dataset_path.with_name(
+        f"{dataset_path.stem}-nn-{closest_sample_mode}{filename_tag}.npz"
+    )
 
 
 def _load_neighbor_indices(
@@ -420,11 +438,74 @@ def _odd_matches_cache_spec(odd: Samples, cache_spec: _ODDCacheSpec) -> bool:
     )
 
 
+_CALIBRATION_META_KEYS = ("calibration", "calibration_c", "calibration_s")
+
+# Bump whenever the calibration implementation changes: it is hashed
+# into the ODD cache digest so stale calibrated caches are never
+# silently reused.
+_CALIBRATION_VERSION = 2
+
+
+def _resolve_kernel_calibration(
+    kernel_kwargs: dict[str, object],
+    reference_points: "NPMatrix",
+    indices: "npt.NDArray[np.int64]",
+    *,
+    closest_sample_mode: "ClosestSampleModeType",
+) -> dict[str, object]:
+    """Resolve calibration meta-kwargs into concrete kernel kwargs.
+
+    Returns kwargs safe to pass to RBFKernel.update: meta keys are
+    stripped; in 'auto' mode isotropic kappa/eta scalars are derived
+    from the full-space L2 NN distances (see
+    docs/bandwidth-calibration.md). Requires closest_sample_mode:
+    global.
+
+    Args:
+        kernel_kwargs (dict[str, object]): Kernel kwargs, possibly
+            containing calibration meta-keys.
+        reference_points (NPMatrix): (N, D) anchor positions.
+        indices (npt.NDArray[np.int64]): Nearest-neighbor index array
+            from the neighbor cache.
+        closest_sample_mode (ClosestSampleModeType): Mode for nearest-
+            neighbor assignment, "global" or "per_dimension".
+
+    Returns:
+        dict[str, object]: Resolved kwargs without calibration
+            meta-keys.
+
+    Raises:
+        ValueError: If an unknown calibration mode is specified.
+    """
+    meta = dict(kernel_kwargs)
+    mode = str(meta.pop("calibration", "manual"))
+    c = float(meta.pop("calibration_c", 1.0))  # type: ignore[arg-type]
+    s = float(meta.pop("calibration_s", 3.0))  # type: ignore[arg-type]
+    if mode == "manual":
+        return meta
+    if mode != "auto":
+        raise ValueError(f"unknown calibration mode {mode!r}")
+    if closest_sample_mode != "global":
+        raise ValueError(
+            "calibration: auto requires closest_sample_mode: global "
+            "(per-dimension 1D projection distances are a degenerate "
+            "bandwidth scale; see docs/bandwidth-calibration.md)"
+        )
+    pts = np.asarray(reference_points, dtype=float)
+    idx = np.asarray(indices)  # global mode: shape (N,)
+    d_l2 = np.linalg.norm(pts[idx] - pts, axis=1)
+    kappa, eta = calibrate_rbf_scale_isotropic(d_l2, c=c, s=s)
+    meta["kappa"] = kappa
+    meta["eta"] = eta
+    return meta
+
+
 def _refresh_odd_kernels_from_neighbor_cache(
     odd: Samples,
     *,
     dataset_path: Path,
     cache_spec: _ODDCacheSpec,
+    filename_tag: str = "",
 ) -> Samples:
     """Refresh kernel state using cached nearest-neighbor assignments.
 
@@ -435,6 +516,8 @@ def _refresh_odd_kernels_from_neighbor_cache(
         cache_spec (_ODDCacheSpec): Cache specification to determine
             cache paths and settings for neighbor assignment and kernel
             configuration.
+        filename_tag (str): Optional tag for cache file separation (e.g.
+            subsampled vs. full-data).
 
     Returns:
         Samples: Updated ODD object with refreshed kernel state.
@@ -443,6 +526,7 @@ def _refresh_odd_kernels_from_neighbor_cache(
     neighbor_cache_path = _default_neighbor_cache_path(
         dataset_path,
         closest_sample_mode=cache_spec.closest_sample_mode,
+        filename_tag=filename_tag,
     )
     indices = _get_or_create_neighbor_indices(
         reference_points,
@@ -453,14 +537,23 @@ def _refresh_odd_kernels_from_neighbor_cache(
     odd.closest_sample_mode = cache_spec.closest_sample_mode
     odd.kernel_cls_str = cache_spec.kernel_type
     odd.kernel_cls = KernelDict[cache_spec.kernel_type]
-    odd.kernel_kwargs = dict(cache_spec.kernel_kwargs)
+    odd.kernel_kwargs = dict(
+        cache_spec.kernel_kwargs
+    )  # keep meta form for cache equality
+
+    resolved_kwargs = _resolve_kernel_calibration(
+        dict(cache_spec.kernel_kwargs),
+        reference_points,
+        indices,
+        closest_sample_mode=cache_spec.closest_sample_mode,
+    )
 
     _assign_cached_neighbors(
         odd,
         indices,
         closest_sample_mode=cache_spec.closest_sample_mode,
     )
-    odd.refresh_kernels()
+    odd.refresh_kernels(kernel_kwargs_override=resolved_kwargs)
     return odd
 
 
@@ -478,6 +571,8 @@ class _BaselineEvaluationData(NamedTuple):
             evaluation.
         n_test_points (int): Number of test points, used for evaluation
             management.
+        method_params (dict[str, dict[str, object]]): Per-method
+            parameter overrides passed to create_comparison_monitor.
     """
 
     reference_points: Matrix | NPMatrix
@@ -485,6 +580,7 @@ class _BaselineEvaluationData(NamedTuple):
     ref_points_t: Matrix
     test_points_t: Matrix
     n_test_points: int
+    method_params: dict[str, dict[str, object]] | None = None
 
 
 class _ComparisonMonitor(Protocol):
@@ -549,7 +645,9 @@ def _compute_method_membership(
                 chunk_size=5000,
             )
 
-        monitor = create_comparison_monitor(method)
+        monitor = create_comparison_monitor(
+            method, **(data.method_params or {}).get(method, {})
+        )
         _fit_monitor(monitor, data.ref_points_t)
         chunk_size = 1000 if method == "knn" else 5000
         return _evaluate_monitor_membership(
@@ -573,6 +671,7 @@ def _baseline_memberships(
     reference_points: Matrix | NPMatrix,
     test_points: Matrix | NPMatrix,
     methods: list[str],
+    method_params: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, npt.NDArray[np.bool_]]:
     """Compute baseline memberships for requested comparison methods.
 
@@ -583,6 +682,8 @@ def _baseline_memberships(
         reference_points (Matrix | NPMatrix): Reference anchors.
         test_points (Matrix | NPMatrix): Query points.
         methods (list[str]): Baseline method names from experiment spec.
+        method_params (dict[str, dict[str, object]] | None): Per-method
+            parameter overrides forwarded to create_comparison_monitor.
 
     Returns:
         dict[str, npt.NDArray[np.bool_]]: Mapping from method name to
@@ -609,6 +710,7 @@ def _baseline_memberships(
         ref_points_t=ref_points_t,
         test_points_t=test_points_t,
         n_test_points=n_test_points,
+        method_params=method_params or {},
     )
 
     for method in tqdm.rich.tqdm(methods):
@@ -623,6 +725,7 @@ def _sample_points_around_odd(
     anchor_points: Matrix | NPMatrix,
     n_samples: int,
     seed: int = 0,
+    local_noise_std: float | None = None,
 ) -> npt.NDArray[np.float64]:
     """Sample points in and around an affinity ODD.
 
@@ -630,6 +733,9 @@ def _sample_points_around_odd(
         anchor_points (Matrix | NPMatrix): Affinity ODD anchors.
         n_samples (int): Number of test points to sample.
         seed (int): PRNG seed.
+        local_noise_std (float | None): Per-dimension std for the local
+            perturbation half. If None, uses 0.05 * per-dim span
+            (legacy default).
 
     Returns:
         Matrix: Sampled points (n_samples, n_dims).
@@ -649,10 +755,11 @@ def _sample_points_around_odd(
         size=(n_uniform, anchor_points.shape[1]),
     )
 
+    noise_scale = 0.05 * span if local_noise_std is None else local_noise_std
     indices = rng.integers(0, anchor_points.shape[0], size=n_local)
     local_points = anchor_points[indices] + rng.normal(
         loc=0.0,
-        scale=0.05 * span,
+        scale=noise_scale,
         size=(n_local, anchor_points.shape[1]),
     )
 
@@ -696,12 +803,13 @@ def _sampling_bounds_from_yaml(
     return lower_arr, upper_arr
 
 
-def _sample_points_with_bounds(
+def _sample_points_with_bounds(  # noqa: PLR0913, PLR0917
     anchor_points: Matrix | NPMatrix,
     lower_bounds: npt.NDArray[np.float64],
     upper_bounds: npt.NDArray[np.float64],
     n_samples: int,
     seed: int = 0,
+    local_noise_std: float | None = None,
 ) -> npt.NDArray[np.float64]:
     """Sample points using explicit lower/upper bounds from YAML.
 
@@ -715,6 +823,9 @@ def _sample_points_with_bounds(
         upper_bounds (npt.NDArray): Upper bounds for sampling.
         n_samples (int): Number of test points to sample.
         seed (int): PRNG seed.
+        local_noise_std (float | None): Per-dimension std for the local
+            perturbation half. If None, uses 0.05 * per-dim span
+            (legacy default).
 
     Returns:
         Matrix: Array of sampled points with shape (n_samples, n_dims).
@@ -734,10 +845,11 @@ def _sample_points_with_bounds(
         size=(n_uniform, anchor_points.shape[1]),
     )
 
+    noise_scale = 0.05 * span if local_noise_std is None else local_noise_std
     indices = rng.integers(0, anchor_points.shape[0], size=n_local)
     local_points = anchor_points[indices] + rng.normal(
         loc=0.0,
-        scale=0.05 * span,
+        scale=noise_scale,
         size=(n_local, anchor_points.shape[1]),
     )
 
@@ -985,13 +1097,15 @@ def evaluate_monte_carlo_results(
     return result
 
 
-def _build_or_load_affinity_odd(  # noqa: C901, PLR0912
+def _build_or_load_affinity_odd(  # noqa: C901, PLR0912, PLR0913
     dataset_path: Path,
     *,
     odd_json: Path | None,
     odd_json_out: Path | None,
     cache_spec: _ODDCacheSpec,
     normalizer: RangeNormalizer | None = None,
+    subsample_anchors: int | None = None,
+    seed: int = 0,
 ) -> tuple["Samples", Path]:
     """Build affinity ODD from dataset or load existing ODD JSON.
 
@@ -1005,10 +1119,19 @@ def _build_or_load_affinity_odd(  # noqa: C901, PLR0912
             normalizer (e.g. fitted on YAML bounds). When provided it
             is applied to the raw dataset instead of the built-in IQR
             normalization path.
+        subsample_anchors (int | None): If set, randomly subsample the
+            anchor set to this many rows before building the ODD. Useful
+            for fast evaluation runs. Subsampled runs get separate cache
+            files to avoid mixing full-data and subsampled caches.
+        seed (int): PRNG seed used for subsampling.
 
     Returns:
         tuple[Samples, Path]: odd_object, odd_json_path.
     """
+    filename_tag = (
+        f"-sub{subsample_anchors}-seed{seed}" if subsample_anchors is not None else ""
+    )
+
     if odd_json is not None:
         odd = autosafe.from_json(odd_json)
         if isinstance(odd, Samples) and not _odd_matches_cache_spec(odd, cache_spec):
@@ -1016,6 +1139,7 @@ def _build_or_load_affinity_odd(  # noqa: C901, PLR0912
                 odd,
                 dataset_path=dataset_path,
                 cache_spec=cache_spec,
+                filename_tag=filename_tag,
             )
             autosafe.to_json(odd, odd_json)
         return odd, odd_json
@@ -1029,6 +1153,7 @@ def _build_or_load_affinity_odd(  # noqa: C901, PLR0912
             kernel_kwargs=cache_spec.kernel_kwargs,
             normalize_data=cache_spec.normalize_data,
             yaml_normalize=cache_spec.yaml_normalize,
+            filename_tag=filename_tag,
         )
 
     if export_path.exists():
@@ -1038,6 +1163,7 @@ def _build_or_load_affinity_odd(  # noqa: C901, PLR0912
                 odd,
                 dataset_path=dataset_path,
                 cache_spec=cache_spec,
+                filename_tag=filename_tag,
             )
             autosafe.to_json(odd, export_path)
         return odd, export_path
@@ -1070,6 +1196,13 @@ def _build_or_load_affinity_odd(  # noqa: C901, PLR0912
         elif base_array.ndim == 1:
             base_array = base_array.reshape(1, -1)
 
+    if subsample_anchors is not None and base_array.shape[0] > subsample_anchors:
+        rng = np.random.default_rng(seed)
+        keep = np.sort(
+            rng.choice(base_array.shape[0], size=subsample_anchors, replace=False)
+        )
+        base_array = base_array[keep]
+
     base_samples = [
         Sample(x=np.asarray(row, dtype=float).reshape(-1))
         for row in np.atleast_2d(base_array)
@@ -1085,13 +1218,14 @@ def _build_or_load_affinity_odd(  # noqa: C901, PLR0912
         odd,
         dataset_path=dataset_path,
         cache_spec=cache_spec,
+        filename_tag=filename_tag,
     )
 
     autosafe.to_json(odd, export_path)
     return odd, export_path
 
 
-def evaluate_dataset_mode(  # noqa: PLR0913, PLR0914
+def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
     dataset_path: Path,
     *,
     odd_json: Path | None = None,
@@ -1106,6 +1240,10 @@ def evaluate_dataset_mode(  # noqa: PLR0913, PLR0914
     kernel_kwargs: dict[str, object] | None = None,
     seed: int = 0,
     csv_output: Path | None = None,
+    subsample_anchors: int | None = None,
+    baseline_params: dict[str, object] | None = None,
+    local_noise_mode: str = "span",
+    local_noise_multiplier: float = 3.0,
 ) -> tuple[pl.DataFrame, Path, Path]:
     """Evaluate real-data workflow with optional ground truth YAML.
 
@@ -1130,13 +1268,27 @@ def evaluate_dataset_mode(  # noqa: PLR0913, PLR0914
             parameters.
         seed (int): PRNG seed.
         csv_output (Path | None): Optional CSV output path.
+        subsample_anchors (int | None): If set, subsample anchors to
+            this count before building the ODD (fast evaluation path).
+        baseline_params (dict[str, object] | None): Per-method baseline
+            parameters and optional ``auto_scale`` key. May contain
+            per-method dicts like ``{"knn": {"gamma": 0.1}}`` and/or
+            ``{"auto_scale": true}`` to auto-derive scale from the
+            anchor spacing.
+        local_noise_mode (str): Noise mode for the local half of test
+            points. ``"span"`` (default) uses legacy 0.05*per-dim span;
+            ``"nn"`` uses per-dim std = multiplier*d/sqrt(D) matched to
+            the calibrated kernel scale.
+        local_noise_multiplier (float): Multiplier m in the ``"nn"``
+            mode formula (default 3.0).
 
     Returns:
         tuple[pl.DataFrame, Path, Path]: metrics_df, csv_path,
             odd_json_path.
 
     Raises:
-        ValueError: If no reference labels are available.
+        ValueError: If no reference labels are available or if
+            local_noise_mode is unknown.
     """
     if n_samples > _MAX_DATASET_EVAL_SAMPLES:
         raise ValueError(
@@ -1170,9 +1322,56 @@ def evaluate_dataset_mode(  # noqa: PLR0913, PLR0914
         odd_json_out=odd_json_out,
         cache_spec=cache_spec,
         normalizer=yaml_normalizer,
+        subsample_anchors=subsample_anchors,
+        seed=seed,
     )
 
     anchor_points = _extract_anchor_points(odd)
+    anchor_arr = np.asarray(anchor_points, dtype=float)
+
+    # Compute median full-space NN distance once for auto_scale and nn
+    # noise.
+    median_nn: float | None = None
+    if local_noise_mode == "nn" or (baseline_params or {}).get("auto_scale"):
+        tree = scipy.spatial.KDTree(anchor_arr, compact_nodes=True, balanced_tree=True)
+        nn_d, _ = tree.query(anchor_arr, k=2)
+        positive = nn_d[:, 1][nn_d[:, 1] > 0]
+        if positive.size == 0:
+            raise ValueError("all anchors are exact duplicates")
+        median_nn = float(np.median(positive))
+
+    local_noise_std: float | None = None
+    if local_noise_mode == "nn":
+        if median_nn is None:
+            raise ValueError(
+                "Cannot compute local noise std without a valid median NN distance"
+            )
+        local_noise_std = float(
+            local_noise_multiplier * median_nn / np.sqrt(anchor_arr.shape[1])
+        )
+    elif local_noise_mode != "span":
+        raise ValueError(f"unknown local_noise_mode {local_noise_mode!r}")
+
+    # Resolve baseline scale parameters
+    bp = baseline_params or {}
+    resolved_baseline_params: dict[str, dict[str, object]] = {
+        k: dict(v)  # type: ignore[arg-type]
+        for k, v in bp.items()
+        if isinstance(v, dict)
+    }
+    if bp.get("auto_scale"):
+        if median_nn is None:
+            raise ValueError("Cannot auto_scale without a valid median NN distance")
+        raw_mult = bp.get("auto_scale_multiplier", 3.0)
+        multiplier = float(raw_mult) if isinstance(raw_mult, (int, float)) else 3.0
+        scale = multiplier * median_nn
+        for method, key in (
+            ("knn", "gamma"),
+            ("density_single", "gamma"),
+            ("density_clustered", "gamma"),
+            ("dbscan_cluster", "eps"),
+        ):
+            resolved_baseline_params.setdefault(method, {}).setdefault(key, scale)
 
     sampling_bounds = None
     if effective_ground_truth_yaml is not None:
@@ -1198,22 +1397,25 @@ def evaluate_dataset_mode(  # noqa: PLR0913, PLR0914
             upper_norm,
             n_samples=n_samples,
             seed=seed,
+            local_noise_std=local_noise_std,
         )
     else:
         test_points = _sample_points_around_odd(
             anchor_points,
             n_samples=n_samples,
             seed=seed,
+            local_noise_std=local_noise_std,
         )
 
-    # Fake progress bar for affinity calculation and ODD membership
-    # This is done to have a consistent output format
+    # Dual affinity computation (7d)
     for _ in tqdm.rich.tqdm(
         range(1),
         desc="Calculating affinities and ODD memberships for "
         f"{len(test_points)} test points",
     ):
-        affinities = np.asarray(odd(test_points))
+        alpha_lin, survival = odd.affinity_dual(test_points)
+        affinities = np.asarray(alpha_lin)
+        survival_np = np.asarray(survival)
 
     thresholds = build_affinity_thresholds(threshold_mode, threshold_count)
     reference_labels = _build_dataset_reference_labels(
@@ -1223,12 +1425,13 @@ def evaluate_dataset_mode(  # noqa: PLR0913, PLR0914
         references=references,
         ground_truth_yaml=effective_ground_truth_yaml,
         normalizer=yaml_normalizer,
+        method_params=resolved_baseline_params,
     )
 
     if not reference_labels:
         raise ValueError("No reference labels available for dataset evaluation")
 
-    samples_df = pl.DataFrame({"affinity": affinities})
+    samples_df = pl.DataFrame({"affinity": affinities, "survival": survival_np})
     results = evaluate_affinity_metrics(
         samples_df=samples_df,
         reference_labels=reference_labels,
@@ -1237,11 +1440,73 @@ def evaluate_dataset_mode(  # noqa: PLR0913, PLR0914
     )
 
     if csv_output is None:
-        csv_output = dataset_path.with_stem(
-            f"{dataset_path.stem}-evaluation-{threshold_mode}"
-        ).with_suffix(".csv")
+        tag = (
+            f"-sub{subsample_anchors}-seed{seed}"
+            if subsample_anchors is not None
+            else ""
+        )
+        csv_output = dataset_path.with_name(
+            f"{dataset_path.stem}-evaluation-{threshold_mode}{tag}.csv"
+        )
 
     csv_path = save_metrics_csv(results, csv_output)
+
+    # Sidecar JSON
+    sidecar_path = csv_path.with_name(csv_path.stem + "-params.json")
+    try:  # noqa: PLW0717
+        kernel_scale_realized: object = None
+        if odd.samples:
+            k = odd.samples[0].kernel
+            k = cast("RBFKernel", k)
+            ksr: dict[str, object] = {
+                "kappa": list(np.atleast_1d(k.kappa)),
+                "eta": list(np.atleast_1d(k.eta)),
+            }
+            lam_val = getattr(k, "lam", None)
+            if lam_val is not None:
+                ksr["lam"] = list(np.atleast_1d(lam_val))
+                ksr["lam_source"] = "explicit"
+            else:
+                ksr["lam"] = list(
+                    np.atleast_1d(SIGMA_FLOOR_RATIO * np.asarray(k.kappa))
+                )
+                ksr["lam_source"] = "default_ratio"
+            kernel_scale_realized = ksr
+    except AttributeError:
+        kernel_scale_realized = None
+    sidecar = {
+        "dataset": str(dataset_path),
+        "seed": seed,
+        "n_samples": n_samples,
+        "subsample_anchors": subsample_anchors,
+        "closest_sample_mode": closest_sample_mode,
+        "kernel_type": kernel_type,
+        "kernel_kwargs_spec": kernel_kwargs,
+        "kernel_scale_realized": kernel_scale_realized,
+        "median_nn_distance": median_nn,
+        "median_nn_distance_note": (
+            "calibration uses the FAISS float32 neighbor cache; "
+            "this value is the float64 cKDTree median (sub-percent difference)"
+        ),
+        "local_noise_mode": local_noise_mode,
+        "local_noise_multiplier": local_noise_multiplier,
+        "calibration_version": _CALIBRATION_VERSION,
+        "baseline_params_resolved": resolved_baseline_params,
+        "threshold_mode": threshold_mode,
+        "threshold_count": threshold_count,
+        "notes": {
+            "ground_truth_prevalence": (
+                "Uniform test points are drawn in a +/-10% expanded box, so only "
+                "(1/1.2)^D of them lie inside the YAML box; anchors outside the "
+                "YAML bounds further reduce prevalence. This is expected."
+            )
+        },
+    }
+    try:
+        sidecar_path.write_text(json.dumps(sidecar, default=str, indent=2))
+    except OSError as exc:
+        typer.echo(f"warning: could not write sidecar: {exc}")
+
     return results, csv_path, odd_export_path
 
 
@@ -1253,6 +1518,7 @@ def _build_dataset_reference_labels(  # noqa: PLR0913
     references: list[str] | None,
     ground_truth_yaml: Path | None,
     normalizer: RangeNormalizer | None = None,
+    method_params: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, npt.NDArray[np.bool_]]:
     """Build baseline and ground-truth labels for dataset evaluation.
 
@@ -1265,6 +1531,8 @@ def _build_dataset_reference_labels(  # noqa: PLR0913
         normalizer (RangeNormalizer | None): Optional normalizer.
             If provided, denormalization is applied when checking
             YAML ground-truth membership.
+        method_params (dict[str, dict[str, object]] | None): Per-method
+            parameter overrides forwarded to baseline monitor creation.
 
     Returns:
         dict[str, npt.NDArray[np.bool_]]: Reference labels for
@@ -1288,6 +1556,7 @@ def _build_dataset_reference_labels(  # noqa: PLR0913
         anchor_points,
         test_points,
         baseline_methods,
+        method_params=method_params,
     )
     if effective_ground_truth_yaml is not None:
         reference_labels["ground_truth"] = _ground_truth_labels_from_yaml(

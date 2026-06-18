@@ -65,14 +65,22 @@ def test_from_csv(
     assert samples.shape == data.shape
 
 
-def test_dataset_with_singular_matrix_triggers_warning():
-    """Test that importing a dataset that leads to a singular matrix triggers a
-    warning."""
+def test_dataset_no_singular_matrix_warning_with_affine_floor():
+    """The affine-floor sigma law prevents singular matrices on isolated anchors.
+
+    The breast-cancer-wisconsin dataset previously triggered the
+    "sigma matrix was not invertible" UserWarning. With the affine lower
+    bound (SIGMA_FLOOR_RATIO * kappa) that warning must no longer be emitted.
+    """
+    import warnings
+
     file = ROOT_FOLDER / "data" / "breast-cancer-wisconsin.csv"
     kernel_cls = "RBF"
     kernel_kwargs = None
 
-    with pytest.warns(UserWarning, match="sigma matrix was not invertible"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        # Must NOT raise a UserWarning about singular matrices
         samples = from_csv(
             file=file, kernel_cls=kernel_cls, kernel_kwargs=kernel_kwargs
         )

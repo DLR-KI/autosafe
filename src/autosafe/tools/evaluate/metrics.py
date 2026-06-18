@@ -13,6 +13,7 @@ import polars as pl
 from autosafe import _jax_config  # noqa: F401
 from autosafe.tools.evaluate.core import (
     calculate_confusion_matrix,
+    calculate_confusion_matrix_log,
     calculate_performance_metrics,
 )
 from autosafe.typing import AffinityVector
@@ -49,7 +50,10 @@ def evaluate_affinity_metrics(
     """Evaluate affinity predictions for multiple reference label sets.
 
     Args:
-        samples_df (pl.DataFrame): Table containing an affinity column.
+        samples_df (pl.DataFrame): Table containing an 'affinity' column
+            and optionally a 'survival' column (= log(1 - affinity)).
+            When 'survival' is present, rows are emitted for both
+            affinity_space values ("linear" and "log").
         reference_labels (dict[str, np.ndarray]):
             Mapping of reference name to boolean labels.
         thresholds (np.ndarray | jax.Array): Thresholds applied to
@@ -57,14 +61,16 @@ def evaluate_affinity_metrics(
         source (str): Human-readable source identifier.
 
     Returns:
-        pl.DataFrame: DataFrame with one row per threshold and
-            reference.
+        pl.DataFrame: DataFrame with one row per threshold, reference,
+            and affinity_space.
 
     Raises:
         ValueError: If required columns are missing or labels mismatch.
     """
     if "affinity" not in samples_df.columns:
         raise ValueError("samples_df must contain an 'affinity' column")
+
+    has_survival = "survival" in samples_df.columns
 
     rows: list[dict[str, float | int | str]] = []
 
@@ -81,33 +87,50 @@ def evaluate_affinity_metrics(
         actually_positive = labeled.filter(pl.col("_reference"))
         actually_negative = labeled.filter(pl.col("_reference") == False)  # noqa: E712
 
-        for threshold in thresholds:
-            confusion = calculate_confusion_matrix(
-                actually_positive=actually_positive,
-                actually_negative=actually_negative,
-                affinity_limit=np.float64(threshold),
-            )
-            metrics = calculate_performance_metrics(confusion)
-            rows.append({
-                "source": source,
-                "reference": reference_name,
-                "affinity_threshold": float(threshold),
-                "true_positive": int(confusion["true_positive"]),
-                "false_positive": int(confusion["false_positive"]),
-                "true_negative": int(confusion["true_negative"]),
-                "false_negative": int(confusion["false_negative"]),
-                "accuracy": float(metrics["accuracy"]),
-                "precision": float(metrics["precision"]),
-                "recall": float(metrics["recall"]),
-                "f1_score": float(metrics["f1_score"]),
-                "specificity": float(metrics["specificity"]),
-                "balanced_accuracy": float(metrics["balanced_accuracy"]),
-                "iou": float(metrics["iou"]),
-                "pr_product": float(metrics["pr_product"]),
-                "prevalence": float(metrics["prevalance"]),
-            })
+        spaces = ["linear", "log"] if has_survival else ["linear"]
+        for space in spaces:
+            for threshold in thresholds:
+                if space == "linear":
+                    confusion = calculate_confusion_matrix(
+                        actually_positive=actually_positive,
+                        actually_negative=actually_negative,
+                        affinity_limit=np.float64(threshold),
+                    )
+                else:
+                    with np.errstate(divide="ignore"):
+                        limit = float(np.log1p(-np.float64(threshold)))
+                    confusion = calculate_confusion_matrix_log(
+                        actually_positive=actually_positive,
+                        actually_negative=actually_negative,
+                        log_survival_limit=limit,
+                    )
+                metrics = calculate_performance_metrics(confusion)
+                rows.append({
+                    "source": source,
+                    "reference": reference_name,
+                    "affinity_space": space,
+                    "affinity_threshold": float(threshold),
+                    "true_positive": int(confusion["true_positive"]),
+                    "false_positive": int(confusion["false_positive"]),
+                    "true_negative": int(confusion["true_negative"]),
+                    "false_negative": int(confusion["false_negative"]),
+                    "accuracy": float(metrics["accuracy"]),
+                    "precision": float(metrics["precision"]),
+                    "recall": float(metrics["recall"]),
+                    "f1_score": float(metrics["f1_score"]),
+                    "specificity": float(metrics["specificity"]),
+                    "balanced_accuracy": float(metrics["balanced_accuracy"]),
+                    "iou": float(metrics["iou"]),
+                    "pr_product": float(metrics["pr_product"]),
+                    "prevalence": float(metrics["prevalance"]),
+                })
 
-    return pl.DataFrame(rows).sort(["source", "reference", "affinity_threshold"])
+    return pl.DataFrame(rows).sort([
+        "source",
+        "reference",
+        "affinity_space",
+        "affinity_threshold",
+    ])
 
 
 def save_metrics_csv(results: pl.DataFrame, output_path: Path) -> Path:

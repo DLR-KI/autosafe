@@ -790,12 +790,12 @@ def test_clustered_hulls_evaluate_batch_and_ball_fallback(
     ch_exc.n_clusters = 1
     ch_exc.hulls = [cast("Any", bad_hull)]
     ch_exc._cluster_balls = [None]
-    # __call__ exception path (lines 837-838): hull raises → except → fall through
+    # __call__ exception path (lines 837-838): hull raises -> except -> fall through
     assert ch_exc(np.array([0.0, 0.0])) is False
     # evaluate_batch exception path (lines 880-885): same hull in batch context
     ch_exc.evaluate_batch(_test_points())
 
-    # Outside-hull path: hull is valid but point is far outside → continue → return False.
+    # Outside-hull path: hull is valid but point is far outside -> continue -> return False.
     ch_fitted = ClusteredConvexHulls(n_clusters=1).fit(ref)
     assert ch_fitted(np.array([100.0, 100.0])) is False
 

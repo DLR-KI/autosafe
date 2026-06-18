@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from autosafe.kernels.rbf import (
+    SIGMA_FLOOR_RATIO,
     GaussianKernel,
     RBFKernel,
     _validate_and_broadcast_param,
@@ -259,7 +260,8 @@ class TestRBFKernel:
         for kappa, eta in zip(kappas, etas, strict=False):
             kernel.update(x_nn=x_nn, kappa=kappa, eta=eta)
             dist = np.abs(kernel.x_i - x_nn)
-            expected_sigma = np.diag(kappa * np.exp(-eta * dist))
+            lam_val = SIGMA_FLOOR_RATIO * kappa
+            expected_sigma = np.diag((kappa - lam_val) * np.exp(-eta * dist) + lam_val)
             expected_sigma_inv = np.linalg.inv(expected_sigma)
             assert kernel.sigma is not None, "Sigma should be set."
             assert kernel.sigma_inv is not None, "Sigma inverse should be set."
@@ -272,10 +274,10 @@ class TestRBFKernel:
                 dim,
             ), "Sigma inverse should have the correct shape."
             assert np.allclose(kernel.sigma, expected_sigma), (
-                "Sigma should be (kappa * exp(-eta * |x_i - x_nn|)) * np.eye."
+                "Sigma should be ((kappa-lam)*exp(-eta*|x_i-x_nn|)+lam)*np.eye."
             )
             assert np.all(np.diag(kernel.sigma) < kappa), (
-                "All diagonal elements of sigma should be less than or equal to kappa."
+                "All diagonal elements of sigma should be less than kappa."
             )
             assert np.allclose(kernel.sigma_inv, expected_sigma_inv), (
                 "Sigma inverse should be the inverse of sigma."
@@ -286,7 +288,7 @@ class TestRBFKernel:
         dim = kernel.x_i.shape[0]
         x_nn = copy.deepcopy(kernel.x_i)
 
-        ks = [-1.0, 0.5, 1.0, 10.0]
+        ks = [0.5, 1.0, 10.0]  # negative kappa is invalid with the affine-floor law
         for k in ks:
             kappas = k * np.array([0.5, 1.0, 2.0], dtype=FloatType)
             etas = k * np.array([0.1, 1.0, 10.0], dtype=FloatType)
@@ -316,14 +318,17 @@ class TestRBFKernel:
         dim = kernel.x_i.shape[0]
         x_nn = 10 * np.ones((dim,), dtype=FloatType)
 
-        ks = [-1.0, 0.5, 1.0, 10.0]
+        ks = [0.5, 1.0, 10.0]  # negative kappa is invalid with the affine-floor law
         for k in ks:
             kappas = k * np.array([0.5, 1.0, 2.0], dtype=FloatType)
             etas = k * np.array([0.1, 1.0, 10.0], dtype=FloatType)
 
             kernel.update(x_nn=x_nn, kappa=kappas, eta=etas)
             dist = np.abs(kernel.x_i - x_nn)
-            expected_sigma = np.diag(kappas * np.exp(-etas * dist))
+            lam_vals = SIGMA_FLOOR_RATIO * kappas
+            expected_sigma = np.diag(
+                (kappas - lam_vals) * np.exp(-etas * dist) + lam_vals
+            )
             expected_sigma_inv = np.linalg.inv(expected_sigma)
             assert kernel.sigma is not None, "Sigma should be set."
             assert kernel.sigma_inv is not None, "Sigma inverse should be set."
@@ -336,10 +341,10 @@ class TestRBFKernel:
                 dim,
             ), "Sigma inverse should have the correct shape."
             assert np.allclose(kernel.sigma, expected_sigma), (
-                "Sigma should be (kappa * exp(-eta * |x_i - x_nn|)) * np.eye."
+                "Sigma should be ((kappa-lam)*exp(-eta*|x_i-x_nn|)+lam)*np.eye."
             )
             assert np.all(np.diag(kernel.sigma) <= kappas), (
-                "All diagonal elements of sigma should be less than or equal to kappa."
+                "All diagonal elements of sigma should be <= kappa."
             )
             assert np.allclose(kernel.sigma_inv, expected_sigma_inv), (
                 "Sigma inverse should be the inverse of sigma."

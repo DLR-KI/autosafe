@@ -382,6 +382,12 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:
     evaluation_samples = int(
         item.get("evaluation_samples", item.get("n_samples", 200_000))
     )
+    baseline_params = item.get("baseline_params") or {}
+    subsample_anchors = item.get("subsample_anchors")
+    if subsample_anchors is not None:
+        subsample_anchors = int(subsample_anchors)
+    local_noise_mode = str(item.get("local_noise_mode", "span"))
+    local_noise_multiplier = float(item.get("local_noise_multiplier", 3.0))
 
     _, csv_path, odd_path = evaluate_dataset_mode(
         dataset_path=dataset_path,
@@ -403,6 +409,10 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:
         kernel_kwargs=kernel_kwargs,
         seed=int(item.get("seed", 0)),
         csv_output=pathlib.Path(item["csv_output"]) if item.get("csv_output") else None,
+        subsample_anchors=subsample_anchors,
+        baseline_params=baseline_params,
+        local_noise_mode=local_noise_mode,
+        local_noise_multiplier=local_noise_multiplier,
     )
     return {
         "mode": "dataset",
