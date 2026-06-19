@@ -78,7 +78,7 @@ license-files = ["LICENSES/*"]
 name = "autosafe"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "1.0.0"
+version = "1.0.1"
 
 [project.scripts]
 autosafe = "autosafe.__main__:main"
@@ -100,7 +100,7 @@ pre_bump_hooks = [
   "python -c \"import re; from datetime import date; c=open('CITATION.cff').read(); open('CITATION.cff','w').write(re.sub(r'^(date-released: )\\\\d{4}-\\\\d{2}-\\\\d{2}', r'\\\\g<1>' + date.today().isoformat(), c, flags=re.M))\""
 ]
 tag_format = "$version"
-version = "1.0.0"
+version = "1.0.1"
 version_files = [
   "CITATION.cff:version",
   "docs/conf.py:release",
