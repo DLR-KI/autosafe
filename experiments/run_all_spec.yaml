@@ -4,54 +4,154 @@
 # Batch spec for autosafe experiments run-spec
 # Runs Monte Carlo sampling configs (2D..12D) and dataset evaluation for HCAS/VCAS.
 experiments:
-  - id: mc-sample-2d
-    mode: mc-sample
-    config_file: experiments/dim_2d/sampling_config.yaml
-  - id: mc-sample-3d
-    mode: mc-sample
-    config_file: experiments/dim_3d/sampling_config.yaml
-  - id: mc-sample-4d
-    mode: mc-sample
-    config_file: experiments/dim_4d/sampling_config.yaml
-  - id: mc-sample-5d
-    mode: mc-sample
-    config_file: experiments/dim_5d/sampling_config.yaml
-  - id: mc-sample-6d
-    mode: mc-sample
-    config_file: experiments/dim_6d/sampling_config.yaml
-  - id: mc-sample-7d
-    mode: mc-sample
-    config_file: experiments/dim_7d/sampling_config.yaml
-  - id: mc-sample-8d
-    mode: mc-sample
-    config_file: experiments/dim_8d/sampling_config.yaml
-  - id: mc-sample-9d
-    mode: mc-sample
-    config_file: experiments/dim_9d/sampling_config.yaml
-  - id: mc-sample-10d
-    mode: mc-sample
-    config_file: experiments/dim_10d/sampling_config.yaml
-  - id: mc-sample-11d
-    mode: mc-sample
-    config_file: experiments/dim_11d/sampling_config.yaml
-  - id: mc-sample-12d
-    mode: mc-sample
-    config_file: experiments/dim_12d/sampling_config.yaml
+  # NOTE (deprecation): In run-spec mode, prefer setting `samples`,
+  # `kernel_type`, and `kernel_kwargs` here in the experiment item.
+  # Putting `samples`/`kernel_config` inside sampling_config.yaml is
+  # deprecated.
 
-  - id: eval-WineQT
-    mode: dataset
-    dataset_path: data/WineQT.csv
-    threshold_mode: linear
-    threshold_count: 100
+  # - id: mc-sample-2d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_2d/sampling_config.yaml
+  #   samples: 100000
+  #   kernel_type: RBF
+  #   kernel_kwargs:
+  #     sigma: 1.2
+  #     kappa: 0.3
+  #     eta: 0.0
+  # - id: mc-sample-3d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_3d/sampling_config.yaml
+  # - id: mc-sample-4d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_4d/sampling_config.yaml
+  # - id: mc-sample-5d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_5d/sampling_config.yaml
+  # - id: mc-sample-6d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_6d/sampling_config.yaml
+  # - id: mc-sample-7d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_7d/sampling_config.yaml
+  # - id: mc-sample-8d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_8d/sampling_config.yaml
+  # - id: mc-sample-9d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_9d/sampling_config.yaml
+  # - id: mc-sample-10d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_10d/sampling_config.yaml
+  # - id: mc-sample-11d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_11d/sampling_config.yaml
+  # - id: mc-sample-12d
+  #   mode: mc-sample
+  #   config_file: experiments/dim_12d/sampling_config.yaml
 
-  - id: eval-hcas
-    mode: dataset
-    dataset_path: data/hcas_state_variables.csv
-    threshold_mode: linear
-    threshold_count: 100
+  # - id: eval-WineQT
+  #   mode: dataset
+  #   dataset_path: data/WineQT.csv
+  #   evaluation_samples: 200000
+  #   threshold_mode: linear
+  #   threshold_count: 100
+  #   comparison_methods:
+  #     - fast_hull_approx # Use the fast method for WineQT (high dimensions)
+  #     - knn # Keep traditional KNN
+  #     - kmeans # Keep traditional KMeans
+  #     # Available methods: hull_single, hull_clustered, knn, kmeans,
+  #     #                    density_single, density_clustered,
+  #     #                    dbscan_cluster, fast_hull_approx
 
-  - id: eval-vcas
+  # - id: eval-iris
+  #   mode: dataset
+  #   dataset_path: data/iris.csv
+  #   evaluation_samples: 100000
+  #   threshold_mode: linear
+  #   threshold_count: 100
+  # - id: eval-WineQT
+  #   mode: dataset
+  #   dataset_path: data/WineQT.csv
+  #   threshold_mode: linear
+  #   threshold_count: 100
+  # - id: eval-hcas
+  #   mode: dataset
+  #   dataset_path: data/hcas_state_variables.csv
+  #   threshold_mode: linear
+  #   threshold_count: 100
+
+  # - id: eval-vcas
+  #   mode: dataset
+  #   dataset_path: data/vcas_state_variables.csv
+  #   threshold_mode: linear
+  #   threshold_count: 100
+
+  # ---------------------------------------------------------------------------
+  # HCAS/VCAS examples with kernel params + closest-sample caching
+  #
+  # Cache behavior in evaluate workflow:
+  # - Leave odd_json and odd_json_out unset.
+  # - ODD cache path is auto-derived from:
+  #   dataset_path + closest_sample_mode + kernel_type + kernel_kwargs.
+  # - Jobs with same tuple above reuse closest samples/ODD from cache.
+  # ---------------------------------------------------------------------------
+
+  # NOTE: Rebuilding the global-mode ODD caches is expected and slow (hours).
+  # Before the production run, delete experiments/run_all_spec.state.json (or
+  # remove these two ids from it) because both ids are marked completed from
+  # the broken runs.
+  - id: eval-vcas-rbf
     mode: dataset
     dataset_path: data/vcas_state_variables.csv
+    evaluation_samples: 1000000
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_c: 1.0
+      calibration_s: 3.0
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.0
     threshold_mode: linear
     threshold_count: 100
+
+  - id: eval-hcas-rbf
+    mode: dataset
+    dataset_path: data/hcas_state_variables.csv
+    evaluation_samples: 1000000
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_c: 1.0
+      calibration_s: 3.0
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.0
+    threshold_mode: linear
+    threshold_count: 100
+
+  # - id: eval-hcas-rbf-reuse-cache
+  #   mode: dataset
+  #   dataset_path: data/hcas_state_variables.csv
+  #   evaluation_samples: 100000
+  #   closest_sample_mode: per_dimension
+  #   kernel_type: RBF
+  #   kernel_kwargs:
+  #     sigma: 1.2
+  #     kappa: 0.3
+  #     eta: 0.1
+  #   threshold_mode: linear
+  #   threshold_count: 100
+
+  - id: eval-minimal-hcas-rbf
+    mode: dataset
+    dataset_path: data/hcas_state_variables-minimal.csv
+    evaluation_samples: 100000
+    closest_sample_mode: per_dimension
+    kernel_type: RBF
+    threshold_mode: linear
+    threshold_count: 101

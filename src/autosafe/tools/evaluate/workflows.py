@@ -1227,6 +1227,57 @@ def _build_or_load_affinity_odd(  # noqa: C901, PLR0912, PLR0913
     return odd, export_path
 
 
+def _numeric_array(df: pl.DataFrame) -> npt.NDArray[np.float64]:
+    """Return the numeric columns of ``df`` as a float64 array."""
+    cols = [c for c, dt in zip(df.columns, df.dtypes, strict=False) if dt.is_numeric()]
+    return df.select(cols).to_numpy().astype(float)
+
+
+def _normalize_ood_points(
+    ood_path: Path,
+    dataset_path: Path,
+    *,
+    yaml_normalizer: RangeNormalizer | None,
+    normalize_data: bool,
+) -> npt.NDArray[np.float64]:
+    """Load OOD points and map them into the anchors' coordinate system.
+
+    Mirrors exactly how the anchors are normalized in
+    ``_build_or_load_affinity_odd``: a YAML-bounds normalizer when
+    present, otherwise the built-in IQR pipeline fit on the raw dataset.
+
+    Args:
+        ood_path (Path): CSV of OOD samples (same numeric columns as the
+            dataset).
+        dataset_path (Path): The anchor dataset, used to refit the IQR
+            normalizer when no YAML normalizer is supplied.
+        yaml_normalizer (RangeNormalizer | None): External normalizer
+            fit on YAML bounds, if any.
+        normalize_data (bool): Whether the anchor pipeline normalized
+            the data (always ``True`` in dataset mode).
+
+    Returns:
+        npt.NDArray[np.float64]: OOD points in normalized space,
+            shape (M, n_dims).
+    """
+    raw_df, _ = load_dataset(ood_path, options=DatasetLoadOptions(normalize=False))
+    ood_raw = _numeric_array(raw_df)
+
+    if yaml_normalizer is not None:
+        return np.asarray(yaml_normalizer.transform(ood_raw), dtype=float)
+    if not normalize_data:
+        return ood_raw
+
+    # Reproduce the built-in IQR normalization (see normalize_dataset):
+    # fit on the raw dataset's numeric columns, then transform the OOD.
+    ds_df, _ = load_dataset(dataset_path, options=DatasetLoadOptions(normalize=False))
+    normalizer = create_robust_normalization_pipeline(
+        target_range=(-1.0, 1.0), method="iqr"
+    )
+    normalizer.fit(_numeric_array(ds_df))
+    return np.asarray(normalizer.transform(ood_raw), dtype=float)
+
+
 def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
     dataset_path: Path,
     *,
@@ -1246,6 +1297,9 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
     baseline_params: dict[str, object] | None = None,
     local_noise_mode: str = "span",
     local_noise_multiplier: float = 3.0,
+    ood_path: Path | None = None,
+    ood_xi: float | None = None,
+    ood_shrink_factor: float = 0.9,
 ) -> tuple[pl.DataFrame, Path, Path]:
     """Evaluate real-data workflow with optional ground truth YAML.
 
@@ -1283,15 +1337,26 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
             the calibrated kernel scale.
         local_noise_multiplier (float): Multiplier m in the ``"nn"``
             mode formula (default 3.0).
+        ood_path (Path | None): Optional CSV of OOD samples. When set,
+            the OOD consistency adjustment (paper Def. 4.5) is applied
+            and the adjusted ODD is cached separately (ood-tagged JSON);
+            requires ``ood_xi``.
+        ood_xi (float | None): Maximum allowed OOD affinity in (0, 1).
+            Required when ``ood_path`` is set.
+        ood_shrink_factor (float): Covariance shrink factor c in (0, 1)
+            for the OOD adjustment (default 0.9).
 
     Returns:
         tuple[pl.DataFrame, Path, Path]: metrics_df, csv_path,
             odd_json_path.
 
     Raises:
-        ValueError: If no reference labels are available or if
-            local_noise_mode is unknown.
+        ValueError: If no reference labels are available, if
+            local_noise_mode is unknown, or if ood_path is set without
+            ood_xi.
     """
+    if ood_path is not None and ood_xi is None:
+        raise ValueError("ood_path requires ood_xi to be set")
     if n_samples > _MAX_DATASET_EVAL_SAMPLES:
         raise ValueError(
             "Dataset evaluation samples are too large for in-memory evaluation: "
@@ -1327,6 +1392,39 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
         subsample_anchors=subsample_anchors,
         seed=seed,
     )
+
+    # OOD consistency adjustment (paper Def. 4.5 / Algorithm 1). The
+    # adjusted ODD is cached under an ood-tagged path so it never
+    # overwrites the unadjusted cache; on a cache hit, enforcement is a
+    # no-op (idempotent), so the file is not rewritten.
+    ood_summary: dict[str, object] | None = None
+    if ood_path is not None:
+        # ood_xi is guaranteed non-None by the early validation above.
+        ood_xi = cast("float", ood_xi)
+        ood_digest = hashlib.sha256(
+            ood_path.read_bytes() + f":{ood_xi}:{ood_shrink_factor}".encode()
+        ).hexdigest()[:8]
+        ood_tag = f"-ood{ood_digest}"
+        adjusted_path = odd_export_path.with_name(
+            f"{odd_export_path.stem}{ood_tag}{odd_export_path.suffix}"
+        )
+        ood_norm = _normalize_ood_points(
+            ood_path,
+            dataset_path,
+            yaml_normalizer=yaml_normalizer,
+            normalize_data=normalize_data,
+        )
+        if adjusted_path.exists():
+            odd = cast("Samples", autosafe.from_json(adjusted_path))
+            ood_summary = odd.enforce_ood_consistency(
+                ood_norm, xi=ood_xi, shrink_factor=ood_shrink_factor
+            )
+        else:
+            ood_summary = odd.enforce_ood_consistency(
+                ood_norm, xi=ood_xi, shrink_factor=ood_shrink_factor
+            )
+            autosafe.to_json(odd, adjusted_path)
+        odd_export_path = adjusted_path
 
     anchor_points = _extract_anchor_points(odd)
     anchor_arr = np.asarray(anchor_points, dtype=float)
@@ -1492,6 +1590,20 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
         ),
         "local_noise_mode": local_noise_mode,
         "local_noise_multiplier": local_noise_multiplier,
+        "ood_path": str(ood_path) if ood_path is not None else None,
+        "ood_xi": ood_xi,
+        "ood_shrink_factor": ood_shrink_factor if ood_path is not None else None,
+        "ood_iterations": (
+            ood_summary["iterations"] if ood_summary is not None else None
+        ),
+        "ood_max_affinity_final": (
+            ood_summary["max_ood_affinity"] if ood_summary is not None else None
+        ),
+        "ood_adjusted_kernel_count": (
+            len(cast("dict[int, int]", ood_summary["adjusted_kernels"]))
+            if ood_summary is not None
+            else None
+        ),
         "calibration_version": _CALIBRATION_VERSION,
         "baseline_params_resolved": resolved_baseline_params,
         "threshold_mode": threshold_mode,
