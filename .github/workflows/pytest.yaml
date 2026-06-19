@@ -26,9 +26,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v8.2.0
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
       - name: Test with python ${{ matrix.python-version }}
         run: uv run --frozen pytest
