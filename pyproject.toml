@@ -78,7 +78,7 @@ license-files = ["LICENSES/*"]
 name = "autosafe"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "1.0.0"
+version = "1.0.1"
 
 [project.scripts]
 autosafe = "autosafe.__main__:main"
@@ -100,7 +100,7 @@ pre_bump_hooks = [
   "python -c \"import re; from datetime import date; c=open('CITATION.cff').read(); open('CITATION.cff','w').write(re.sub(r'^(date-released: )\\\\d{4}-\\\\d{2}-\\\\d{2}', r'\\\\g<1>' + date.today().isoformat(), c, flags=re.M))\""
 ]
 tag_format = "$version"
-version = "1.0.0"
+version = "1.0.1"
 version_files = [
   "CITATION.cff:version",
   "docs/conf.py:release",
@@ -222,6 +222,28 @@ ban-relative-imports = "all"
 
 [tool.ruff.lint.per-file-ignores]
 "docs/conf.py" = ["INP001"]
+# Rebuttal experiment scripts are research drivers, not library code:
+# long explanatory docstrings, grid magic-numbers, typer boolean flags, and
+# long driver functions are expected and intentional (mirrors the tests/*
+# relaxation above).
+"experiments/rebuttal/*" = [
+  "W505",
+  "PLR2004",
+  "FBT001",
+  "FBT002",
+  "C901",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0914",
+  "PLR0915",
+  "PLR0917",
+  "DOC201",
+  "DOC501",
+  "S101",
+  "S404",
+  "S607"
+]
 "src/autosafe/__init__.py" = ["RUF067"]
 "src/autosafe/kernels/__init__.py" = ["RUF067"]
 "src/autosafe/kernels/kernel.py" = ["ANN002", "ANN003", "RUF100", "RUF102"]

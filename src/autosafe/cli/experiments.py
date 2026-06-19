@@ -355,7 +355,7 @@ def glob_run_mc_sample(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:
+def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0914
     dataset_path = pathlib.Path(str(item["dataset_path"]))
     comparison_methods = item.get("comparison_methods")
     if comparison_methods is not None:
@@ -388,6 +388,9 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:
         subsample_anchors = int(subsample_anchors)
     local_noise_mode = str(item.get("local_noise_mode", "span"))
     local_noise_multiplier = float(item.get("local_noise_multiplier", 3.0))
+    ood_path = pathlib.Path(item["ood_path"]) if item.get("ood_path") else None
+    ood_xi = float(item["ood_xi"]) if item.get("ood_xi") is not None else None
+    ood_shrink_factor = float(item.get("ood_shrink_factor", 0.9))
 
     _, csv_path, odd_path = evaluate_dataset_mode(
         dataset_path=dataset_path,
@@ -413,6 +416,9 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:
         baseline_params=baseline_params,
         local_noise_mode=local_noise_mode,
         local_noise_multiplier=local_noise_multiplier,
+        ood_path=ood_path,
+        ood_xi=ood_xi,
+        ood_shrink_factor=ood_shrink_factor,
     )
     return {
         "mode": "dataset",

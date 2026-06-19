@@ -13,8 +13,8 @@ authors:
     orcid: https://orcid.org/0000-0001-9871-122X
 title: "autoSAFE: Autonomous Safety for Operational Design Domains with
   Inexhaustive Data"
-version: 1.0.0
-date-released: 2026-05-07
+version: 1.0.1
+date-released: 2026-06-19
 type: software
 license: MIT
 repository-code: "https://github.com/DLR-KI/autosafe"
