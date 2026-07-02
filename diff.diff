@@ -1,0 +1,594 @@
+diff --git a/CITATION.cff b/CITATION.cff
+index ae695ed..5cfe1fd 100644
+--- a/CITATION.cff
++++ b/CITATION.cff
+@@ -13,8 +13,8 @@ authors:
+     orcid: https://orcid.org/0000-0001-9871-122X
+ title: "autoSAFE: Autonomous Safety for Operational Design Domains with
+   Inexhaustive Data"
+-version: 1.0.0
+-date-released: 2026-05-07
++version: 1.0.1
++date-released: 2026-06-19
+ type: software
+ license: MIT
+ repository-code: "https://github.com/DLR-KI/autosafe"
+diff --git a/docs/conf.py b/docs/conf.py
+index bb7d529..d0324cd 100644
+--- a/docs/conf.py
++++ b/docs/conf.py
+@@ -19,7 +19,7 @@ sys.path.insert(0, str(pathlib.Path("..").resolve()))
+ project = "autosafe"
+ copyright = "2026, German Aerospace Center (DLR e.V.) <https://dlr.de>"  # noqa: A001
+ author = "Johann Christensen"
+-release = "1.0.0"
++release = "1.0.1"
+ 
+ # -- General configuration ---------------------------------------------
+ # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+diff --git a/experiments/run_all_spec.yaml b/experiments/run_all_spec.yaml
+index 20e7e10..cb80d90 100644
+--- a/experiments/run_all_spec.yaml
++++ b/experiments/run_all_spec.yaml
+@@ -4,54 +4,154 @@
+ # Batch spec for autosafe experiments run-spec
+ # Runs Monte Carlo sampling configs (2D..12D) and dataset evaluation for HCAS/VCAS.
+ experiments:
+-  - id: mc-sample-2d
+-    mode: mc-sample
+-    config_file: experiments/dim_2d/sampling_config.yaml
+-  - id: mc-sample-3d
+-    mode: mc-sample
+-    config_file: experiments/dim_3d/sampling_config.yaml
+-  - id: mc-sample-4d
+-    mode: mc-sample
+-    config_file: experiments/dim_4d/sampling_config.yaml
+-  - id: mc-sample-5d
+-    mode: mc-sample
+-    config_file: experiments/dim_5d/sampling_config.yaml
+-  - id: mc-sample-6d
+-    mode: mc-sample
+-    config_file: experiments/dim_6d/sampling_config.yaml
+-  - id: mc-sample-7d
+-    mode: mc-sample
+-    config_file: experiments/dim_7d/sampling_config.yaml
+-  - id: mc-sample-8d
+-    mode: mc-sample
+-    config_file: experiments/dim_8d/sampling_config.yaml
+-  - id: mc-sample-9d
+-    mode: mc-sample
+-    config_file: experiments/dim_9d/sampling_config.yaml
+-  - id: mc-sample-10d
+-    mode: mc-sample
+-    config_file: experiments/dim_10d/sampling_config.yaml
+-  - id: mc-sample-11d
+-    mode: mc-sample
+-    config_file: experiments/dim_11d/sampling_config.yaml
+-  - id: mc-sample-12d
+-    mode: mc-sample
+-    config_file: experiments/dim_12d/sampling_config.yaml
+-
+-  - id: eval-WineQT
++  # NOTE (deprecation): In run-spec mode, prefer setting `samples`,
++  # `kernel_type`, and `kernel_kwargs` here in the experiment item.
++  # Putting `samples`/`kernel_config` inside sampling_config.yaml is
++  # deprecated.
++
++  # - id: mc-sample-2d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_2d/sampling_config.yaml
++  #   samples: 100000
++  #   kernel_type: RBF
++  #   kernel_kwargs:
++  #     sigma: 1.2
++  #     kappa: 0.3
++  #     eta: 0.0
++  # - id: mc-sample-3d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_3d/sampling_config.yaml
++  # - id: mc-sample-4d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_4d/sampling_config.yaml
++  # - id: mc-sample-5d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_5d/sampling_config.yaml
++  # - id: mc-sample-6d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_6d/sampling_config.yaml
++  # - id: mc-sample-7d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_7d/sampling_config.yaml
++  # - id: mc-sample-8d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_8d/sampling_config.yaml
++  # - id: mc-sample-9d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_9d/sampling_config.yaml
++  # - id: mc-sample-10d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_10d/sampling_config.yaml
++  # - id: mc-sample-11d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_11d/sampling_config.yaml
++  # - id: mc-sample-12d
++  #   mode: mc-sample
++  #   config_file: experiments/dim_12d/sampling_config.yaml
++
++  # - id: eval-WineQT
++  #   mode: dataset
++  #   dataset_path: data/WineQT.csv
++  #   evaluation_samples: 200000
++  #   threshold_mode: linear
++  #   threshold_count: 100
++  #   comparison_methods:
++  #     - fast_hull_approx # Use the fast method for WineQT (high dimensions)
++  #     - knn # Keep traditional KNN
++  #     - kmeans # Keep traditional KMeans
++  #     # Available methods: hull_single, hull_clustered, knn, kmeans,
++  #     #                    density_single, density_clustered,
++  #     #                    dbscan_cluster, fast_hull_approx
++
++  # - id: eval-iris
++  #   mode: dataset
++  #   dataset_path: data/iris.csv
++  #   evaluation_samples: 100000
++  #   threshold_mode: linear
++  #   threshold_count: 100
++  # - id: eval-WineQT
++  #   mode: dataset
++  #   dataset_path: data/WineQT.csv
++  #   threshold_mode: linear
++  #   threshold_count: 100
++  # - id: eval-hcas
++  #   mode: dataset
++  #   dataset_path: data/hcas_state_variables.csv
++  #   threshold_mode: linear
++  #   threshold_count: 100
++
++  # - id: eval-vcas
++  #   mode: dataset
++  #   dataset_path: data/vcas_state_variables.csv
++  #   threshold_mode: linear
++  #   threshold_count: 100
++
++  # ---------------------------------------------------------------------------
++  # HCAS/VCAS examples with kernel params + closest-sample caching
++  #
++  # Cache behavior in evaluate workflow:
++  # - Leave odd_json and odd_json_out unset.
++  # - ODD cache path is auto-derived from:
++  #   dataset_path + closest_sample_mode + kernel_type + kernel_kwargs.
++  # - Jobs with same tuple above reuse closest samples/ODD from cache.
++  # ---------------------------------------------------------------------------
++
++  # NOTE: Rebuilding the global-mode ODD caches is expected and slow (hours).
++  # Before the production run, delete experiments/run_all_spec.state.json (or
++  # remove these two ids from it) because both ids are marked completed from
++  # the broken runs.
++  - id: eval-vcas-rbf
+     mode: dataset
+-    dataset_path: data/WineQT.csv
++    dataset_path: data/vcas_state_variables.csv
++    evaluation_samples: 1000000
++    closest_sample_mode: global
++    kernel_type: RBF
++    kernel_kwargs:
++      calibration: auto
++      calibration_c: 1.0
++      calibration_s: 3.0
++    baseline_params:
++      auto_scale: true
++    local_noise_mode: nn
++    local_noise_multiplier: 3.0
+     threshold_mode: linear
+     threshold_count: 100
+ 
+-  - id: eval-hcas
++  - id: eval-hcas-rbf
+     mode: dataset
+     dataset_path: data/hcas_state_variables.csv
++    evaluation_samples: 1000000
++    closest_sample_mode: global
++    kernel_type: RBF
++    kernel_kwargs:
++      calibration: auto
++      calibration_c: 1.0
++      calibration_s: 3.0
++    baseline_params:
++      auto_scale: true
++    local_noise_mode: nn
++    local_noise_multiplier: 3.0
+     threshold_mode: linear
+     threshold_count: 100
+ 
+-  - id: eval-vcas
++  # - id: eval-hcas-rbf-reuse-cache
++  #   mode: dataset
++  #   dataset_path: data/hcas_state_variables.csv
++  #   evaluation_samples: 100000
++  #   closest_sample_mode: per_dimension
++  #   kernel_type: RBF
++  #   kernel_kwargs:
++  #     sigma: 1.2
++  #     kappa: 0.3
++  #     eta: 0.1
++  #   threshold_mode: linear
++  #   threshold_count: 100
++
++  - id: eval-minimal-hcas-rbf
+     mode: dataset
+-    dataset_path: data/vcas_state_variables.csv
++    dataset_path: data/hcas_state_variables-minimal.csv
++    evaluation_samples: 100000
++    closest_sample_mode: per_dimension
++    kernel_type: RBF
+     threshold_mode: linear
+-    threshold_count: 100
++    threshold_count: 101
+diff --git a/pyproject.toml b/pyproject.toml
+index 1b2210d..4d852e8 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -78,7 +78,7 @@ license-files = ["LICENSES/*"]
+ name = "autosafe"
+ readme = "README.md"
+ requires-python = ">=3.10"
+-version = "1.0.0"
++version = "1.0.1"
+ 
+ [project.scripts]
+ autosafe = "autosafe.__main__:main"
+@@ -100,7 +100,7 @@ pre_bump_hooks = [
+   "python -c \"import re; from datetime import date; c=open('CITATION.cff').read(); open('CITATION.cff','w').write(re.sub(r'^(date-released: )\\\\d{4}-\\\\d{2}-\\\\d{2}', r'\\\\g<1>' + date.today().isoformat(), c, flags=re.M))\""
+ ]
+ tag_format = "$version"
+-version = "1.0.0"
++version = "1.0.1"
+ version_files = [
+   "CITATION.cff:version",
+   "docs/conf.py:release",
+@@ -222,6 +222,28 @@ ban-relative-imports = "all"
+ 
+ [tool.ruff.lint.per-file-ignores]
+ "docs/conf.py" = ["INP001"]
++# Rebuttal experiment scripts are research drivers, not library code:
++# long explanatory docstrings, grid magic-numbers, typer boolean flags, and
++# long driver functions are expected and intentional (mirrors the tests/*
++# relaxation above).
++"experiments/rebuttal/*" = [
++  "W505",
++  "PLR2004",
++  "FBT001",
++  "FBT002",
++  "C901",
++  "PLR0911",
++  "PLR0912",
++  "PLR0913",
++  "PLR0914",
++  "PLR0915",
++  "PLR0917",
++  "DOC201",
++  "DOC501",
++  "S101",
++  "S404",
++  "S607"
++]
+ "src/autosafe/__init__.py" = ["RUF067"]
+ "src/autosafe/kernels/__init__.py" = ["RUF067"]
+ "src/autosafe/kernels/kernel.py" = ["ANN002", "ANN003", "RUF100", "RUF102"]
+diff --git a/src/autosafe/cli/experiments.py b/src/autosafe/cli/experiments.py
+index bbee73e..1dbcd02 100644
+--- a/src/autosafe/cli/experiments.py
++++ b/src/autosafe/cli/experiments.py
+@@ -355,7 +355,7 @@ def glob_run_mc_sample(item: dict[str, Any]) -> dict[str, Any]:
+     }
+ 
+ 
+-def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:
++def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0914
+     dataset_path = pathlib.Path(str(item["dataset_path"]))
+     comparison_methods = item.get("comparison_methods")
+     if comparison_methods is not None:
+@@ -388,6 +388,9 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:
+         subsample_anchors = int(subsample_anchors)
+     local_noise_mode = str(item.get("local_noise_mode", "span"))
+     local_noise_multiplier = float(item.get("local_noise_multiplier", 3.0))
++    ood_path = pathlib.Path(item["ood_path"]) if item.get("ood_path") else None
++    ood_xi = float(item["ood_xi"]) if item.get("ood_xi") is not None else None
++    ood_shrink_factor = float(item.get("ood_shrink_factor", 0.9))
+ 
+     _, csv_path, odd_path = evaluate_dataset_mode(
+         dataset_path=dataset_path,
+@@ -413,6 +416,9 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:
+         baseline_params=baseline_params,
+         local_noise_mode=local_noise_mode,
+         local_noise_multiplier=local_noise_multiplier,
++        ood_path=ood_path,
++        ood_xi=ood_xi,
++        ood_shrink_factor=ood_shrink_factor,
+     )
+     return {
+         "mode": "dataset",
+diff --git a/src/autosafe/samples.py b/src/autosafe/samples.py
+index 0674844..3bb6684 100644
+--- a/src/autosafe/samples.py
++++ b/src/autosafe/samples.py
+@@ -489,6 +489,116 @@ class Samples:
+             return alpha[0], survival[0]
+         return alpha, survival
+ 
++    def _kernel_values_at(self, x: "NPVector") -> "npt.NDArray[np.float64]":
++        """Evaluate every local kernel k_i(x) at a single point.
++
++        Uses the cached batch arrays on the all-diagonal-RBF fast path
++        and falls back to per-kernel evaluation otherwise. Needed for
++        the dominant-kernel argmax in the OOD adjustment loop, where a
++        Python loop over all kernels per iteration would be unusable at
++        production scale.
++
++        Args:
++            x (NPVector): Query point, shape (n_dims,).
++
++        Returns:
++            npt.NDArray[np.float64]: Kernel values, shape (n_anchors,).
++        """
++        if not self._batch_cache_valid:
++            self._build_batch_arrays()
++        if self._all_kernels_diagonal_rbf and self._inv_diag_np is not None:
++            diff = self._anchors_np - np.asarray(x, dtype=float)[None, :]
++            mahal = np.einsum("nd,nd->n", diff * diff, self._inv_diag_np)
++            return np.exp(-0.5 * np.maximum(mahal, 0.0))
++        return np.array([float(s(np.asarray(x))) for s in self.samples])
++
++    def enforce_ood_consistency(
++        self,
++        ood_points: "Matrix | NPMatrix",
++        xi: float,
++        shrink_factor: float = 0.9,
++        max_iterations: int = 1_000_000,
++    ) -> dict[str, object]:
++        """Enforce alpha(x) <= xi on all OOD points (Algorithm 1).
++
++        Repeatedly selects the globally most-violated OOD point, finds
++        its dominant kernel, and shrinks that kernel's covariance by
++        ``shrink_factor`` until the constraint holds. Selection depends
++        only on affinity values, so the result is independent of the
++        ordering of ``ood_points`` (exact ties are broken by the lowest
++        index and have measure zero for generic data).
++
++        Note: shrinking bypasses the sigma lower bound lam; the
++        conditioning bound cond(Sigma) <= 1/SIGMA_FLOOR_RATIO holds only
++        for unadjusted kernels (see docs/bandwidth-calibration.md).
++
++        Args:
++            ood_points (Matrix | NPMatrix): OOD samples, shape
++                (M, n_dims), in the SAME (normalized) coordinate system
++                as the anchors.
++            xi (float): Maximum allowed OOD affinity, in (0, 1).
++            shrink_factor (float): Covariance scale factor, in (0, 1).
++            max_iterations (int): Safety cap; exceeding it raises.
++
++        Returns:
++            dict[str, object]: Summary with keys ``iterations``,
++                ``max_ood_affinity`` (final), and ``adjusted_kernels``
++                (mapping kernel index -> shrink count).
++
++        Raises:
++            ValueError: If xi or shrink_factor are out of range.
++            RuntimeError: If max_iterations is exceeded.
++        """
++        if not 0.0 < xi < 1.0:
++            raise ValueError("xi must be in (0, 1)")
++        if not 0.0 < shrink_factor < 1.0:
++            raise ValueError("shrink_factor must be in (0, 1)")
++        ood = np.atleast_2d(np.asarray(ood_points, dtype=float))
++        if ood.shape[0] == 0:
++            return {
++                "iterations": 0,
++                "max_ood_affinity": 0.0,
++                "adjusted_kernels": {},
++            }
++
++        adjusted: dict[int, int] = {}
++        iterations = 0
++        worst_alpha = 0.0
++        while True:
++            alphas = np.asarray(self(ood))
++            worst = int(np.argmax(alphas))  # first max -> deterministic
++            worst_alpha = float(alphas[worst])
++            if worst_alpha <= xi:
++                break
++            if iterations >= max_iterations:
++                raise RuntimeError(
++                    f"OOD consistency not reached after {max_iterations} "
++                    f"iterations (max affinity {worst_alpha:.3g} > xi={xi}); "
++                    "xi may be too small."
++                )
++            k_vals = self._kernel_values_at(ood[worst])
++            i_star = int(np.argmax(k_vals))  # first max -> deterministic
++            kern = self.samples[i_star].kernel
++            kern.sigma = np.asarray(kern.sigma) * shrink_factor
++            kern.sigma_inv = np.asarray(kern.sigma_inv) / shrink_factor
++            kern._refresh_sigma_cache()  # noqa: SLF001
++            if (
++                self._batch_cache_valid
++                and self._all_kernels_diagonal_rbf
++                and self._inv_diag_np is not None
++            ):
++                # O(1) cache update instead of a full O(N*D) rebuild.
++                self._inv_diag_np[i_star] = np.diag(kern.sigma_inv)
++            else:
++                self._batch_cache_valid = False
++            adjusted[i_star] = adjusted.get(i_star, 0) + 1
++            iterations += 1
++        return {
++            "iterations": iterations,
++            "max_ood_affinity": worst_alpha,
++            "adjusted_kernels": adjusted,
++        }
++
+     def __eq__(self, value: object) -> bool:
+         """Check if two Samples instances are equal.
+ 
+diff --git a/src/autosafe/tools/evaluate/workflows.py b/src/autosafe/tools/evaluate/workflows.py
+index b412c14..375946f 100644
+--- a/src/autosafe/tools/evaluate/workflows.py
++++ b/src/autosafe/tools/evaluate/workflows.py
+@@ -1227,6 +1227,57 @@ def _build_or_load_affinity_odd(  # noqa: C901, PLR0912, PLR0913
+     return odd, export_path
+ 
+ 
++def _numeric_array(df: pl.DataFrame) -> npt.NDArray[np.float64]:
++    """Return the numeric columns of ``df`` as a float64 array."""
++    cols = [c for c, dt in zip(df.columns, df.dtypes, strict=False) if dt.is_numeric()]
++    return df.select(cols).to_numpy().astype(float)
++
++
++def _normalize_ood_points(
++    ood_path: Path,
++    dataset_path: Path,
++    *,
++    yaml_normalizer: RangeNormalizer | None,
++    normalize_data: bool,
++) -> npt.NDArray[np.float64]:
++    """Load OOD points and map them into the anchors' coordinate system.
++
++    Mirrors exactly how the anchors are normalized in
++    ``_build_or_load_affinity_odd``: a YAML-bounds normalizer when
++    present, otherwise the built-in IQR pipeline fit on the raw dataset.
++
++    Args:
++        ood_path (Path): CSV of OOD samples (same numeric columns as the
++            dataset).
++        dataset_path (Path): The anchor dataset, used to refit the IQR
++            normalizer when no YAML normalizer is supplied.
++        yaml_normalizer (RangeNormalizer | None): External normalizer
++            fit on YAML bounds, if any.
++        normalize_data (bool): Whether the anchor pipeline normalized
++            the data (always ``True`` in dataset mode).
++
++    Returns:
++        npt.NDArray[np.float64]: OOD points in normalized space,
++            shape (M, n_dims).
++    """
++    raw_df, _ = load_dataset(ood_path, options=DatasetLoadOptions(normalize=False))
++    ood_raw = _numeric_array(raw_df)
++
++    if yaml_normalizer is not None:
++        return np.asarray(yaml_normalizer.transform(ood_raw), dtype=float)
++    if not normalize_data:
++        return ood_raw
++
++    # Reproduce the built-in IQR normalization (see normalize_dataset):
++    # fit on the raw dataset's numeric columns, then transform the OOD.
++    ds_df, _ = load_dataset(dataset_path, options=DatasetLoadOptions(normalize=False))
++    normalizer = create_robust_normalization_pipeline(
++        target_range=(-1.0, 1.0), method="iqr"
++    )
++    normalizer.fit(_numeric_array(ds_df))
++    return np.asarray(normalizer.transform(ood_raw), dtype=float)
++
++
+ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
+     dataset_path: Path,
+     *,
+@@ -1246,6 +1297,9 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
+     baseline_params: dict[str, object] | None = None,
+     local_noise_mode: str = "span",
+     local_noise_multiplier: float = 3.0,
++    ood_path: Path | None = None,
++    ood_xi: float | None = None,
++    ood_shrink_factor: float = 0.9,
+ ) -> tuple[pl.DataFrame, Path, Path]:
+     """Evaluate real-data workflow with optional ground truth YAML.
+ 
+@@ -1283,15 +1337,26 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
+             the calibrated kernel scale.
+         local_noise_multiplier (float): Multiplier m in the ``"nn"``
+             mode formula (default 3.0).
++        ood_path (Path | None): Optional CSV of OOD samples. When set,
++            the OOD consistency adjustment (paper Def. 4.5) is applied
++            and the adjusted ODD is cached separately (ood-tagged JSON);
++            requires ``ood_xi``.
++        ood_xi (float | None): Maximum allowed OOD affinity in (0, 1).
++            Required when ``ood_path`` is set.
++        ood_shrink_factor (float): Covariance shrink factor c in (0, 1)
++            for the OOD adjustment (default 0.9).
+ 
+     Returns:
+         tuple[pl.DataFrame, Path, Path]: metrics_df, csv_path,
+             odd_json_path.
+ 
+     Raises:
+-        ValueError: If no reference labels are available or if
+-            local_noise_mode is unknown.
++        ValueError: If no reference labels are available, if
++            local_noise_mode is unknown, or if ood_path is set without
++            ood_xi.
+     """
++    if ood_path is not None and ood_xi is None:
++        raise ValueError("ood_path requires ood_xi to be set")
+     if n_samples > _MAX_DATASET_EVAL_SAMPLES:
+         raise ValueError(
+             "Dataset evaluation samples are too large for in-memory evaluation: "
+@@ -1328,6 +1393,39 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
+         seed=seed,
+     )
+ 
++    # OOD consistency adjustment (paper Def. 4.5 / Algorithm 1). The
++    # adjusted ODD is cached under an ood-tagged path so it never
++    # overwrites the unadjusted cache; on a cache hit, enforcement is a
++    # no-op (idempotent), so the file is not rewritten.
++    ood_summary: dict[str, object] | None = None
++    if ood_path is not None:
++        # ood_xi is guaranteed non-None by the early validation above.
++        ood_xi = cast("float", ood_xi)
++        ood_digest = hashlib.sha256(
++            ood_path.read_bytes() + f":{ood_xi}:{ood_shrink_factor}".encode()
++        ).hexdigest()[:8]
++        ood_tag = f"-ood{ood_digest}"
++        adjusted_path = odd_export_path.with_name(
++            f"{odd_export_path.stem}{ood_tag}{odd_export_path.suffix}"
++        )
++        ood_norm = _normalize_ood_points(
++            ood_path,
++            dataset_path,
++            yaml_normalizer=yaml_normalizer,
++            normalize_data=normalize_data,
++        )
++        if adjusted_path.exists():
++            odd = cast("Samples", autosafe.from_json(adjusted_path))
++            ood_summary = odd.enforce_ood_consistency(
++                ood_norm, xi=ood_xi, shrink_factor=ood_shrink_factor
++            )
++        else:
++            ood_summary = odd.enforce_ood_consistency(
++                ood_norm, xi=ood_xi, shrink_factor=ood_shrink_factor
++            )
++            autosafe.to_json(odd, adjusted_path)
++        odd_export_path = adjusted_path
++
+     anchor_points = _extract_anchor_points(odd)
+     anchor_arr = np.asarray(anchor_points, dtype=float)
+ 
+@@ -1492,6 +1590,20 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
+         ),
+         "local_noise_mode": local_noise_mode,
+         "local_noise_multiplier": local_noise_multiplier,
++        "ood_path": str(ood_path) if ood_path is not None else None,
++        "ood_xi": ood_xi,
++        "ood_shrink_factor": ood_shrink_factor if ood_path is not None else None,
++        "ood_iterations": (
++            ood_summary["iterations"] if ood_summary is not None else None
++        ),
++        "ood_max_affinity_final": (
++            ood_summary["max_ood_affinity"] if ood_summary is not None else None
++        ),
++        "ood_adjusted_kernel_count": (
++            len(cast("dict[int, int]", ood_summary["adjusted_kernels"]))
++            if ood_summary is not None
++            else None
++        ),
+         "calibration_version": _CALIBRATION_VERSION,
+         "baseline_params_resolved": resolved_baseline_params,
+         "threshold_mode": threshold_mode,

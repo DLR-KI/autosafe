@@ -40,7 +40,7 @@ from autosafe.typing import (
 class _HasSamples(Protocol):
     @property
     def samples(self) -> list[Any]:
-        """Return the sample collection."""
+        """The sample collection."""
 
     def __call__(self, points: Matrix | NPMatrix) -> NPAffinityVector:
         """Evaluate the ODD on a batch of points.

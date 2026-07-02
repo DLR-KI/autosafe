@@ -78,12 +78,12 @@ class ODDBoundaryMethod(ABC):
     @property
     @abstractmethod
     def method_type(self) -> str:
-        """Return the type of this comparison method."""
+        """The type of this comparison method."""
 
     @property
     @abstractmethod
     def decision_boundary(self) -> DecisionBoundary:
-        """Return the decision boundary information.
+        """The decision boundary information.
 
         Returns information useful for visualization, analysis, and
         comparison across different methods.

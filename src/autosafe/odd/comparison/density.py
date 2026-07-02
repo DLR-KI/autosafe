@@ -281,8 +281,8 @@ class SuperlevelSetMonitor(ODDBoundaryMethod):
         if len(pdf_values) == 0:
             return NPFloatType(0.5)
 
-        max_pdf = pdf_values.max()
-        pdf_values.min()
+        max_pdf = pdf_values.max()  # ty: ignore[invalid-argument-type]
+        pdf_values.min()  # ty: ignore[invalid-argument-type]
         if max_pdf <= MIN_PDF_EPSILON:
             return NPFloatType(0.5)
 

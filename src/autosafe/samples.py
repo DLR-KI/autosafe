@@ -379,7 +379,7 @@ class Samples:
 
     @property
     def shape(self) -> tuple[int, int]:
-        """Get the shape of the samples set.
+        """The shape of the samples set.
 
         Returns:
             tuple[int, int]: A tuple representing the number of samples
@@ -579,6 +579,13 @@ class Samples:
             k_vals = self._kernel_values_at(ood[worst])
             i_star = int(np.argmax(k_vals))  # first max -> deterministic
             kern = self.samples[i_star].kernel
+            if kern is None:
+                raise RuntimeError(f"Kernel {i_star} is not defined.")
+            if not isinstance(kern, RBFKernel):
+                raise RuntimeError(
+                    f"Kernel {i_star} is not an RBFKernel; "
+                    "enforce_ood_consistency only supports RBFKernel."
+                )
             kern.sigma = np.asarray(kern.sigma) * shrink_factor
             kern.sigma_inv = np.asarray(kern.sigma_inv) / shrink_factor
             kern._refresh_sigma_cache()  # noqa: SLF001
