@@ -1393,8 +1393,8 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
         seed=seed,
     )
 
-    # OOD consistency adjustment (paper Def. 4.5 / Algorithm 1). The
-    # adjusted ODD is cached under an ood-tagged path so it never
+    # OOD consistency adjustment.
+    # The adjusted ODD is cached under an ood-tagged path so it never
     # overwrites the unadjusted cache; on a cache hit, enforcement is a
     # no-op (idempotent), so the file is not rewritten.
     ood_summary: dict[str, object] | None = None
@@ -1415,7 +1415,7 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
             normalize_data=normalize_data,
         )
         if adjusted_path.exists():
-            odd = cast("Samples", autosafe.from_json(adjusted_path))
+            odd = autosafe.from_json(adjusted_path)
             ood_summary = odd.enforce_ood_consistency(
                 ood_norm, xi=ood_xi, shrink_factor=ood_shrink_factor
             )

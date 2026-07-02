@@ -739,7 +739,7 @@ class ClusteredConvexHulls(ODDBoundaryMethod):
 
     @property
     def method_type(self) -> str:
-        """Return method type.
+        """Method type.
 
         Returns:
             str: The method name.
@@ -748,7 +748,7 @@ class ClusteredConvexHulls(ODDBoundaryMethod):
 
     @property
     def decision_boundary(self) -> DecisionBoundary:
-        """Return boundary information.
+        """Boundary information.
 
         Returns:
             DecisionBoundary: Structured decision-boundary metadata.
@@ -907,7 +907,7 @@ class DBSCANCluster(ODDBoundaryMethod):
 
     @property
     def method_type(self) -> str:
-        """Return method type.
+        """Method type.
 
         Returns:
             str: The method name.
@@ -916,7 +916,7 @@ class DBSCANCluster(ODDBoundaryMethod):
 
     @property
     def decision_boundary(self) -> DecisionBoundary:
-        """Return boundary information.
+        """Boundary information.
 
         Returns:
             DecisionBoundary: Structured decision-boundary metadata.

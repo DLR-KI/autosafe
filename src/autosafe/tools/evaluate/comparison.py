@@ -60,7 +60,7 @@ class FastHullApproximation(ODDBoundaryMethod):
 
     @property
     def decision_boundary(self) -> DecisionBoundary:
-        """Return decision boundary information.
+        """Decision boundary information.
 
         Returns:
             DecisionBoundary: Structured decision-boundary metadata.

@@ -52,7 +52,7 @@ class Sample:
 
     @property
     def x(self) -> Vector:
-        """Get the sample point in the ODD space.
+        """The sample point in the ODD space.
 
         Returns:
             Vector: The sample point in the ODD space.
@@ -83,7 +83,7 @@ class Sample:
 
     @property
     def kernel(self) -> Kernel | None:
-        """Get the kernel function of the sample.
+        """The kernel function of the sample.
 
         Returns:
             Kernel | None: The kernel function of the sample, or None
@@ -114,7 +114,7 @@ class Sample:
 
     @property
     def closest_sample(self) -> list["Sample"] | None:
-        """Get the closest samples in the ODD space per dimension.
+        """The closest samples in the ODD space per dimension.
 
         Returns:
             list[Sample] | None: The closest samples in the ODD space

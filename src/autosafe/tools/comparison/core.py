@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
 
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import scipy.spatial
 from scipy.stats import qmc
@@ -201,7 +202,7 @@ class DBSCANMethodKwargs(TypedDict, total=False):
 def _hull_membership(
     reference_points: Matrix | NPMatrix,
     test_points: Matrix | NPMatrix,
-) -> NPMatrix:
+) -> npt.NDArray[np.bool_]:
     """Compute single convex-hull membership for test points.
 
     Args:
@@ -212,8 +213,8 @@ def _hull_membership(
             array of test points.
 
     Returns:
-        NPMatrix: Boolean array indicating membership of each test
-            point.
+        npt.NDArray[np.bool_]: Boolean array indicating membership of
+            each test point.
     """
     hull = scipy.spatial.ConvexHull(reference_points.T)
     a_hull, b_hull = hull.equations[:, :-1], hull.equations[:, -1]

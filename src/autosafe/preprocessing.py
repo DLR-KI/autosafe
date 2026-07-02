@@ -228,7 +228,7 @@ class RangeNormalizer:
 
     @property
     def range_bounds_(self) -> tuple[NPVector, NPVector]:
-        """Get the effective range bounds used for normalization.
+        """The effective range bounds used for normalization.
 
         Returns:
             tuple[NPVector, NPVector]: (Lower_bounds, upper_bounds) used
