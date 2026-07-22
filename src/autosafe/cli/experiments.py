@@ -401,7 +401,11 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0914
         ground_truth_yaml=pathlib.Path(item["ground_truth_yaml"])
         if item.get("ground_truth_yaml")
         else None,
-        threshold_mode=str(item.get("threshold_mode", "linear")),
+        threshold_mode=(
+            str(item["threshold_mode"])
+            if item.get("threshold_mode") is not None
+            else None
+        ),
         threshold_count=int(item.get("threshold_count", 100)),
         references=(
             [str(ref) for ref in references] if isinstance(references, list) else None

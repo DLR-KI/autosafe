@@ -40,6 +40,7 @@ from autosafe.tools.evaluate.comparison import (
 from autosafe.tools.evaluate.core import process_files
 from autosafe.tools.evaluate.metrics import (
     build_affinity_thresholds,
+    build_threshold_pairs,
     evaluate_affinity_metrics,
     save_metrics_csv,
 )
@@ -1284,7 +1285,7 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
     odd_json: Path | None = None,
     odd_json_out: Path | None = None,
     ground_truth_yaml: Path | None = None,
-    threshold_mode: str = "linear",
+    threshold_mode: str | None = None,
     threshold_count: int = 100,
     references: list[str] | None = None,
     n_samples: int = 200_000,
@@ -1313,7 +1314,10 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
             definition.
             If omitted, sibling ``.yml``/``.yaml`` next to dataset
             is used when present.
-        threshold_mode (str): Threshold spacing mode.
+        threshold_mode (str | None): Deprecated and ignored. Dataset
+            mode always sweeps the adaptive two-sided ``"edges"`` pair
+            grid (see ``build_threshold_pairs``); passing a non-``None``
+            value only triggers a ``DeprecationWarning``.
         threshold_count (int): Number of thresholds.
         references (list[str] | None): Baseline references to evaluate.
         n_samples (int): Number of sampled test points.
@@ -1355,6 +1359,13 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
             local_noise_mode is unknown, or if ood_path is set without
             ood_xi.
     """
+    if threshold_mode is not None:
+        warnings.warn(
+            "threshold_mode is deprecated and ignored for dataset-mode "
+            "evaluation; the adaptive two-sided 'edges' grid is always used.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     if ood_path is not None and ood_xi is None:
         raise ValueError("ood_path requires ood_xi to be set")
     if n_samples > _MAX_DATASET_EVAL_SAMPLES:
@@ -1517,7 +1528,7 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
         affinities = np.asarray(alpha_lin)
         survival_np = np.asarray(survival)
 
-    thresholds = build_affinity_thresholds(threshold_mode, threshold_count)
+    thresholds = build_threshold_pairs(threshold_count, affinities, survival_np)
     reference_labels = _build_dataset_reference_labels(
         dataset_path=dataset_path,
         anchor_points=anchor_points,
@@ -1546,7 +1557,7 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
             else ""
         )
         csv_output = dataset_path.with_name(
-            f"{dataset_path.stem}-evaluation-{threshold_mode}{tag}.csv"
+            f"{dataset_path.stem}-evaluation-edges{tag}.csv"
         )
 
     csv_path = save_metrics_csv(results, csv_output)
@@ -1606,8 +1617,20 @@ def evaluate_dataset_mode(  # noqa: C901, PLR0912, PLR0913, PLR0914, PLR0915
         ),
         "calibration_version": _CALIBRATION_VERSION,
         "baseline_params_resolved": resolved_baseline_params,
-        "threshold_mode": threshold_mode,
+        "threshold_mode": "edges",
         "threshold_count": threshold_count,
+        "threshold_grid_stats": {
+            "smallest_positive_affinity": (
+                float(np.min(affinities[affinities > 0]))
+                if np.any(affinities > 0)
+                else None
+            ),
+            "min_survival": (
+                float(np.min(survival_np[np.isfinite(survival_np)]))
+                if np.any(np.isfinite(survival_np))
+                else None
+            ),
+        },
         "notes": {
             "ground_truth_prevalence": (
                 "Uniform test points are drawn in a +/-10% expanded box, so only "

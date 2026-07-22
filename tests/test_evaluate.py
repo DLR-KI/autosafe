@@ -18,12 +18,14 @@ from autosafe.tools.evaluate import cli as eval_cli
 from autosafe.tools.evaluate.core import (
     ConvexHullError,
     calculate_confusion_matrix,
+    calculate_confusion_matrix_log,
     calculate_performance_metrics,
     create_convex_hull,
     process_files,
 )
 from autosafe.tools.evaluate.metrics import (
     build_affinity_thresholds,
+    build_threshold_pairs,
     evaluate_affinity_metrics,
     save_metrics_csv,
 )
@@ -216,6 +218,187 @@ def test_metrics_module(tmp_path: Path):
     assert out.height == 2
     csv_path = save_metrics_csv(out, tmp_path / "m" / "results.csv")
     assert csv_path.exists()
+
+
+def test_build_threshold_pairs_grid_properties():
+    rng = np.random.default_rng(0)
+    affinities = rng.uniform(0.01, 0.99, size=500)
+    survivals = np.log1p(-affinities)
+
+    with pytest.raises(ValueError, match="at least 2"):
+        build_threshold_pairs(1, affinities, survivals)
+
+    pairs = build_threshold_pairs(100, affinities, survivals)
+    # Benign, non-extreme data de-duplicates at the section boundaries
+    # (exact zeta=0.1/0.9 pairs shared by the lower/mid/upper sections).
+    assert len(pairs) <= 100
+
+    zetas = np.array([p[0] for p in pairs])
+    survs = np.array([p[1] for p in pairs])
+
+    # Anchors present.
+    assert zetas[0] == pytest.approx(0.0)
+    assert survs[0] == pytest.approx(0.0)
+    assert zetas[-1] == 1.0  # noqa: RUF069
+    assert survs[-1] == -np.inf
+
+    # Sorted by descending survival <=> ascending affinity.
+    assert np.all(np.diff(survs) <= 0)
+
+    # zeta = -expm1(S) consistency for every finite-S pair.
+    finite = np.isfinite(survs)
+    recomputed_zeta = -np.expm1(survs[finite])
+    assert np.allclose(zetas[finite], recomputed_zeta, atol=1e-12)
+
+    # Benign data (no extreme values) floors the upper-edge depth at 16
+    # decades -> deepest finite survival is exactly -16*ln(10).
+    deepest_finite_survival = survs[finite].min()
+    assert deepest_finite_survival == pytest.approx(-16.0 * np.log(10.0))
+
+    # Rows unique on the exact survival value (no duplicate thresholds).
+    assert len(set(survs.tolist())) == len(pairs)
+
+
+def test_build_threshold_pairs_adaptive_depth_extends_for_deep_data():
+    affinities = np.array([0.5, 1.0])
+    survivals = np.array([np.log(0.5), -700.0])
+
+    pairs = build_threshold_pairs(100, affinities, survivals)
+    survs = np.array([p[1] for p in pairs])
+    deepest_finite_survival = survs[np.isfinite(survs)].min()
+
+    # t_hi must extend to cover the observed -700 survival value, well
+    # past the 16-decade (~-36.8) floor used for benign data.
+    assert deepest_finite_survival < -690.0
+
+
+def test_build_threshold_pairs_minimal_count():
+    pairs = build_threshold_pairs(2, np.array([0.5]), np.array([np.log(0.5)]))
+    assert pairs == [(0.0, 0.0), (1.0, -np.inf)]
+
+
+def test_evaluate_affinity_metrics_matches_core_confusion_functions():
+    """searchsorted sweep matches the direct per-threshold implementation."""
+    rng = np.random.default_rng(1)
+    n = 300
+    affinities = rng.uniform(0.0, 1.0, size=n)
+    survivals = np.log1p(-affinities)
+    labels = rng.random(n) < 0.5
+
+    df = pl.DataFrame({"affinity": affinities, "survival": survivals})
+    pairs = build_threshold_pairs(20, affinities, survivals)
+
+    out = evaluate_affinity_metrics(df, {"ref": labels}, pairs, "src")
+
+    labels_series = pl.Series("m", labels, dtype=pl.Boolean)
+    actually_positive = df.filter(labels_series)
+    actually_negative = df.filter(~labels_series)
+
+    for affinity_threshold, survival_threshold in pairs:
+        lin_row = out.filter(
+            (pl.col("affinity_space") == "linear")
+            & (pl.col("survival_threshold") == survival_threshold)
+        )
+        expected_lin = calculate_confusion_matrix(
+            actually_positive, actually_negative, np.float64(affinity_threshold)
+        )
+        assert lin_row["true_positive"][0] == expected_lin["true_positive"]
+        assert lin_row["false_positive"][0] == expected_lin["false_positive"]
+        assert lin_row["true_negative"][0] == expected_lin["true_negative"]
+        assert lin_row["false_negative"][0] == expected_lin["false_negative"]
+
+        log_row = out.filter(
+            (pl.col("affinity_space") == "log")
+            & (pl.col("survival_threshold") == survival_threshold)
+        )
+        expected_log = calculate_confusion_matrix_log(
+            actually_positive, actually_negative, survival_threshold
+        )
+        assert log_row["true_positive"][0] == expected_log["true_positive"]
+        assert log_row["false_positive"][0] == expected_log["false_positive"]
+        assert log_row["true_negative"][0] == expected_log["true_negative"]
+        assert log_row["false_negative"][0] == expected_log["false_negative"]
+
+
+def test_edges_grid_resolves_saturated_tail_better_than_linear():
+    """Bimodal survival data: 'edges' grid resolves far more than 'linear'."""
+    rng = np.random.default_rng(2)
+    n_deep, n_shallow = 500, 500
+    survivals = np.concatenate([
+        -rng.uniform(500.0, 2000.0, size=n_deep),
+        -rng.uniform(1e-4, 1e-2, size=n_shallow),
+    ])
+    affinities = np.asarray(-np.expm1(survivals))
+    labels = np.ones(n_deep + n_shallow, dtype=bool)
+    df = pl.DataFrame({"affinity": affinities, "survival": survivals})
+
+    edges_pairs = build_threshold_pairs(100, affinities, survivals)
+    edges_out = evaluate_affinity_metrics(df, {"ref": labels}, edges_pairs, "src")
+    edges_log_tuples = (
+        edges_out
+        .filter(pl.col("affinity_space") == "log")
+        .select(["true_positive", "false_positive", "true_negative", "false_negative"])
+        .unique()
+        .height
+    )
+
+    linear_thresholds = build_affinity_thresholds("linear", 100)
+    linear_out = evaluate_affinity_metrics(
+        df, {"ref": labels}, linear_thresholds, "src"
+    )
+    linear_lin_tuples = (
+        linear_out
+        .filter(pl.col("affinity_space") == "linear")
+        .select(["true_positive", "false_positive", "true_negative", "false_negative"])
+        .unique()
+        .height
+    )
+
+    assert edges_log_tuples >= 20
+    assert linear_lin_tuples <= 5
+    assert edges_log_tuples > 5 * linear_lin_tuples
+
+
+def test_edges_grid_deepest_threshold_has_no_false_positives():
+    rng = np.random.default_rng(3)
+    affinities = rng.uniform(0.0, 1.0 - 1e-6, size=200)
+    survivals = np.log1p(-affinities)
+    labels = rng.random(200) < 0.5
+
+    df = pl.DataFrame({"affinity": affinities, "survival": survivals})
+    pairs = build_threshold_pairs(50, affinities, survivals)
+    out = evaluate_affinity_metrics(df, {"ref": labels}, pairs, "src")
+
+    deepest = (
+        out.filter(pl.col("affinity_space") == "log").sort("survival_threshold").head(1)
+    )
+    assert deepest["survival_threshold"][0] == -np.inf
+    assert deepest["true_positive"][0] == 0
+    assert deepest["false_positive"][0] == 0
+
+
+def test_evaluate_affinity_metrics_survival_threshold_column_and_uniqueness(
+    tmp_path: Path,
+):
+    affinities = np.array([0.0, 0.2, 0.5, 0.8, 1.0])
+    with np.errstate(divide="ignore"):
+        survivals = np.log1p(-affinities)
+    labels = {
+        "a": np.array([True, True, False, False, True]),
+        "b": np.array([False, True, True, False, True]),
+    }
+    df = pl.DataFrame({"affinity": affinities, "survival": survivals})
+    pairs = build_threshold_pairs(20, affinities, survivals)
+
+    out = evaluate_affinity_metrics(df, labels, pairs, "src")
+    assert "survival_threshold" in out.columns
+
+    key_cols = ["reference", "affinity_space", "survival_threshold"]
+    assert out.select(key_cols).is_duplicated().sum() == 0
+
+    csv_path = save_metrics_csv(out, tmp_path / "m2" / "out.csv")
+    reloaded = pl.read_csv(csv_path)
+    assert "survival_threshold" in reloaded.columns
 
 
 def test_workflows_extractors_and_helpers(
@@ -662,7 +845,7 @@ def test_workflows_remaining_default_path_branches(
         csv_output=None,
     )
     assert csv_path in ds_saved
-    assert "evaluation-linear" in csv_path.stem
+    assert "evaluation-edges" in csv_path.stem
 
 
 def test_subsample_csv_naming(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

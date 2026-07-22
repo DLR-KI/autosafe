@@ -77,12 +77,15 @@ def test_calibration_end_to_end(tmp_path: Path) -> None:
     eta_realized = ksr["eta"][0]
     assert eta_realized == pytest.approx(1.0 / median_nn, rel=1e-6)
 
-    # Log rows at threshold 1.0: TP == FP == 0
-    log_rows = results.filter(
-        (pl.col("affinity_space") == "log") & (pl.col("affinity_threshold") == 1.0)  # noqa: RUF069
-    )
+    # Log rows at the deepest threshold (most negative survival_threshold,
+    # the built-in S = -inf anchor): TP == FP == 0. Several rows can share
+    # the printed affinity_threshold == 1.0 once it saturates, so the
+    # deepest row must be identified via survival_threshold, not
+    # affinity_threshold.
+    log_rows = results.filter(pl.col("affinity_space") == "log")
     assert len(log_rows) > 0
-    for row in log_rows.iter_rows(named=True):
+    deepest = log_rows.sort("survival_threshold").head(1)
+    for row in deepest.iter_rows(named=True):
         assert row["true_positive"] == 0
         assert row["false_positive"] == 0
 

@@ -56,7 +56,8 @@ classifiers = [
 dependencies = [
   "annotated-types>=0.7.0",
   "faiss-cpu>=1.13.2",
-  "jax[cuda13]>=0.6.2",
+  "jax[cuda13]>=0.6.2 ; sys_platform == 'linux'",
+  "jax>=0.6.2 ; sys_platform != 'linux'",
   "jaxtyping>=0.3.7",
   "loguru>=0.7.3",
   "matplotlib>=3.10.7",
@@ -90,7 +91,7 @@ Source = "https://github.com/DLR-KI/autosafe/"
 Tracker = "https://github.com/DLR-KI/autosafe/issues"
 
 [tool.codespell]
-ignore-words-list = "astroid"
+ignore-words-list = "astroid,nd"
 
 [tool.commitizen]
 bump_message = "bump: version $current_version -> $new_version"
@@ -123,6 +124,24 @@ select = "DCO, DOC"
 style = "google"
 
 [tool.licensecheck]
+ignore_licenses = ["Zlib"]
+ignore_packages = [
+  "nvidia-cublas",
+  "nvidia-cuda-cccl",
+  "nvidia-cuda-crt",
+  "nvidia-cuda-cupti",
+  "nvidia-cuda-nvcc",
+  "nvidia-cuda-nvrtc",
+  "nvidia-cuda-runtime",
+  "nvidia-cudnn-cu13",
+  "nvidia-cufft",
+  "nvidia-cusolver",
+  "nvidia-cusparse",
+  "nvidia-nccl-cu13",
+  "nvidia-nvjitlink",
+  "nvidia-nvshmem-cu13",
+  "nvidia-nvvm"
+]
 using = "PEP631"
 zero = true
 
