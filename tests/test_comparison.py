@@ -183,21 +183,6 @@ def test_kmeans_cluster_hulls_and_dbscan(monkeypatch: pytest.MonkeyPatch):
     )
     assert kmeans._calculate_silhouette_score(ref) == pytest.approx(0.0)
 
-    # _point_in_hull 2D + 3D proxy + malformed path.
-    nondeg = np.array([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=float)
-    hull2d = cast("Any", __import__("scipy").spatial.ConvexHull(nondeg))
-    assert isinstance(
-        KMeansBoundaries._point_in_hull(np.array([0.1, 0.1]), hull2d), bool
-    )
-
-    hull3d = cast(
-        "Any",
-        type(
-            "DummyHull", (), {"points": np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])}
-        )(),
-    )
-    assert KMeansBoundaries._point_in_hull(np.array([0.2, 0.0, 0.0]), hull3d)
-
     clustered = ClusteredConvexHulls(n_clusters=2)
     with pytest.raises(RuntimeError, match="Not fitted"):
         clustered(np.array([0.0, 0.0]))
@@ -462,7 +447,7 @@ def test_cluster_remaining_knn_branches():
         KNNMonitor().evaluate_batch(_test_points())
 
 
-def test_cluster_remaining_kmeans_branches(monkeypatch: pytest.MonkeyPatch):
+def test_cluster_remaining_kmeans_branches():
     ref = _reference_points()
 
     knn_mid = KNNMonitor(k=1)
@@ -485,32 +470,14 @@ def test_cluster_remaining_kmeans_branches(monkeypatch: pytest.MonkeyPatch):
     with pytest.warns(UserWarning, match="Only"):
         KMeansBoundaries(n_clusters=4, min_cluster_size=10).fit(ref)
 
-    km_exc = KMeansBoundaries(n_clusters=1, min_cluster_size=1)
-    km_exc.labels_ = np.zeros(ref.shape[1], dtype=int)
-
-    def _raise_hull(_pts: np.ndarray) -> None:
-        raise ValueError("hull")
-
-    monkeypatch.setattr("autosafe.odd.comparison.cluster.ConvexHull", _raise_hull)
-    km_exc._create_cluster_convex_hulls(ref)
-    assert km_exc.hulls == [None]
-
-    bad_hull = type(
-        "BadHull",
-        (),
-        {"equations": property(lambda _self: (_ for _ in ()).throw(ValueError("bad")))},
-    )()
-    km_bad = KMeansBoundaries()
-    km_bad.trained = True
-    km_bad.hulls = [cast("Any", bad_hull)]
-    assert km_bad(np.array([0.0, 0.0])) is False
-    degenerate_hull = cast(
-        "Any",
-        type("DegenerateHull", (), {"points": np.array([[0.0, 0.0]])})(),
-    )
-    assert (
-        KMeansBoundaries._point_in_hull(np.array([0.0, 0.0]), degenerate_hull) is False
-    )
+    # Empty-cluster path in _compute_cluster_radii: force all points into
+    # cluster 0 so cluster 1 has 0 points -> radius None, skipped.
+    km_empty = KMeansBoundaries(n_clusters=2, min_cluster_size=1)
+    km_empty.labels_ = np.zeros(ref.shape[1], dtype=int)
+    fake_centroids = cast("Matrix", ref[:, :2])
+    km_empty.centroids = fake_centroids
+    km_empty._compute_cluster_radii(ref, fake_centroids)
+    assert km_empty.radii[1] is None
 
     raw_km = KMeansBoundaries.__new__(KMeansBoundaries)
     assert raw_km.get_cluster_info() == {}
@@ -716,43 +683,83 @@ def test_knn_evaluate_batch_tree_none():
 def test_kmeans_empty_cluster_and_evaluate_batch():
     ref = _reference_points()
 
-    # Empty-cluster path in _create_cluster_convex_hulls:
-    # force all points into cluster 0 so cluster 1 has 0 points.
+    # Empty-cluster path in _compute_cluster_radii: force all points into
+    # cluster 0 so cluster 1 has 0 points.
     km = KMeansBoundaries(n_clusters=2, min_cluster_size=1)
     km.labels_ = np.zeros(ref.shape[1], dtype=int)
-    km._create_cluster_convex_hulls(ref)
-    assert km.hulls[1] is None
-    assert km._cluster_balls[1] is None
+    fake_centroids = cast("Matrix", ref[:, :2])
+    km.centroids = fake_centroids
+    km._compute_cluster_radii(ref, fake_centroids)
+    assert km.radii[1] is None
 
     # evaluate_batch not-fitted guard.
     km_unfitted = KMeansBoundaries()
     with pytest.raises(RuntimeError, match="KMeansBoundaries not fitted yet"):
         km_unfitted.evaluate_batch(_test_points())
 
-    # evaluate_batch success path (hull exists).
+    # evaluate_batch success path.
     km_fitted = KMeansBoundaries(n_clusters=2, min_cluster_size=1).fit(ref)
     result = km_fitted.evaluate_batch(_test_points())
     assert result.shape == (_test_points().shape[1],)
 
-    # evaluate_batch exception path: hull raises on batch equations access.
-    bad_hull = type(
-        "BadHull",
-        (),
-        {"equations": property(lambda _self: (_ for _ in ()).throw(ValueError("bad")))},
-    )()
-    km_bad = KMeansBoundaries()
-    km_bad.trained = True
-    km_bad.hulls = [cast("Any", bad_hull)]
-    km_bad._cluster_balls = [None]
-    km_bad.evaluate_batch(_test_points())
 
-
-def test_kmeans_call_point_outside_all_hulls():
+def test_kmeans_call_point_outside_all_radii():
     ref = _reference_points()
     km = KMeansBoundaries(n_clusters=2, min_cluster_size=1).fit(ref)
-    # A point far outside exercises the "continue" branch (hull valid, point not inside).
+    # A point far outside every cluster's radius.
     result = km(np.array([100.0, 100.0]))
     assert result is False
+
+
+def test_kmeans_radius_quantile_behavior():
+    """q=1.0 includes the farthest member; q=0.5 excludes it."""
+    ref = _reference_points()
+    km_full = KMeansBoundaries(
+        n_clusters=1, min_cluster_size=1, radius_quantile=1.0
+    ).fit(ref)
+    km_half = KMeansBoundaries(
+        n_clusters=1, min_cluster_size=1, radius_quantile=0.5
+    ).fit(ref)
+
+    assert km_full.centroids is not None
+    centroid = km_full.centroids[:, 0]
+    distances = np.linalg.norm(ref.T - centroid, axis=1)
+    farthest_point = ref[:, np.argmax(distances)]
+
+    assert km_full.radii[0] == pytest.approx(distances.max())
+    assert km_full(farthest_point) is True
+    assert km_half.radii[0] is not None
+    assert km_full.radii[0] is not None
+    assert km_half.radii[0] < km_full.radii[0]
+    assert km_half(farthest_point) is False
+
+
+def test_kmeans_centroid_ball_differs_from_convex_hull():
+    """kmeans (centroid ball) and hull_clustered (convex hull) diverge.
+
+    A probe point perpendicular to an elongated cluster's long axis,
+    inside the centroid-distance ball but far outside the (thin) convex
+    hull, must be classified differently by the two methods.
+    """
+    rng = np.random.default_rng(0)
+    n_points = 200
+    x = rng.uniform(-5.0, 5.0, size=n_points)
+    y = rng.uniform(-0.05, 0.05, size=n_points)
+    ref = np.vstack([x, y])
+
+    kmeans = KMeansBoundaries(
+        n_clusters=1, min_cluster_size=1, radius_quantile=1.0
+    ).fit(ref)
+    hull = ClusteredConvexHulls(n_clusters=1).fit(ref)
+
+    assert kmeans.centroids is not None
+    centroid = kmeans.centroids[:, 0]
+    radius = kmeans.radii[0]
+    assert radius is not None
+    probe = centroid + np.array([0.0, 0.9 * radius])
+
+    assert kmeans(probe) is True
+    assert hull(probe) is False
 
 
 def test_clustered_hulls_evaluate_batch_and_ball_fallback(

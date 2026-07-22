@@ -5,6 +5,7 @@
 
 import copy
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pytest
@@ -46,19 +47,19 @@ def test_constraint_satisfied() -> None:
     odd, ood = _build_fixture()
     summary = odd.enforce_ood_consistency(ood, xi=0.05)
     assert np.all(np.asarray(odd(ood)) <= 0.05 + 1e-12)
-    assert int(summary["iterations"]) > 0
-    assert float(summary["max_ood_affinity"]) <= 0.05 + 1e-12
+    assert int(cast("int", summary["iterations"])) > 0
+    assert float(cast("float", summary["max_ood_affinity"])) <= 0.05 + 1e-12
 
 
 def test_idempotent() -> None:
     """A second call does nothing and changes no sigma."""
     odd, ood = _build_fixture()
     odd.enforce_ood_consistency(ood, xi=0.05)
-    sigmas_before = [np.array(s.kernel.sigma, copy=True) for s in odd.samples]
+    sigmas_before = [np.array(s.kernel.sigma, copy=True) for s in odd.samples]  # ty: ignore[unresolved-attribute]
     summary2 = odd.enforce_ood_consistency(ood, xi=0.05)
-    assert int(summary2["iterations"]) == 0
+    assert int(cast("int", summary2["iterations"])) == 0
     for before, s in zip(sigmas_before, odd.samples, strict=True):
-        assert np.array_equal(before, np.asarray(s.kernel.sigma))
+        assert np.array_equal(before, np.asarray(s.kernel.sigma))  # ty: ignore[unresolved-attribute]
 
 
 def test_order_independent() -> None:
@@ -69,7 +70,8 @@ def test_order_independent() -> None:
     odd_rev.enforce_ood_consistency(ood[::-1], xi=0.05)
     for s_fwd, s_rev in zip(odd_fwd.samples, odd_rev.samples, strict=True):
         assert np.array_equal(
-            np.asarray(s_fwd.kernel.sigma), np.asarray(s_rev.kernel.sigma)
+            np.asarray(s_fwd.kernel.sigma),  # ty: ignore[unresolved-attribute]
+            np.asarray(s_rev.kernel.sigma),  # ty: ignore[unresolved-attribute]
         )
 
 
@@ -96,7 +98,7 @@ def test_empty_ood_is_noop() -> None:
     """An empty OOD set returns zero iterations without error."""
     odd, _ = _build_fixture()
     summary = odd.enforce_ood_consistency(np.empty((0, 2)), xi=0.05)
-    assert int(summary["iterations"]) == 0
+    assert int(cast("int", summary["iterations"])) == 0
 
 
 def test_serialization_roundtrip(tmp_path: Path) -> None:

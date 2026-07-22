@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import scipy.spatial
-from scipy.spatial import ConvexHull, Delaunay, KDTree
+from scipy.spatial import ConvexHull, KDTree
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.metrics import silhouette_score
 from typing_extensions import Self
@@ -28,7 +28,6 @@ MIN_CLUSTER_POINTS = 3
 VISUALIZATION_2D_DIMENSIONS = 2
 MIN_CONSENSUS_EPSILON = 1e-10
 MIN_HULL_POINTS = 3
-POINT_DIMENSIONS_2D = 2
 
 
 class KNNMonitor(ODDBoundaryMethod):
@@ -332,16 +331,22 @@ def auto_detect_optimal_k(data: Matrix | NPMatrix, max_k_upper: int = 10) -> int
 class KMeansBoundaries(ODDBoundaryMethod):
     """K-means clustering-based ODD boundary method.
 
-    Uses cluster centroids and cluster convex hulls to define ODD
-    boundaries. Outliers are rejected by requiring points to be
-    sufficiently close to cluster centers based on validation metrics.
+    Uses cluster centroids and a per-cluster centroid-distance radius
+    to define ODD boundaries. A point is in-ODD iff it falls within at
+    least one cluster's radius, where the radius is the
+    ``radius_quantile`` quantile of that cluster's member distances to
+    its centroid (rejecting the farthest members as outliers).
 
     Attributes:
         n_clusters (int): Number of clusters to find.
         metric (str): Distance metric for clustering.
         min_cluster_size (int): Minimum points per cluster.
+        radius_quantile (float): Quantile of the per-cluster
+            centroid-distance distribution used as the inclusion
+            radius.
         centroids (Matrix | None): Cluster centers after fitting.
-        hulls (list[Any]): Convex hulls per cluster.
+        radii (list[float | None]): Per-cluster inclusion radius;
+            ``None`` for empty clusters.
         silhouette (FloatType | None): Silhouette score.
         conservatism (FloatType | None): Conservatism score.
         method_type (str): Method identifier property.
@@ -354,6 +359,7 @@ class KMeansBoundaries(ODDBoundaryMethod):
         n_clusters: int = 3,
         metric: str = "euclidean",
         min_cluster_size: int = 3,
+        radius_quantile: float = 0.95,
     ) -> None:
         """Initialize k-means boundary detector.
 
@@ -361,15 +367,18 @@ class KMeansBoundaries(ODDBoundaryMethod):
             n_clusters (int): Number of clusters to build.
             metric (str): Distance metric label used for metadata.
             min_cluster_size (int): Minimum cluster size to keep.
+            radius_quantile (float): Quantile of the per-cluster
+                centroid-distance distribution used as the inclusion
+                radius (default 0.95).
         """
         self.n_clusters = n_clusters
         self.metric = metric
         self.min_cluster_size = min_cluster_size
+        self.radius_quantile = radius_quantile
         self.data: Matrix | NPMatrix | None = None
         self.centroids: Matrix | None = None
         self.labels_: npt.NDArray[np.int_] | None = None
-        self.hulls: list[ConvexHull | None] = []
-        self._cluster_balls: list[tuple[Any, float] | None] = []
+        self.radii: list[float | None] = []
         self.silhouette: FloatType | None = None
         self.conservatism: FloatType | None = None
         self.trained = False
@@ -393,7 +402,11 @@ class KMeansBoundaries(ODDBoundaryMethod):
         if not self.trained:
             return DecisionBoundary(
                 type="kmeans",
-                parameters={"n_clusters": self.n_clusters, "metric": self.metric},
+                parameters={
+                    "n_clusters": self.n_clusters,
+                    "metric": self.metric,
+                    "radius_quantile": self.radius_quantile,
+                },
                 coverage={},
                 conservatism=None,
             )
@@ -406,6 +419,8 @@ class KMeansBoundaries(ODDBoundaryMethod):
                 "silhouette": float(self.silhouette) if self.silhouette else None,
                 "cluster_sizes": self.cluster_sizes,
                 "min_cluster_size": self.min_cluster_size,
+                "radius_quantile": self.radius_quantile,
+                "cluster_radii": self.radii,
             },
             coverage=self._estimate_coverage(),
             conservatism=self.conservatism,
@@ -460,44 +475,38 @@ class KMeansBoundaries(ODDBoundaryMethod):
                 stacklevel=2,
             )
 
-        # Create convex hulls per cluster
-        self._create_cluster_convex_hulls(data)
+        # Compute the centroid-distance outlier-rejection radius per
+        # cluster.
+        self._compute_cluster_radii(data, self.centroids)
 
-    def _create_cluster_convex_hulls(self, data: Matrix | NPMatrix) -> None:
-        """Create convex hull for each cluster.
+    def _compute_cluster_radii(
+        self, data: Matrix | NPMatrix, centroids: Matrix
+    ) -> None:
+        """Compute the centroid-distance inclusion radius per cluster.
+
+        The radius is the ``radius_quantile`` quantile of each
+        cluster's member distances to its centroid, so the farthest
+        ``1 - radius_quantile`` fraction of members are rejected as
+        outliers.
 
         Args:
             data (Matrix): Reference ODD points
                 (shape: (n_features, n_samples))
+            centroids (Matrix): Cluster centers (shape:
+                (n_features, n_clusters)).
         """
-        self.hulls = []
-        self._cluster_balls = []
-        n_dims = data.shape[0]
+        self.radii = []
 
         for cluster_id in range(self.n_clusters):
             cluster_points = data[:, self.labels_ == cluster_id]
 
             if cluster_points.shape[1] == 0:
-                self.hulls.append(None)
-                self._cluster_balls.append(None)
+                self.radii.append(None)
                 continue
 
-            # Always store a ball (center + radius) as fallback.
-            pts_t = cluster_points.T
-            center = pts_t.mean(axis=0)
-            radius = float(np.max(np.linalg.norm(pts_t - center, axis=1)))
-            self._cluster_balls.append((center, radius))
-
-            # ConvexHull in D dimensions needs at least D+1 points.
-            if cluster_points.shape[1] < n_dims + 1:
-                self.hulls.append(None)
-                continue
-
-            try:
-                hull = ConvexHull(cluster_points.T)
-                self.hulls.append(hull)
-            except (ValueError, np.linalg.LinAlgError, scipy.spatial.QhullError):
-                self.hulls.append(None)
+            centroid = centroids[:, cluster_id]
+            distances = np.linalg.norm(cluster_points.T - centroid, axis=1)
+            self.radii.append(float(np.quantile(distances, self.radius_quantile)))
 
     def _calculate_silhouette_score(self, data: Matrix | NPMatrix) -> FloatType:
         """Calculate silhouette score for cluster quality.
@@ -568,80 +577,32 @@ class KMeansBoundaries(ODDBoundaryMethod):
         return NPFloatType(max(min(conservatism, 1.0), 0.1))
 
     def __call__(self, test_point: Vector | NPVector) -> bool:
-        """Determine if test point is in any cluster's convex hull.
+        """Determine if test point is within any cluster's radius.
 
         Args:
             test_point (Vector | NPVector): Point to evaluate with shape
                 (n_features,).
 
         Returns:
-            bool: True if point is inside any valid cluster's convex
-                hull.
+            bool: True iff ``min_i(||x - c_i|| - r_i) <= 0`` over
+                clusters with a radius.
 
         Raises:
             RuntimeError: If the monitor is not fitted.
         """
-        if not self.trained:
+        if not self.trained or self.centroids is None:
             raise RuntimeError("KMeansBoundaries not fitted yet")
 
         point_array = np.asarray(test_point, dtype=float)
 
-        # Check each cluster: prefer hull, fall back to bounding ball.
-        for i, hull in enumerate(self.hulls):
-            if hull is not None:
-                try:
-                    a_hull = hull.equations[:, :-1]
-                    b_hull = hull.equations[:, -1]
-                    eps = np.finfo(float).eps
-                    if np.all(a_hull @ point_array + b_hull <= eps):
-                        return True
-                    continue
-                except (
-                    ValueError,
-                    TypeError,
-                    np.linalg.LinAlgError,
-                    scipy.spatial.QhullError,
-                ):
-                    pass
-
-            # Hull unavailable: use per-cluster bounding ball.
-            if i < len(self._cluster_balls):
-                ball = self._cluster_balls[i]
-                if ball is not None:
-                    center, radius = ball
-                    if np.linalg.norm(point_array - center) <= radius:
-                        return True
+        for cluster_id, radius in enumerate(self.radii):
+            if radius is None:
+                continue
+            centroid = self.centroids[:, cluster_id]
+            if np.linalg.norm(point_array - centroid) - radius <= 0:
+                return True
 
         return False
-
-    @staticmethod
-    def _point_in_hull(
-        point: npt.NDArray[np.float64],
-        hull: ConvexHull,
-    ) -> bool:
-        """Check if point is inside a convex hull in 2D/3D.
-
-        Args:
-            point (npt.NDArray[np.float64]): Test point.
-            hull (ConvexHull): Convex hull object.
-
-        Returns:
-            bool: True when point is considered inside the hull.
-        """
-        try:
-            # For 2D points only (for now)
-            if hull.points.shape[1] == POINT_DIMENSIONS_2D:
-                tri = Delaunay(hull.points)
-                return bool(tri.find_simplex(point) >= 0)
-            # 3D point-in-hull requires more complex geometry
-            # For now, use distance to centroid as proxy
-            centroid = hull.points.mean(axis=0)
-            distance = np.linalg.norm(point - centroid)
-            max_dist = np.max(np.linalg.norm(hull.points - centroid, axis=1))
-            return distance < max_dist
-
-        except (ValueError, TypeError, np.linalg.LinAlgError, scipy.spatial.QhullError):
-            return False
 
     def evaluate_batch(self, test_points: Matrix | NPMatrix) -> npt.NDArray[np.bool_]:
         """Vectorized evaluation for multiple test points.
@@ -657,32 +618,19 @@ class KMeansBoundaries(ODDBoundaryMethod):
         Raises:
             RuntimeError: If the monitor is not fitted.
         """
-        if not self.trained:
+        if not self.trained or self.centroids is None:
             raise RuntimeError("KMeansBoundaries not fitted yet")
 
         n_samples = test_points.shape[1]
         result = np.zeros(n_samples, dtype=bool)
-        eps = np.finfo(float).eps
         pts_t = test_points.T  # (n_samples, n_features)
 
-        for i, hull in enumerate(self.hulls):
-            if hull is not None:
-                try:
-                    a_hull = hull.equations[:, :-1]
-                    b_hull = hull.equations[:, -1]
-                    in_hull = np.all(pts_t @ a_hull.T + b_hull <= eps, axis=1)
-                    result |= in_hull
-                    continue
-                except (ValueError, np.linalg.LinAlgError, scipy.spatial.QhullError):
-                    pass
-
-            # Hull unavailable: fall back to per-cluster bounding ball.
-            if i < len(self._cluster_balls):
-                ball = self._cluster_balls[i]
-                if ball is not None:
-                    center, radius = ball
-                    in_ball = np.linalg.norm(pts_t - center, axis=1) <= radius
-                    result |= in_ball
+        for cluster_id, radius in enumerate(self.radii):
+            if radius is None:
+                continue
+            centroid = self.centroids[:, cluster_id]
+            in_ball = np.linalg.norm(pts_t - centroid, axis=1) - radius <= 0
+            result |= in_ball
 
         return result
 

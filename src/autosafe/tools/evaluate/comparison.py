@@ -204,12 +204,17 @@ def create_comparison_monitor(method_name: str, **params: Any) -> ODDBoundaryMet
     method_instances = {
         # Original methods from odd.comparison
         "hull_single": lambda: ClusteredConvexHulls(n_clusters=1),
-        "hull_clustered": lambda: ClusteredConvexHulls(n_clusters=3),
+        "hull_clustered": lambda: ClusteredConvexHulls(
+            n_clusters=params.get("n_clusters", 3)
+        ),
         "knn": lambda: KNNMonitor(k=3, gamma=params.get("gamma")),
-        "kmeans": lambda: KMeansBoundaries(n_clusters=3),
+        "kmeans": lambda: KMeansBoundaries(
+            n_clusters=params.get("n_clusters", 3),
+            radius_quantile=params.get("radius_quantile", 0.95),
+        ),
         "density_single": lambda: SuperlevelSetMonitor(gamma=params.get("gamma")),
         "density_clustered": lambda: ClusteredSuperlevelSetMonitor(
-            n_clusters=3,
+            n_clusters=params.get("n_clusters", 3),
             gamma=params.get("gamma"),
             min_cluster_size=params.get("min_cluster_size", 3),
         ),

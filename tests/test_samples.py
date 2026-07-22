@@ -276,7 +276,7 @@ def test_wrong_dimension_raises_valueerror(
 
     with pytest.raises(ValueError, match=re.escape("Input array must be 1D or 2D.")):
         _ = Samples(
-            np.zeros((3, 3, 3)),
+            np.zeros((3, 3, 3)),  # ty: ignore[invalid-argument-type]
             closest_sample_mode=closest_sample_mode,
             kernel_cls=kernel_cls,
             kernel_kwargs=kernel_kwargs,
@@ -407,7 +407,7 @@ def test_samples_unique_samples_have_non_eye_kernel(
             assert samples.dim is not None
             assert samples.dim == sample.kernel.x_i.shape[0]
             assert not np.allclose(
-                sample.kernel.sigma,  # ty: ignore[invalid-argument-type]
+                sample.kernel.sigma,
                 np.eye(samples.dim),
             ), "Kernel should not be identity matrix for unique samples."
 
