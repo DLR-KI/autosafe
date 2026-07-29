@@ -179,7 +179,7 @@ def test_sample_repr_contains_all_info():
 
 def test_sample_repr_allows_eval():
     """Test that the __repr__ method of the Sample class allows eval."""
-    from numpy import array  # noqa: F401
+    from numpy import array  # ruff:ignore[unused-import]
 
     x = np.array([1.0, 2.0, 3.0])
     kernel = RBFKernel(x_i=np.array([1.0, 2.0, 3.0]), sigma="eye")

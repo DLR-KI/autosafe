@@ -495,12 +495,12 @@ def test_run_batch_spec_paths(tmp_path: pathlib.Path):
 
     invalid_spec = tmp_path / "invalid.yaml"
     invalid_spec.write_text("123", encoding="utf-8")
-    with pytest.raises(ValueError, match="Spec must be a list"):
+    with pytest.raises(TypeError, match="Spec must be a list"):
         manager.run_batch_spec(invalid_spec, lambda item: item)
 
     bad_mapping_spec = tmp_path / "bad_mapping.yaml"
     bad_mapping_spec.write_text("experiments: 123", encoding="utf-8")
-    with pytest.raises(ValueError, match="must be a list"):
+    with pytest.raises(TypeError, match="must be a list"):
         manager.run_batch_spec(bad_mapping_spec, lambda item: item)
 
     spec_path = tmp_path / "batch.yaml"
@@ -572,12 +572,12 @@ def test_evaluation_module_paths_and_helpers(
     monkeypatch.setattr(
         eval_mod.autosafe,
         "from_polars",
-        lambda *args, **kwargs: odd,  # noqa: ARG005
+        lambda *args, **kwargs: odd,  # ruff:ignore[unused-lambda-argument]
     )
     monkeypatch.setattr(
         eval_mod,
         "find_dataset_bounds",
-        lambda df: ([0.0, 0.5], [1.0, 1.5]),  # noqa: ARG005
+        lambda df: ([0.0, 0.5], [1.0, 1.5]),  # ruff:ignore[unused-lambda-argument]
     )
 
     loaded_tabular = eval_mod._load_dataset_context(
@@ -620,7 +620,7 @@ def test_evaluation_public_functions_and_export_request(
     monkeypatch.setattr(
         eval_mod,
         "_load_dataset_context",
-        lambda *args, **kwargs: (  # noqa: ARG005
+        lambda *args, **kwargs: (  # ruff:ignore[unused-lambda-argument]
             odd,
             2,
             2,
@@ -631,12 +631,12 @@ def test_evaluation_public_functions_and_export_request(
     monkeypatch.setattr(
         eval_mod,
         "_sample_affinities",
-        lambda *args, **kwargs: np.array([0.1, 0.9]),  # noqa: ARG005
+        lambda *args, **kwargs: np.array([0.1, 0.9]),  # ruff:ignore[unused-lambda-argument]
     )
     monkeypatch.setattr(
         eval_mod,
         "_benchmark_timings",
-        lambda *args, **kwargs: {"1": 0.0, "10": 0.0},  # noqa: ARG005
+        lambda *args, **kwargs: {"1": 0.0, "10": 0.0},  # ruff:ignore[unused-lambda-argument]
     )
 
     result_eval = eval_mod.evaluate_experiment(
@@ -658,7 +658,7 @@ def test_evaluation_public_functions_and_export_request(
     monkeypatch.setattr(
         eval_mod,
         "evaluate_experiment",
-        lambda dataset_path, request=None: called.append(dataset_path) or result_eval,  # noqa: ARG005
+        lambda dataset_path, request=None: called.append(dataset_path) or result_eval,  # ruff:ignore[unused-lambda-argument]
     )
     pipeline = eval_mod.run_evaluation_pipeline([
         tmp_path / "a.csv",
@@ -670,7 +670,7 @@ def test_evaluation_public_functions_and_export_request(
     monkeypatch.setattr(
         eval_mod,
         "evaluate_experiment",
-        lambda dataset_path, request=None: result_eval,  # noqa: ARG005
+        lambda dataset_path, request=None: result_eval,  # ruff:ignore[unused-lambda-argument]
     )
     summary = eval_mod.run_monte_carlo_evaluation(tmp_path / "x.csv", n_samples=7)
     assert summary["success"] is True
@@ -683,7 +683,7 @@ def test_evaluation_public_functions_and_export_request(
     monkeypatch.setattr(
         eval_mod,
         "save_results",
-        lambda result, path: captured.append(path),  # noqa: ARG005
+        lambda result, path: captured.append(path),  # ruff:ignore[unused-lambda-argument]
     )
     eval_mod._save_requested_result(result_eval, tmp_path)
     assert captured

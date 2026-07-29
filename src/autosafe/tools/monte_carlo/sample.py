@@ -249,7 +249,7 @@ def run_single_sampling(config: MonteCarloConfig) -> None:
     The results are saved to a JSON file for further evaluation.
     """,
 )
-def sample(  # noqa: PLR0913,PLR0917
+def sample(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
     dim: Annotated[
         int | None,
         typer.Option(

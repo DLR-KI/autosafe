@@ -131,13 +131,13 @@ class TestRBFKernel:
 
     def test_rbf_kernel_sigma_ii_x_nn_not_array(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ValueError, match=re.escape("x_nn must be a numpy array.")):
+        with pytest.raises(TypeError, match=re.escape("x_nn must be a numpy array.")):
             kernel._sigma_ii(x_nn=3)  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_sigma_ii_x_nn_wrong_dtype(self):
         kernel = copy.deepcopy(self.kernel)
         with pytest.raises(
-            ValueError, match=re.escape("x_nn must be of dtype FloatType.")
+            TypeError, match=re.escape("x_nn must be of dtype FloatType.")
         ):
             kernel._sigma_ii(x_nn=np.array([1.0, 2.0, 3.0], dtype=np.float32))
 
@@ -594,7 +594,7 @@ class TestRBFKernel:
         )
 
     def test_kernel_can_be_recreated_from_repr(self):
-        from numpy import array  # noqa: F401
+        from numpy import array  # ruff:ignore[unused-import]
 
         kernel = copy.deepcopy(self.kernel)
         kernel_repr = repr(kernel)

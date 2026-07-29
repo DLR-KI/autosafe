@@ -7,15 +7,15 @@ import warnings
 import numpy as np
 import pytest
 
-from autosafe.kernels.rbf import calibrate_rbf_scale, calibrate_rbf_scale_isotropic
+from autosafe.kernels.rbf import calibrate_rbf_scale_d_tilde, calibrate_rbf_scale_median
 
 
 def test_calibration_scale_equivariance():
     rng = np.random.default_rng(0)
     d_nn = rng.exponential(scale=0.01, size=(200, 3))
     a = np.array([2.0, 0.5, 10.0])
-    kappa1, eta1 = calibrate_rbf_scale(d_nn)
-    kappa2, eta2 = calibrate_rbf_scale(d_nn * a)
+    kappa1, eta1 = calibrate_rbf_scale_median(d_nn)
+    kappa2, eta2 = calibrate_rbf_scale_median(d_nn * a)
     np.testing.assert_allclose(kappa2, kappa1 * a**2, rtol=1e-12)
     np.testing.assert_allclose(eta2, eta1 / a, rtol=1e-12)
     # The sigma law is then equivariant: sigma'(a*d) == a^2 * sigma(d).
@@ -29,33 +29,33 @@ def test_calibration_degenerate_dimension_floor():
     rng = np.random.default_rng(1)
     d_nn = rng.exponential(scale=0.01, size=(100, 3))
     d_nn[:, 1] = 0.0  # discrete dimension: all duplicates
-    kappa, eta = calibrate_rbf_scale(d_nn)
+    kappa, eta = calibrate_rbf_scale_median(d_nn)
     assert np.all(np.isfinite(eta))
     assert np.all(eta > 0)
     assert np.all(kappa > 0)
 
 
 def test_calibration_all_zero_raises():
-    with pytest.raises(ValueError):  # noqa: PT011
-        calibrate_rbf_scale(np.zeros((10, 2)))
+    with pytest.raises(ValueError):  # ruff:ignore[pytest-raises-too-broad]
+        calibrate_rbf_scale_median(np.zeros((10, 2)))
 
 
 def test_isotropic_calibration_scale_equivariance():
     rng = np.random.default_rng(2)
     d = rng.exponential(scale=0.02, size=500)
-    k1, e1 = calibrate_rbf_scale_isotropic(d)
-    k2, e2 = calibrate_rbf_scale_isotropic(d * 2.0)
+    k1, e1 = calibrate_rbf_scale_d_tilde(d)
+    k2, e2 = calibrate_rbf_scale_d_tilde(d * 2.0)
     assert np.isclose(k2, 4.0 * k1)
     assert np.isclose(e2, e1 / 2.0)
 
 
 def test_isotropic_calibration_ignores_duplicates_and_raises_on_all_zero():
     d = np.array([0.0, 0.0, 1.0, 3.0])
-    k, e = calibrate_rbf_scale_isotropic(d, c=1.0, s=1.0)
+    k, e = calibrate_rbf_scale_d_tilde(d, c=1.0, s=1.0)
     assert np.isclose(k, 4.0)
     assert np.isclose(e, 0.5)
-    with pytest.raises(ValueError):  # noqa: PT011
-        calibrate_rbf_scale_isotropic(np.zeros(5))
+    with pytest.raises(ValueError):  # ruff:ignore[pytest-raises-too-broad]
+        calibrate_rbf_scale_d_tilde(np.zeros(5))
 
 
 def test_sigma_affine_floor_keeps_sigma_invertible():
@@ -81,7 +81,7 @@ def test_sigma_affine_floor_limits():
     np.testing.assert_allclose(
         np.diag(kernel.sigma), 2.0, rtol=1e-12
     )  # sigma(0) == kappa
-    with pytest.raises(ValueError):  # noqa: PT011
+    with pytest.raises(ValueError):  # ruff:ignore[pytest-raises-too-broad]
         kernel.update(x_nn=np.zeros(2), kappa=1.0, eta=1.0, lam=2.0)
 
 

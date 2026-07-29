@@ -32,7 +32,7 @@ COMP_APP = typer.Typer(
 
 def _display_comparison_summary(
     results: ComparisonEvaluationResults,
-    verbose: bool = False,  # noqa: FBT001 FBT002
+    verbose: bool = False,  # ruff:ignore[boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
 ) -> None:
     """Display summary of comparison results with a single echo call.
 
@@ -70,7 +70,7 @@ def _display_comparison_summary(
 
 
 @COMP_APP.command(name="evaluate")
-def run_comparison_evaluation(  # noqa: PLR0913 PLR0917
+def run_comparison_evaluation(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
     dataset_path: str = typer.Argument(
         ..., help="Path to dataset file (CSV, JSON, etc.)"
     ),
@@ -98,8 +98,8 @@ def run_comparison_evaluation(  # noqa: PLR0913 PLR0917
     export_path: str = typer.Option(
         None, "--export", "-e", help="Path to save JSON results"
     ),
-    verbose: bool = typer.Option(  # noqa: FBT001
-        False,  # noqa: FBT003
+    verbose: bool = typer.Option(  # ruff:ignore[boolean-type-hint-positional-argument]
+        False,  # ruff:ignore[boolean-positional-value-in-call]
         "--verbose",
         "-v",
         help="Show detailed results",

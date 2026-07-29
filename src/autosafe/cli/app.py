@@ -5,10 +5,10 @@
 
 import typer
 
-import autosafe.cli.experiments  # register experiments commands # noqa: F401
-import autosafe.tools.evaluate.cli  # register evaluate commands # noqa: F401
-import autosafe.tools.monte_carlo.evaluate  # register mc evaluate # noqa: F401
-import autosafe.tools.monte_carlo.sample  # register mc sample # noqa: F401
+import autosafe.cli.experiments  # register experiments commands # ruff:ignore[unused-import]
+import autosafe.tools.evaluate.cli  # register evaluate commands # ruff:ignore[unused-import]
+import autosafe.tools.monte_carlo.evaluate  # register mc evaluate # ruff:ignore[unused-import]
+import autosafe.tools.monte_carlo.sample  # register mc sample # ruff:ignore[unused-import]
 from autosafe.cli.experiments import get_app as get_experiments_app
 from autosafe.tools.comparison import COMP_APP
 from autosafe.tools.evaluate import EVAL_APP

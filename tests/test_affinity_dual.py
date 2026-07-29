@@ -4,6 +4,7 @@
 
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from autosafe._affinity import affinity_diag, affinity_diag_dual
 from autosafe.typing import (
@@ -53,6 +54,7 @@ def test_linear_saturates_log_discriminates_many_anchors():
     assert np.unique(surv).size > 50
 
 
+@pytest.mark.filterwarnings("ignore: divide by zero encountered in log1p")
 def test_zeta_one_selects_exact_anchor_hits_only():
     rng = np.random.default_rng(2)
     anchors = rng.normal(size=(10, 3))

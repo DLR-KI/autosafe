@@ -219,7 +219,7 @@ def _hull_membership(
     hull = scipy.spatial.ConvexHull(reference_points.T)
     a_hull, b_hull = hull.equations[:, :-1], hull.equations[:, -1]
     eps = np.finfo(float).eps
-    return np.all(test_points.T @ a_hull.T + b_hull.T <= eps, axis=1)  # noqa: SIM300
+    return np.all(test_points.T @ a_hull.T + b_hull.T <= eps, axis=1)  # ruff:ignore[yoda-conditions]
 
 
 def setup_evaluation_framework(dataset_path: str | Path, **kwargs: object) -> dict:
@@ -445,7 +445,7 @@ def build_comparison_results_dataframe(results: dict) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
-def evaluate_comparison_methods(  # noqa: C901 PLR0913 PLR0917
+def evaluate_comparison_methods(  # ruff:ignore[complex-structure, too-many-arguments, too-many-positional-arguments]
     dataset_path: pathlib.Path,
     methods: list[MethodName] | None = None,
     knn_k: int = 3,
@@ -555,7 +555,7 @@ def evaluate_comparison_methods(  # noqa: C901 PLR0913 PLR0917
     return total_results
 
 
-def _evaluate_comparison_methods(  # noqa: PLR0913 PLR0917
+def _evaluate_comparison_methods(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
     dataset_path: pathlib.Path,
     methods: list[MethodName] | None = None,
     knn_k: int = 3,

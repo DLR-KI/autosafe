@@ -6,7 +6,7 @@
 from collections.abc import Sequence
 from typing import Annotated, Literal, TypeAlias
 
-import jax  # noqa: F401
+import jax  # ruff:ignore[unused-import]
 import jax.numpy as jnp
 import numpy as np
 from annotated_types import Ge, Le
@@ -22,19 +22,19 @@ ClosestSampleModeType: TypeAlias = Literal["global", "per_dimension"]
 FloatType: TypeAlias = jnp.float64
 """JAX scalar float dtype used for all kernel computations."""
 
-Vector: TypeAlias = Float[Array, "n"]  # noqa: F821, TC008
+Vector: TypeAlias = Float[Array, "n"]  # ruff:ignore[undefined-name, quoted-type-alias]
 """1-D JAX float array of length n."""
 
-Matrix: TypeAlias = Float[Array, "n m"]  # noqa: F722
+Matrix: TypeAlias = Float[Array, "n m"]  # ruff:ignore[forward-annotation-syntax-error]
 """2-D JAX float array of shape (n, m)."""
 
-SquareMatrix: TypeAlias = Float[Array, "n n"]  # noqa: F722
+SquareMatrix: TypeAlias = Float[Array, "n n"]  # ruff:ignore[forward-annotation-syntax-error]
 """Square 2-D JAX float array of shape (n, n)."""
 
-Affinity = Annotated[Float[Array, ""], Ge(0), Le(1)]  # noqa: F722
+Affinity = Annotated[Float[Array, ""], Ge(0), Le(1)]  # ruff:ignore[forward-annotation-syntax-error]
 """Scalar JAX affinity value constrained to [0, 1]."""
 
-AffinityVector = Annotated[Float[Array, "n"], Ge(0), Le(1)]  # noqa: F821
+AffinityVector = Annotated[Float[Array, "n"], Ge(0), Le(1)]  # ruff:ignore[undefined-name]
 """1-D JAX array of affinity values, each constrained to [0, 1]."""
 
 # NumPy types: used for stored state, FAISS, serializers, hashing

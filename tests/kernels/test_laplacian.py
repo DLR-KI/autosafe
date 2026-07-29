@@ -257,7 +257,7 @@ class TestLaplacianKernel:
         )
 
     def test_kernel_can_be_recreated_from_repr(self):
-        from numpy import array  # noqa: F401
+        from numpy import array  # ruff:ignore[unused-import]
 
         kernel = copy.deepcopy(self.kernel)
         kernel_repr = repr(kernel)

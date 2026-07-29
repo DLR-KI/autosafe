@@ -185,7 +185,7 @@ def _resolve_comparison_methods(method_specs: list[str]) -> list[str]:
     return list(method_specs)
 
 
-def create_comparison_monitor(method_name: str, **params: Any) -> ODDBoundaryMethod:  # noqa: ANN401
+def create_comparison_monitor(method_name: str, **params: Any) -> ODDBoundaryMethod:  # ruff:ignore[any-type]
     """Create a monitor instance for a given comparison method.
 
     This factory function handles instantiation of different comparison

@@ -545,7 +545,7 @@ def test_result_cannot_be_bigger_than_one(
     ("closest_sample_mode", "kernel_cls", "kernel_kwargs"), testdata
 )
 def test_samples_get_assigned_correct_closest_sample(
-    closest_sample_mode: ClosestSampleModeType,  # noqa: ARG001
+    closest_sample_mode: ClosestSampleModeType,  # ruff:ignore[unused-function-argument]
     kernel_cls: KernelType,
     kernel_kwargs: dict[str, Any] | None,
 ):
@@ -577,7 +577,7 @@ def test_samples_get_assigned_correct_closest_sample(
     ("closest_sample_mode", "kernel_cls", "kernel_kwargs"), testdata
 )
 def test_samples_get_assigned_correct_closest_sample_per_dimension(
-    closest_sample_mode: ClosestSampleModeType,  # noqa: ARG001
+    closest_sample_mode: ClosestSampleModeType,  # ruff:ignore[unused-function-argument]
     kernel_cls: KernelType,
     kernel_kwargs: dict[str, Any] | None,
 ):
@@ -650,10 +650,10 @@ def test_samples_repr_allows_eval(
     kernel_kwargs: dict[str, Any] | None,
 ):
     """Test that Samples' __repr__ allows eval."""
-    from numpy import array  # noqa: F401
+    from numpy import array  # ruff:ignore[unused-import]
 
-    from autosafe.kernels.laplacian import LaplacianKernel  # noqa: F401
-    from autosafe.kernels.rbf import RBFKernel  # noqa: F401
+    from autosafe.kernels.laplacian import LaplacianKernel  # ruff:ignore[unused-import]
+    from autosafe.kernels.rbf import RBFKernel  # ruff:ignore[unused-import]
 
     sample_list = [
         Sample(x=[0.5, 1.0]),

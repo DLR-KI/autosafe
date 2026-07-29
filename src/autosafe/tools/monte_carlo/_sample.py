@@ -70,7 +70,7 @@ def _load_sampling_config_file(config_file_path: Path) -> MonteCarloConfig:
     return cast("MonteCarloConfig", config_raw)
 
 
-def create_config(  # noqa: PLR0913,PLR0917
+def create_config(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
     dim: int | None = None,
     odd_type: Literal["box"] | None = None,
     odd_limits: float | None = None,
@@ -275,7 +275,7 @@ def create_box(
         lower_arr = cast_to_array(dim, lower_bounds, name="lower_bounds")
         upper_arr = cast_to_array(dim, upper_bounds, name="upper_bounds")
 
-    A = np.vstack((np.eye(dim), -np.eye(dim)))  # noqa: N806
+    A = np.vstack((np.eye(dim), -np.eye(dim)))  # ruff:ignore[non-lowercase-variable-in-function]
     b = np.hstack((upper_arr, -lower_arr))
 
     return pc.Region([pc.Polytope(A, b)])

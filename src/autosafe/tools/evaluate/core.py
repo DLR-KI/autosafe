@@ -202,7 +202,7 @@ def create_convex_hull(data: pl.DataFrame) -> scipy.spatial.ConvexHull:
     hull = None
     qhull_attempts = [None, "QJ", "Qbb Qx", "QJ Qbb"]
     for opt in tqdm.rich.tqdm(qhull_attempts, desc="Trying Convex Hull options"):
-        try:  # noqa: PLW0717
+        try:  # ruff:ignore[too-many-statements-in-try-clause]
             if opt is None:
                 hull = scipy.spatial.ConvexHull(anchor_points)
             else:

@@ -8,7 +8,7 @@ from typing import Literal
 import jax.numpy as jnp
 import numpy as np
 
-from autosafe import _jax_config  # noqa: F401
+from autosafe import _jax_config  # ruff:ignore[unused-import]
 from autosafe.typing import FloatType, Matrix, NPFloatType, NPMatrix, NPVector
 
 
@@ -76,7 +76,7 @@ class RangeNormalizer:
             ValueError: If input data is not 2D or if required.
                 statistics cannot be computed for the selected method.
         """
-        if x.ndim != 2:  # noqa: PLR2004
+        if x.ndim != 2:  # ruff:ignore[magic-value-comparison]
             raise ValueError(f"Expected 2D data, got {x.ndim}D shape: {x.shape}")
 
         x_j = jnp.asarray(x, dtype=FloatType)

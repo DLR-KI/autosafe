@@ -9,7 +9,7 @@ import warnings
 
 from tqdm import TqdmExperimentalWarning
 
-from autosafe import _jax_config  # noqa: F401
+from autosafe import _jax_config  # ruff:ignore[unused-import]
 from autosafe.kernels.laplacian import LaplacianKernel
 from autosafe.kernels.rbf import RBFKernel
 from autosafe.sample import Sample

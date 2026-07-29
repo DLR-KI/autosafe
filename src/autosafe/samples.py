@@ -21,7 +21,7 @@ import tqdm.rich
 
 from autosafe import (
     _affinity,
-    _jax_config,  # noqa: F401
+    _jax_config,  # ruff:ignore[unused-import]
 )
 from autosafe.kernels import KernelDict
 from autosafe.kernels.rbf import RBFKernel

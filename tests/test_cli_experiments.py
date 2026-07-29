@@ -68,7 +68,7 @@ def test_list_datasets_empty_dir(
 
 def test_list_datasets_not_found():
     """Test list_datasets raises error for non-existent directory."""
-    with pytest.raises(Exception):  # typer.BadParameter  # noqa: B017, PT011
+    with pytest.raises(Exception):  # typer.BadParameter  # ruff:ignore[assert-raises-exception, pytest-raises-too-broad]
         list_datasets("/nonexistent/path/xyz123")
 
 
@@ -93,8 +93,8 @@ def test_run_evaluation_command(
 
         @staticmethod
         def run_evaluation_experiment(
-            dataset_config: object,  # noqa: ARG004
-            export_dir: object = None,  # noqa: ARG004
+            dataset_config: object,  # ruff:ignore[unused-static-method-argument]
+            export_dir: object = None,  # ruff:ignore[unused-static-method-argument]
         ) -> MockResult:
             return MockResult()
 
@@ -125,8 +125,8 @@ def test_run_evaluation_command_verbose(
 
         @staticmethod
         def run_evaluation_experiment(
-            dataset_config: object,  # noqa: ARG004
-            export_dir: object = None,  # noqa: ARG004
+            dataset_config: object,  # ruff:ignore[unused-static-method-argument]
+            export_dir: object = None,  # ruff:ignore[unused-static-method-argument]
         ) -> MockResult:
             return MockResult()
 
@@ -165,8 +165,8 @@ def test_run_benchmark_command(
 
         @staticmethod
         def run_benchmark_experiment(
-            dataset_config: object,  # noqa: ARG004
-            export_dir: object = None,  # noqa: ARG004
+            dataset_config: object,  # ruff:ignore[unused-static-method-argument]
+            export_dir: object = None,  # ruff:ignore[unused-static-method-argument]
         ) -> MockResult:
             return MockResult()
 
@@ -197,8 +197,8 @@ def test_run_benchmark_command_verbose(
 
         @staticmethod
         def run_benchmark_experiment(
-            dataset_config: object,  # noqa: ARG004
-            export_dir: object = None,  # noqa: ARG004
+            dataset_config: object,  # ruff:ignore[unused-static-method-argument]
+            export_dir: object = None,  # ruff:ignore[unused-static-method-argument]
         ) -> MockResult:
             return MockResult()
 
@@ -235,8 +235,8 @@ def test_run_pipeline_command(
 
         @staticmethod
         def run_benchmark_experiment(
-            dataset_config: object,  # noqa: ARG004
-            export_dir: object = None,  # noqa: ARG004
+            dataset_config: object,  # ruff:ignore[unused-static-method-argument]
+            export_dir: object = None,  # ruff:ignore[unused-static-method-argument]
         ) -> MockResult:
             return MockResult()
 
@@ -266,7 +266,7 @@ def test_run_pipeline_command_verbose(
 
         @staticmethod
         def run_benchmark_experiment(
-            dataset_config: object,  # noqa: ARG004
+            dataset_config: object,  # ruff:ignore[unused-static-method-argument]
         ) -> MockResult:
             return MockResult()
 
@@ -299,7 +299,7 @@ def test_run_pipeline_command_error(
 
         @staticmethod
         def run_benchmark_experiment(
-            dataset_config: dict,  # noqa: ARG004
+            dataset_config: dict,  # ruff:ignore[unused-static-method-argument]
         ) -> NoReturn:
             raise RuntimeError("Test error")
 
@@ -380,7 +380,7 @@ def test_glob_run_dataset_invalid_kernel_kwargs(tmp_path: pathlib.Path):
     dataset_path = tmp_path / "test.csv"
     dataset_path.write_text("x,y\n0,0\n")
 
-    with pytest.raises(ValueError, match="kernel_kwargs must be a mapping"):
+    with pytest.raises(TypeError, match="kernel_kwargs must be a mapping"):
         glob_run_dataset({
             "dataset_path": str(dataset_path),
             "kernel_kwargs": "invalid",
@@ -400,7 +400,7 @@ def test_glob_run_dataset(
         dataset_path.write_text("x,y\n0,0\n1,1\n")
 
         def mock_evaluate_dataset_mode(
-            **kwargs: dict,  # noqa: ARG001
+            **kwargs: dict,  # ruff:ignore[unused-function-argument]
         ) -> tuple[object, pathlib.Path, pathlib.Path]:
             return (
                 None,
@@ -433,7 +433,7 @@ def test_glob_run_dataset_global_mode(
         dataset_path.write_text("x,y\n0,0\n1,1\n")
 
         def mock_evaluate_dataset_mode(
-            **kwargs: dict,  # noqa: ARG001
+            **kwargs: dict,  # ruff:ignore[unused-function-argument]
         ) -> tuple[object, pathlib.Path, pathlib.Path]:
             return (
                 None,
@@ -466,7 +466,7 @@ def test_glob_run_dataset_laplacian_kernel(
         dataset_path.write_text("x,y\n0,0\n1,1\n")
 
         def mock_evaluate_dataset_mode(
-            **kwargs: dict,  # noqa: ARG001
+            **kwargs: dict,  # ruff:ignore[unused-function-argument]
         ) -> tuple[object, pathlib.Path, pathlib.Path]:
             return (
                 None,
@@ -511,8 +511,8 @@ def test_glob_run_mc_results(
         return [pathlib.Path(f) for f in inputs]
 
     def mock_evaluate_mc_results(
-        files: list[pathlib.Path],  # noqa: ARG001
-        **kwargs: dict,  # noqa: ARG001
+        files: list[pathlib.Path],  # ruff:ignore[unused-function-argument]
+        **kwargs: dict,  # ruff:ignore[unused-function-argument]
     ) -> pl.DataFrame:
         return mock_df
 
@@ -533,7 +533,7 @@ def test_glob_run_mc_results(
 
 def test_run_spec_file_not_found():
     """Test run_spec raises error for non-existent spec file."""
-    with pytest.raises(Exception):  # typer.BadParameter  # noqa: B017, PT011
+    with pytest.raises(Exception):  # typer.BadParameter  # ruff:ignore[assert-raises-exception, pytest-raises-too-broad]
         run_spec("/nonexistent/spec.yaml")
 
 
@@ -557,11 +557,11 @@ def test_run_spec(
 
         @staticmethod
         def run_batch_spec(
-            spec_path: str,  # noqa: ARG004
-            run_item: Callable[[object], dict],  # noqa: ARG004
+            spec_path: str,  # ruff:ignore[unused-static-method-argument]
+            run_item: Callable[[object], dict],  # ruff:ignore[unused-static-method-argument]
             state_path: pathlib.Path | None = None,
-            resume: bool = True,  # noqa: ARG004, FBT001, FBT002
-            stop_on_error: bool = False,  # noqa: ARG004, FBT001, FBT002
+            resume: bool = True,  # ruff:ignore[unused-static-method-argument, boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
+            stop_on_error: bool = False,  # ruff:ignore[unused-static-method-argument, boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
         ):
             return {
                 "completed_count": 1,
@@ -570,7 +570,7 @@ def test_run_spec(
             }
 
     def mock_run_item(
-        item: object,  # noqa: ARG001
+        item: object,  # ruff:ignore[unused-function-argument]
     ) -> dict:
         return {"mode": "mc-sample"}
 
@@ -606,11 +606,11 @@ def test_run_spec_with_state(
 
         @staticmethod
         def run_batch_spec(
-            spec_path: str,  # noqa: ARG004
-            run_item: Callable[[object], dict],  # noqa: ARG004
+            spec_path: str,  # ruff:ignore[unused-static-method-argument]
+            run_item: Callable[[object], dict],  # ruff:ignore[unused-static-method-argument]
             state_path: pathlib.Path | None = None,
-            resume: bool = True,  # noqa: ARG004, FBT001, FBT002
-            stop_on_error: bool = False,  # noqa: ARG004, FBT001, FBT002
+            resume: bool = True,  # ruff:ignore[unused-static-method-argument, boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
+            stop_on_error: bool = False,  # ruff:ignore[unused-static-method-argument, boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
         ):
             return {
                 "completed_count": 1,
@@ -645,11 +645,11 @@ def test_run_spec_stop_on_error(
 
         @staticmethod
         def run_batch_spec(
-            spec_path: str,  # noqa: ARG004
-            run_item: Callable[[object], dict],  # noqa: ARG004
+            spec_path: str,  # ruff:ignore[unused-static-method-argument]
+            run_item: Callable[[object], dict],  # ruff:ignore[unused-static-method-argument]
             state_path: pathlib.Path | None = None,
-            resume: bool = True,  # noqa: ARG004, FBT001, FBT002
-            stop_on_error: bool = False,  # noqa: ARG004, FBT001, FBT002
+            resume: bool = True,  # ruff:ignore[unused-static-method-argument, boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
+            stop_on_error: bool = False,  # ruff:ignore[unused-static-method-argument, boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
         ):
             return {
                 "completed_count": 0,
@@ -681,17 +681,15 @@ def test_run_spec_unsupported_mode(
 
         @staticmethod
         def run_batch_spec(
-            spec_path: str,  # noqa: ARG004
+            spec_path: str,  # ruff:ignore[unused-static-method-argument]
             run_item: Callable[[object], dict],
             state_path: pathlib.Path | None = None,
-            resume: bool = True,  # noqa: ARG004, FBT001, FBT002
-            stop_on_error: bool = False,  # noqa: ARG004, FBT001, FBT002
+            resume: bool = True,  # ruff:ignore[unused-static-method-argument, boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
+            stop_on_error: bool = False,  # ruff:ignore[unused-static-method-argument, boolean-type-hint-positional-argument, boolean-default-value-positional-argument]
         ):
             # Simulate the runner raising an error for unsupported mode
-            try:
-                run_item({"mode": "invalid-mode"})
-            except ValueError:
-                raise
+            run_item({"mode": "invalid-mode"})
+
             return {
                 "completed_count": 0,
                 "failed_count": 1,

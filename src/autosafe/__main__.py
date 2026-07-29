@@ -4,7 +4,7 @@
 # pylint: disable=unused-import
 """Main CLI module."""
 
-import autosafe.tools.monte_carlo.sample  # imported to register command # noqa: F401
+import autosafe.tools.monte_carlo.sample  # imported to register command # ruff:ignore[unused-import]
 from autosafe.cli import APP
 
 

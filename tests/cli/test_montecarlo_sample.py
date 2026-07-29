@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from autosafe import ROOT_FOLDER
 from autosafe.cli import APP
-from autosafe.tools.monte_carlo import (  # noqa: F401
+from autosafe.tools.monte_carlo import (  # ruff:ignore[unused-import]
     sample,  # imported to register the command
 )
 
@@ -112,7 +112,7 @@ def test_cli_app_monte_carlo_help():
     ),
     monte_carlo_testdata,
 )
-def test_cli_app_monte_carlo_runs_sampling(  # noqa: C901, PLR0913, PLR0917
+def test_cli_app_monte_carlo_runs_sampling(  # ruff:ignore[complex-structure, too-many-arguments, too-many-positional-arguments]
     dim: int,
     odd_type: str,
     odd_limits: float,

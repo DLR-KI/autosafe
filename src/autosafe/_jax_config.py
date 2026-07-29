@@ -11,10 +11,10 @@ _JAX_CONFIGURED = False
 
 
 def _ensure_jax_x64() -> None:
-    global _JAX_CONFIGURED  # noqa: PLW0603
+    global _JAX_CONFIGURED  # ruff:ignore[global-statement]
     if not _JAX_CONFIGURED:
         os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
-        jax.config.update("jax_enable_x64", True)  # noqa: FBT003
+        jax.config.update("jax_enable_x64", True)  # ruff:ignore[boolean-positional-value-in-call]
         jax.config.update("jax_default_matmul_precision", "highest")
         _JAX_CONFIGURED = True
 

@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from autosafe import _jax_config  # noqa: F401
+from autosafe import _jax_config  # ruff:ignore[unused-import]
 from autosafe.kernels.kernel import Kernel
 from autosafe.typing import (
     Affinity,
@@ -100,7 +100,7 @@ class LaplacianKernel(Kernel):
     def update(  # pylint: disable=W0221
         self,
         *,
-        x_nn: NPVector | None = None,  # pylint: disable=W0613  # noqa: ARG002
+        x_nn: NPVector | None = None,  # pylint: disable=W0613  # ruff:ignore[unused-method-argument]
         alpha: KernelScaleParam,
     ) -> None:
         """Update the kernel parameters.

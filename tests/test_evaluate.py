@@ -239,7 +239,7 @@ def test_build_threshold_pairs_grid_properties():
     # Anchors present.
     assert zetas[0] == pytest.approx(0.0)
     assert survs[0] == pytest.approx(0.0)
-    assert zetas[-1] == 1.0  # noqa: RUF069
+    assert zetas[-1] == 1.0  # ruff:ignore[float-equality-comparison]
     assert survs[-1] == -np.inf
 
     # Sorted by descending survival <=> ascending affinity.
@@ -739,13 +739,13 @@ def test_evaluate_affinity_metrics_dual_space():
 
     # Linear at threshold 1.0: affinity >= 1.0 -> only point with affinity 1.0 qualifies
     lin_t1 = out.filter(
-        (pl.col("affinity_space") == "linear") & (pl.col("affinity_threshold") == 1.0)  # noqa: RUF069
+        (pl.col("affinity_space") == "linear") & (pl.col("affinity_threshold") == 1.0)  # ruff:ignore[float-equality-comparison]
     )
     assert lin_t1["true_positive"][0] == 1
 
     # Log at threshold 1.0: survival <= -inf -> only exact anchor hit (survival == -inf)
     log_t1 = out.filter(
-        (pl.col("affinity_space") == "log") & (pl.col("affinity_threshold") == 1.0)  # noqa: RUF069
+        (pl.col("affinity_space") == "log") & (pl.col("affinity_threshold") == 1.0)  # ruff:ignore[float-equality-comparison]
     )
     assert log_t1["true_positive"][0] == 1
 

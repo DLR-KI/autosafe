@@ -22,7 +22,7 @@ def test_evaluate(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch):
     json_file = tmp_path / "test.json"
     json_file.write_text("{}")
 
-    def mock_process_files(path: pathlib.Path) -> list[pathlib.Path]:  # noqa: ARG001
+    def mock_process_files(path: pathlib.Path) -> list[pathlib.Path]:  # ruff:ignore[unused-function-argument]
         return [json_file]
 
     def mock_evaluate_mc_results(files: list[pathlib.Path], **kwargs: dict) -> None:

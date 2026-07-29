@@ -125,7 +125,7 @@ def test_create_polytope_from_constraints_fails(monkeypatch: pytest.MonkeyPatch)
     import polytope as pc
 
     # Mock pc.Region to raise TypeError
-    def mock_region(*args: tuple, **kwargs: dict) -> NoReturn:  # noqa: ARG001
+    def mock_region(*args: tuple, **kwargs: dict) -> NoReturn:  # ruff:ignore[unused-function-argument]
         raise TypeError("Mock error")
 
     monkeypatch.setattr(pc, "Region", mock_region)
@@ -140,7 +140,7 @@ def test_create_polytope_from_constraints_fails(monkeypatch: pytest.MonkeyPatch)
 
 def test_normalize_constraint_non_dict():
     """Test _normalize_constraint raises ValueError for non-dict constraint."""
-    with pytest.raises(ValueError, match="must be a dict"):
+    with pytest.raises(TypeError, match="must be a dict"):
         _normalize_constraint("not a dict", 2)  # ty: ignore[invalid-argument-type]
 
 

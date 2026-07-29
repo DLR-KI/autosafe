@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Literal, overload
 import jax
 import jax.numpy as jnp
 
-from autosafe import _jax_config  # noqa: F401  # MUST precede first jnp use
+from autosafe import (
+    _jax_config,  # ruff:ignore[unused-import]  # MUST precede first jnp use
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -72,7 +74,7 @@ def _build_tile(
             sigma_inv_block: jax.Array,
             valid: jax.Array,
         ) -> jax.Array:
-            # sigma_inv_block (nb,D,D)  # noqa: ERA001
+            # sigma_inv_block (nb,D,D)  # ruff:ignore[commented-out-code]
             diff = x_block[None, :, :] - a_block[:, None, :]
             mahal = jnp.einsum("nmd,nde,nme->nm", diff, sigma_inv_block, diff)
             mahal = jnp.maximum(mahal, 0.0)
@@ -161,7 +163,7 @@ def _get_tile(
     return _build_tile(variant)
 
 
-def _affinity(  # noqa: PLR0913, PLR0917
+def _affinity(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
     anchors: jax.Array,
     params: jax.Array,
     x: jax.Array,
@@ -238,7 +240,7 @@ def _affinity(  # noqa: PLR0913, PLR0917
     return result
 
 
-def _affinity_dual(  # noqa: PLR0913, PLR0914, PLR0917
+def _affinity_dual(  # ruff:ignore[too-many-arguments, too-many-locals, too-many-positional-arguments]
     anchors: jax.Array,
     params: jax.Array,
     x: jax.Array,

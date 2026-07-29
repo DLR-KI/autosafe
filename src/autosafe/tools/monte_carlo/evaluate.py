@@ -66,7 +66,7 @@ def main() -> None:
             str(
                 ROOT_FOLDER
                 / "data"
-                / "vcas_state_variables-results-global-RBF-{}-2026-01-16T01:35:38.266737+00:00.json"  # noqa: E501
+                / "vcas_state_variables-results-global-RBF-{}-2026-01-16T01:35:38.266737+00:00.json"  # ruff:ignore[line-too-long]
             )
         ]
     )

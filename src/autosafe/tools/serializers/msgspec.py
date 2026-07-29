@@ -27,7 +27,7 @@ from autosafe.tools.serializers.sample import decode_sample, encode_sample
 from autosafe.tools.serializers.samples import decode_samples, encode_samples
 
 
-def decode_hook(expected_type: type, obj: object) -> object:  # noqa: PLR0911
+def decode_hook(expected_type: type, obj: object) -> object:  # ruff:ignore[too-many-return-statements]
     """Decode serialized representations back to autoSAFE objects.
 
     Args:
@@ -52,7 +52,7 @@ def decode_hook(expected_type: type, obj: object) -> object:  # noqa: PLR0911
     return obj  # pragma: no cover
 
 
-def encode_hook(obj: object) -> object:  # noqa: PLR0911
+def encode_hook(obj: object) -> object:  # ruff:ignore[too-many-return-statements]
     """Encode autoSAFE objects to serializable representations.
 
     Args:

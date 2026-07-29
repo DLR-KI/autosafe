@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import polars as pl
 
-from autosafe import _jax_config  # noqa: F401
+from autosafe import _jax_config  # ruff:ignore[unused-import]
 from autosafe.tools.evaluate.core import calculate_performance_metrics
 from autosafe.tools.monte_carlo.dicts import ConfusionMatrixDict
 from autosafe.typing import AffinityVector
@@ -48,7 +48,7 @@ def build_affinity_thresholds(mode: str = "linear", count: int = 100) -> Affinit
 _MIN_THRESHOLD_COUNT = 2
 
 
-def build_threshold_pairs(  # noqa: PLR0914
+def build_threshold_pairs(  # ruff:ignore[too-many-locals]
     count: int,
     affinities: np.ndarray,
     survivals: np.ndarray,
@@ -169,7 +169,7 @@ def _as_threshold_pairs(
     """
     pairs: list[tuple[float, float]] = []
     for value in thresholds:
-        if isinstance(value, (tuple, list)) and len(value) == 2:  # noqa: PLR2004
+        if isinstance(value, (tuple, list)) and len(value) == 2:  # ruff:ignore[magic-value-comparison]
             pairs.append((float(value[0]), float(value[1])))
         else:
             affinity_threshold = float(value)
@@ -179,7 +179,7 @@ def _as_threshold_pairs(
     return pairs
 
 
-def evaluate_affinity_metrics(  # noqa: PLR0914
+def evaluate_affinity_metrics(  # ruff:ignore[too-many-locals]
     samples_df: pl.DataFrame,
     reference_labels: dict[str, np.ndarray],
     thresholds: np.ndarray | jax.Array | list[tuple[float, float]],
