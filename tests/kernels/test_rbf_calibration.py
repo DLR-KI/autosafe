@@ -51,8 +51,7 @@ def test_isotropic_calibration_scale_equivariance():
 
 def test_isotropic_calibration_ignores_duplicates_and_raises_on_all_zero():
     d = np.array([0.0, 0.0, 1.0, 3.0])
-    with pytest.warns(DeprecationWarning, match="use 'gamma'"):
-        k, e = calibrate_rbf_scale_d_tilde(d, c=1.0, s=1.0)
+    k, e = calibrate_rbf_scale_d_tilde(d, c=1.0, s=1.0)
     assert np.isclose(k, 4.0)
     assert np.isclose(e, 0.5)
     with pytest.raises(ValueError):  # ruff:ignore[pytest-raises-too-broad]

@@ -12,7 +12,6 @@ import jax.numpy as jnp
 from autosafe import (
     _jax_config,  # ruff:ignore[unused-import]  # MUST precede first jnp use
 )
-from autosafe.typing import DualVariant, StandardVariant
 
 if TYPE_CHECKING:
     from collections.abc import Callable

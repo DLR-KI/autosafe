@@ -61,10 +61,10 @@ Matrix: TypeAlias = Float[Array, "n m"]  # ruff:ignore[forward-annotation-syntax
 SquareMatrix: TypeAlias = Float[Array, "n n"]  # ruff:ignore[forward-annotation-syntax-error]
 """Square 2-D JAX float array of shape (n, n)."""
 
-Affinity: TypeAlias = Annotated[Float[Array, ""], Ge(0), Le(1)]  # ruff:ignore[forward-annotation-syntax-error]
+Affinity = Annotated[Float[Array, ""], Ge(0), Le(1)]  # ruff:ignore[forward-annotation-syntax-error]
 """Scalar JAX affinity value constrained to [0, 1]."""
 
-AffinityVector: TypeAlias = Annotated[Float[Array, "n"], Ge(0), Le(1)]  # ruff:ignore[undefined-name, quoted-type-alias]
+AffinityVector = Annotated[Float[Array, "n"], Ge(0), Le(1)]  # ruff:ignore[undefined-name]
 """1-D JAX array of affinity values, each constrained to [0, 1]."""
 
 # NumPy types: used for stored state, FAISS, serializers, hashing
