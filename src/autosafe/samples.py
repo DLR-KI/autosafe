@@ -45,18 +45,6 @@ from autosafe.typing import (
     Vector,
 )
 
-SampleLike: TypeAlias = (
-    Sample
-    | list[float]
-    | Vector
-    | NPVector
-    | list[Sample]
-    | list[list[float]]
-    | list[Vector]
-    | list[NPVector]
-    | Matrix
-)
-
 
 class Samples:
     """Class representing a set of samples in the autoSAFE framework.
