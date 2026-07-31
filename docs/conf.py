@@ -19,7 +19,7 @@ sys.path.insert(0, str(pathlib.Path("..").resolve()))
 project = "autosafe"
 copyright = "2026, German Aerospace Center (DLR e.V.) <https://dlr.de>"  # ruff:ignore[builtin-variable-shadowing]
 author = "Johann Christensen"
-release = "1.0.3"
+release = "1.1.0"
 
 # -- General configuration ---------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
