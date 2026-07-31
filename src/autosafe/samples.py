@@ -12,7 +12,6 @@ how likely any given vector is in the ODD.
 from collections.abc import Iterator
 from typing import Any, TypeAlias, cast, overload
 
-import faiss
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -22,9 +21,15 @@ import tqdm.rich
 from autosafe import (
     _affinity,
     _jax_config,  # ruff:ignore[unused-import]
+    ood_consistency,
 )
 from autosafe.kernels import KernelDict
 from autosafe.kernels.rbf import RBFKernel
+from autosafe.neighbors import (
+    find_closest_vectors_by_index,
+    find_closest_vectors_by_index_per_dimension,
+)
+from autosafe.pointsets import rows_in
 from autosafe.sample import Sample
 from autosafe.typing import (
     Affinity,
@@ -50,80 +55,6 @@ SampleLike: TypeAlias = (
     | list[NPVector]
     | Matrix
 )
-
-
-def find_closest_vectors_by_index(
-    sample_array: Matrix | NPMatrix,
-    disable_tqdm: bool = False,  # noqa: FBT001, FBT002
-) -> npt.NDArray[np.int64]:
-    """Find the closest vector for each vector in the matrix.
-
-    Find the closest vector for each vector in the matrix using L2 norm.
-    Then, return the index of the closest vector for each vector.
-
-    Args:
-        sample_array (Matrix | NPMatrix): Matrix with m vectors of
-            dimension n.
-        disable_tqdm (bool): Whether to disable the tqdm progress bar.
-
-    Returns:
-        npt.NDArray[np.int64]: Index of the closest vector for each
-            vector
-    """
-    # FAISS only works with float32
-    sample_array_float32 = np.ascontiguousarray(sample_array, dtype=np.float32)
-    dimension = sample_array_float32.shape[1]
-
-    # Create FAISS index for exact L2 search
-    index = faiss.IndexFlatL2(dimension)
-    index.add(sample_array_float32)  # pyright: ignore[reportCallIssue]
-
-    closest_indices: npt.NDArray[np.int64] = np.array([], dtype=np.int64)
-
-    # Fake tqdm progress bar for consistency
-    for _ in tqdm.rich.tqdm(
-        range(1),
-        desc="Finding closest samples",
-        disable=disable_tqdm,
-    ):
-        # Query 2 nearest neighbors (first is self, second is closest)
-        _, indices = index.search(sample_array_float32, k=2)  # pyright: ignore[reportCallIssue]
-        closest_indices = indices[:, 1].astype(
-            np.int64
-        )  # Take the second neighbor (skip self)
-    return closest_indices
-
-
-def find_closest_vectors_by_index_per_dimension(
-    sample_array: Matrix | NPMatrix,
-) -> npt.NDArray[np.int64]:
-    """Find the closest vector for each vector per dimension.
-
-    Find the closest vector for each vector in the matrix using L2 norm.
-    Then, for each dimension, return the index of the closest vector
-    based on that dimension alone.
-
-    Args:
-        sample_array (Matrix | NPMatrix): Matrix with m vectors of
-            dimension n.
-
-    Returns:
-        npt.NDArray[np.int64]: Index of the closest vector per dimension
-            for each vector
-    """
-    # Find closest vector per dimension
-    # For each dimension, we need to find the closest vector based on
-    # that dimension alone
-    m, n = sample_array.shape
-    closest_per_dim = np.zeros((n, m), dtype=np.int64)
-
-    for dim in tqdm.rich.tqdm(range(n), desc="Finding closest samples per dimension"):
-        closest_per_dim[dim, :] = find_closest_vectors_by_index(
-            sample_array=sample_array[:, dim].reshape(-1, 1),
-            disable_tqdm=True,
-        )
-
-    return closest_per_dim
 
 
 class Samples:
@@ -229,7 +160,7 @@ class Samples:
             samplelike_array = np.squeeze(np.asarray(samplelike))
             if samplelike_array.ndim == 1:
                 return [self.__to_sample(samplelike_array)]
-            if samplelike_array.ndim == 2:  # noqa: PLR2004
+            if samplelike_array.ndim == 2:  # ruff:ignore[magic-value-comparison]
                 return [self.__to_sample(row) for row in samplelike_array]
             raise ValueError("Input array must be 1D or 2D.")
 
@@ -334,7 +265,7 @@ class Samples:
             if (
                 isinstance(k, RBFKernel)
                 and k.sigma_inv is not None
-                and k._sigma_is_diagonal  # noqa: SLF001
+                and k._sigma_is_diagonal  # ruff:ignore[private-member-access]
             ):
                 diags.append(np.diag(k.sigma_inv))
             else:
@@ -346,7 +277,7 @@ class Samples:
         )
         self._batch_cache_valid = True
 
-    def __to_sample(self, arr: Any) -> Sample:  # noqa: ANN401
+    def __to_sample(self, arr: Any) -> Sample:  # ruff:ignore[any-type]
         """Convert an object to a Sample.
 
         Args:
@@ -489,37 +420,64 @@ class Samples:
             return alpha[0], survival[0]
         return alpha, survival
 
-    def _kernel_values_at(self, x: "NPVector") -> "npt.NDArray[np.float64]":
-        """Evaluate every local kernel k_i(x) at a single point.
+    def batch_arrays(
+        self,
+    ) -> tuple[NPMatrix, npt.NDArray[np.float64] | None, bool]:
+        """Return the cached anchor/inverse-diagonal batch arrays.
 
-        Uses the cached batch arrays on the all-diagonal-RBF fast path
-        and falls back to per-kernel evaluation otherwise. Needed for
-        the dominant-kernel argmax in the OOD adjustment loop, where a
-        Python loop over all kernels per iteration would be unusable at
-        production scale.
-
-        Args:
-            x (NPVector): Query point, shape (n_dims,).
+        Builds the cache first if it is stale. Exposed so the OOD
+        consistency algorithm can read the fast-path arrays without
+        reaching into private attributes.
 
         Returns:
-            npt.NDArray[np.float64]: Kernel values, shape (n_anchors,).
+            tuple[NPMatrix, npt.NDArray[np.float64] | None, bool]:
+                Anchors of shape (n_anchors, n_dims); the stacked
+                inverse-covariance diagonals of the same shape, or None
+                when the fast path does not apply; and whether every
+                kernel is a diagonal RBF.
         """
         if not self._batch_cache_valid:
             self._build_batch_arrays()
-        if self._all_kernels_diagonal_rbf and self._inv_diag_np is not None:
-            diff = self._anchors_np - np.asarray(x, dtype=float)[None, :]
-            mahal = np.einsum("nd,nd->n", diff * diff, self._inv_diag_np)
-            return np.exp(-0.5 * np.maximum(mahal, 0.0))
-        return np.array([float(s(np.asarray(x))) for s in self.samples])
+        return self._anchors_np, self._inv_diag_np, self._all_kernels_diagonal_rbf
 
-    def enforce_ood_consistency(
+    def invalidate_batch_cache(self) -> None:
+        """Mark the cached batch arrays stale."""
+        self._batch_cache_valid = False
+
+    def sync_kernel_cache(self, index: int) -> None:
+        """Refresh the batch cache after one kernel's sigma changed.
+
+        On the all-diagonal fast path this patches a single row, which
+        is O(n_dims) instead of an O(n_anchors * n_dims) rebuild. Else
+        the cache is simply invalidated.
+
+        Args:
+            index (int): Index of the kernel whose sigma was replaced.
+        """
+        kern = self.samples[index].kernel
+        if (
+            self._batch_cache_valid
+            and self._all_kernels_diagonal_rbf
+            and self._inv_diag_np is not None
+            and isinstance(kern, RBFKernel)
+            and kern.sigma_inv is not None
+        ):
+            self._inv_diag_np[index] = np.diag(kern.sigma_inv)
+        else:
+            self._batch_cache_valid = False
+
+    def enforce_ood_consistency(  # ruff:ignore[too-many-arguments]
         self,
         ood_points: "Matrix | NPMatrix",
         xi: float,
         shrink_factor: float = 0.9,
         max_iterations: int = 1_000_000,
+        *,
+        refresh_interval: int = 1000,
+        log_interval: int = 1000,
+        batch_jump: bool = False,
     ) -> dict[str, object]:
-        """Enforce alpha(x) <= xi on all OOD points (Algorithm 1).
+        """Enforce alpha(x) <= xi on all OOD points.
 
         Repeatedly selects the globally most-violated OOD point, finds
         its dominant kernel, and shrinks that kernel's covariance by
@@ -528,9 +486,25 @@ class Samples:
         ordering of ``ood_points`` (exact ties are broken by the lowest
         index and have measure zero for generic data).
 
+        PRECONDITION: no OOD point may coincide with an anchor point. At
+        an anchor the affinity is ``exp(0) = 1`` for every covariance,
+        so the exit condition is unreachable and the loop cannot end.
+        This is checked up front and raises
+        :class:`~autosafe.exceptions.OODAnchorCoincidenceError`.
+
+        Selection uses the log-survival ``L(x) = log(1 - alpha(x))``
+        rather than ``alpha`` directly, because ``alpha`` saturates at
+        exactly 1.0 for many points at once and ``argmax`` over such
+        ties (or over NaN) degrades the tie rule. ``L`` is maintained
+        incrementally---only one kernel changes per iteration, so the
+        update is exact and costs O((M + N) * n) instead of the
+        O(M * N * n) full sweep---with an exact refresh every
+        ``refresh_interval`` iterations to bound accumulated round-off.
+
         Note: shrinking bypasses the sigma lower bound lam; the
         conditioning bound cond(Sigma) <= 1/SIGMA_FLOOR_RATIO holds only
-        for unadjusted kernels (see docs/bandwidth-calibration.md).
+        for unadjusted kernels. See docs/ood-consistency.md for the
+        mathematics and docs/bandwidth-calibration.md for the floor.
 
         Args:
             ood_points (Matrix | NPMatrix): OOD samples, shape
@@ -539,72 +513,34 @@ class Samples:
             xi (float): Maximum allowed OOD affinity, in (0, 1).
             shrink_factor (float): Covariance scale factor, in (0, 1).
             max_iterations (int): Safety cap; exceeding it raises.
+            refresh_interval (int): Recompute L exactly every this many
+                iterations; <= 0 disables periodic refresh.
+            log_interval (int): Write a progress line every this many
+                iterations; <= 0 disables it.
+            batch_jump (bool): If True, apply the closed-form number of
+                shrinks per iteration instead of one. This is a faithful
+                acceleration only while the selected point and its
+                dominant kernel stay the same, so the result may
+                over-shrink relative to the one-shrink-per-iteration
+                procedure; the constraint is always still satisfied.
+                Default False, and all reported numbers use the default.
 
         Returns:
             dict[str, object]: Summary with keys ``iterations``,
-                ``max_ood_affinity`` (final), and ``adjusted_kernels``
-                (mapping kernel index -> shrink count).
-
-        Raises:
-            ValueError: If xi or shrink_factor are out of range.
-            RuntimeError: If max_iterations is exceeded.
+                ``max_ood_affinity`` (final), ``adjusted_kernels``
+                (mapping kernel index -> shrink count),
+                ``exact_recomputations`` and ``batch_jump``.
         """
-        if not 0.0 < xi < 1.0:
-            raise ValueError("xi must be in (0, 1)")
-        if not 0.0 < shrink_factor < 1.0:
-            raise ValueError("shrink_factor must be in (0, 1)")
-        ood = np.atleast_2d(np.asarray(ood_points, dtype=float))
-        if ood.shape[0] == 0:
-            return {
-                "iterations": 0,
-                "max_ood_affinity": 0.0,
-                "adjusted_kernels": {},
-            }
-
-        adjusted: dict[int, int] = {}
-        iterations = 0
-        worst_alpha = 0.0
-        while True:
-            alphas = np.asarray(self(ood))
-            worst = int(np.argmax(alphas))  # first max -> deterministic
-            worst_alpha = float(alphas[worst])
-            if worst_alpha <= xi:
-                break
-            if iterations >= max_iterations:
-                raise RuntimeError(
-                    f"OOD consistency not reached after {max_iterations} "
-                    f"iterations (max affinity {worst_alpha:.3g} > xi={xi}); "
-                    "xi may be too small."
-                )
-            k_vals = self._kernel_values_at(ood[worst])
-            i_star = int(np.argmax(k_vals))  # first max -> deterministic
-            kern = self.samples[i_star].kernel
-            if kern is None:
-                raise RuntimeError(f"Kernel {i_star} is not defined.")
-            if not isinstance(kern, RBFKernel):
-                raise RuntimeError(
-                    f"Kernel {i_star} is not an RBFKernel; "
-                    "enforce_ood_consistency only supports RBFKernel."
-                )
-            kern.sigma = np.asarray(kern.sigma) * shrink_factor
-            kern.sigma_inv = np.asarray(kern.sigma_inv) / shrink_factor
-            kern._refresh_sigma_cache()  # noqa: SLF001
-            if (
-                self._batch_cache_valid
-                and self._all_kernels_diagonal_rbf
-                and self._inv_diag_np is not None
-            ):
-                # O(1) cache update instead of a full O(N*D) rebuild.
-                self._inv_diag_np[i_star] = np.diag(kern.sigma_inv)
-            else:
-                self._batch_cache_valid = False
-            adjusted[i_star] = adjusted.get(i_star, 0) + 1
-            iterations += 1
-        return {
-            "iterations": iterations,
-            "max_ood_affinity": worst_alpha,
-            "adjusted_kernels": adjusted,
-        }
+        return ood_consistency.enforce_ood_consistency(
+            self,
+            ood_points,
+            xi,
+            shrink_factor,
+            max_iterations,
+            refresh_interval=refresh_interval,
+            log_interval=log_interval,
+            batch_jump=batch_jump,
+        )
 
     def __eq__(self, value: object) -> bool:
         """Check if two Samples instances are equal.
@@ -668,3 +604,12 @@ class Samples:
 
     def __getitem__(self, index: int) -> Sample:
         return self.samples[index]
+
+
+__all__ = [
+    "SampleLike",
+    "Samples",
+    "find_closest_vectors_by_index",
+    "find_closest_vectors_by_index_per_dimension",
+    "rows_in",
+]

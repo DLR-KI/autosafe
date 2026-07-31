@@ -5,236 +5,27 @@
 
 import dataclasses
 import datetime
-import enum
 import pathlib
 from collections.abc import Callable
 from importlib import import_module
 from typing import Any, cast
 
-import numpy as np
-import numpy.typing as npt
 import orjson
 import yaml
 
-from autosafe.typing import KernelType, Vector
-
-
-class ExperimentType(enum.Enum):
-    """Type of experiment to run."""
-
-    EVALUATION = "evaluation"  # Monte Carlo evaluation with results
-    BENCHMARK = "benchmark"  # Kernel performance benchmarking
-    CUSTOM = "custom"  # Custom experiment configuration
-
-
-class DatasetType(enum.Enum):
-    """Supported dataset types."""
-
-    CSV = "csv"
-    JSON = "json"
-    NUMPY = "numpy"
-    POLARS = "polars"
-
-
-@dataclasses.dataclass
-class DatasetConfig:
-    """Configuration for dataset loading and processing.
-
-    Attributes:
-        file_path (pathlib.Path): Path to the dataset file.
-        dataset_type (DatasetType): Type of the dataset file.
-        normalization (dict[str, Any] | None): Optional normalization
-            parameters.
-        filters (dict[str, Any] | None): Optional filtering parameters.
-        min_values (Vector | None): Optional minimum values for each
-            dimension (for range extension).
-        max_values (Vector | None): Optional maximum values for each
-            dimension (for range extension).
-        range_extension (float): Fraction to extend the data range
-            beyond the observed min/max values (default: 0.5).
-    """
-
-    file_path: pathlib.Path
-    dataset_type: DatasetType = DatasetType.CSV
-    normalization: dict[str, Any] | None = None
-    filters: dict[str, Any] | None = None
-
-    # Data boundaries
-    min_values: Vector | None = None
-    max_values: Vector | None = None
-    range_extension: float = 0.5  # Extend beyond min/max boundaries
-
-    def validate(self) -> None:
-        """Validate the dataset configuration.
-
-        Raises:
-            FileNotFoundError: If the dataset file does not exist.
-            ValueError: If the file extension is unsupported.
-        """
-        if not self.file_path.exists():
-            raise FileNotFoundError(f"Dataset file not found: {self.file_path}")
-
-        if self.file_path.suffix.lower() not in {".csv", ".json", ".npy", ".parquet"}:
-            raise ValueError(f"Unsupported file format: {self.file_path.suffix}")
-
-
-@dataclasses.dataclass
-class KernelExperimentConfig:
-    """Configuration for kernel experiments.
-
-    Attributes:
-        kernel_type (KernelType): Type of kernel to use in the
-            experiment.
-        kernel_kwargs (dict[str, Any]): Additional parameters for the
-            kernel.
-        n_samples (int): Number of samples to use for benchmarking.
-        evaluation_samples (int): Number of samples to use for
-            evaluation.
-    """
-
-    kernel_type: KernelType = "RBF"
-    kernel_kwargs: dict[str, Any] = dataclasses.field(default_factory=dict)
-
-    # Monte Carlo sampling configuration
-    n_samples: int = 10_000_000  # For benchmarking
-    evaluation_samples: int = 200_000  # For evaluation
-
-    def validate(self) -> None:
-        """Validate the kernel configuration.
-
-        Raises:
-            ValueError: If the sample count or kernel type is invalid.
-        """
-        if self.n_samples <= 0:
-            raise ValueError("Number of samples must be positive")
-
-        if self.kernel_type not in {"RBF", "Laplacian", "Gaussian"}:
-            raise ValueError(f"Unsupported kernel type: {self.kernel_type}")
-
-
-@dataclasses.dataclass
-class ExperimentResult:
-    """Container for experiment results.
-
-    Attributes:
-        experiment_id (str): Unique identifier for the experiment.
-        experiment_type (ExperimentType): Type of the experiment.
-        timestamp (datetime.datetime): Timestamp of when the experiment
-            was run.
-        dataset_path (pathlib.Path): Path to the dataset used in the
-            experiment.
-        dataset_size (int): Number of samples in the dataset.
-        dataset_dimensions (int): Number of dimensions in the dataset.
-        config (dict[str, Any]): Configuration parameters used in the
-            experiment.
-        total_samples (int): Total number of samples processed.
-        processing_time (float): Total processing time in seconds.
-        affinity_statistics (dict[str, Any] | None): Optional affinity
-            statistics collected during evaluation.
-        performance_metrics (dict[str, Any] | None): Optional
-            performance metrics calculated from the experiment.
-        kernel_matrices (npt.NDArray[np.float64] | None): Optional
-            kernel matrices computed during the experiment.
-        export_paths (list[pathlib.Path]): List of file paths where
-            results have been exported.
-    """
-
-    experiment_id: str
-    experiment_type: ExperimentType
-    timestamp: datetime.datetime
-
-    # Dataset information
-    dataset_path: pathlib.Path
-    dataset_size: int
-    dataset_dimensions: int
-
-    # Configuration
-    config: dict[str, Any]
-
-    # Results
-    total_samples: int
-    processing_time: float  # seconds
-    affinity_statistics: dict[str, Any] | None = None
-    performance_metrics: dict[str, Any] | None = None
-    kernel_matrices: npt.NDArray[np.float64] | None = None
-
-    # Output
-    export_paths: list[pathlib.Path] = dataclasses.field(default_factory=list)
-
-    def add_export(self, file_path: pathlib.Path) -> None:
-        """Add an exported result file to the experiment results.
-
-        Args:
-            file_path (pathlib.Path): Exported file path.
-        """
-        self.export_paths.append(file_path)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert experiment results to a dictionary.
-
-        Returns:
-            dict[str, Any]: Dictionary representation of the experiment
-                result.
-        """
-        return {
-            "experiment_id": self.experiment_id,
-            "experiment_type": self.experiment_type.value,
-            "timestamp": self.timestamp.isoformat(),
-            "dataset_path": str(self.dataset_path),
-            "dataset_size": self.dataset_size,
-            "dataset_dimensions": self.dataset_dimensions,
-            "config": self.config,
-            "total_samples": self.total_samples,
-            "processing_time": self.processing_time,
-            "affinity_statistics": self.affinity_statistics,
-            "performance_metrics": self.performance_metrics,
-            "export_paths": [str(p) for p in self.export_paths],
-        }
-
-
-@dataclasses.dataclass
-class EvaluationResult(ExperimentResult):
-    """Specialized result for evaluation experiments.
-
-    Attributes:
-        points_in_odd (int | None): Number of samples that fall within
-            the ODD.
-        coverage_ratio (float | None): Ratio of points in ODD to total
-            samples.
-        mean_affinity (float | None): Mean affinity of samples to the
-            ODD.
-    """
-
-    # Monte Carlo specific statistics
-    points_in_odd: int | None = None
-    coverage_ratio: float | None = None
-    mean_affinity: float | None = None
-
-    def __post_init__(self) -> None:
-        """Initialize as evaluation type."""
-        self.experiment_type = ExperimentType.EVALUATION
-
-
-@dataclasses.dataclass
-class BenchmarkResult(ExperimentResult):
-    """Specialized result for benchmarking experiments.
-
-    Attributes:
-        samples_per_second (float | None): Processing speed in samples
-            per second.
-        memory_usage (float | None): Peak memory usage in megabytes.
-        timing_by_sample_size (dict[str, float]): Timing breakdown by
-            sample size (e.g., {"100k": 1.2, "1M": 10.5}).
-    """
-
-    # Performance metrics
-    samples_per_second: float | None = None
-    memory_usage: float | None = None  # MB
-    timing_by_sample_size: dict[str, float] = dataclasses.field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """Initialize as benchmark type."""
-        self.experiment_type = ExperimentType.BENCHMARK
+from autosafe.tools.experiments.config import (
+    DatasetConfig,
+    KernelExperimentConfig,
+)
+from autosafe.tools.experiments.results import (
+    BenchmarkResult,
+    EvaluationResult,
+    ExperimentResult,
+)
+from autosafe.tools.experiments.types import (
+    DatasetType,
+    ExperimentType,
+)
 
 
 @dataclasses.dataclass
@@ -522,7 +313,7 @@ class ExperimentManager:
 
         Raises:
             FileNotFoundError: If spec file does not exist.
-            ValueError: If spec format is invalid.
+            TypeError: If spec format is invalid.
         """
         if not spec_path.exists():
             raise FileNotFoundError(f"Spec file not found: {spec_path}")
@@ -533,10 +324,10 @@ class ExperimentManager:
         elif isinstance(loaded, list):
             experiments = loaded
         else:
-            raise ValueError("Spec must be a list or a mapping with 'experiments'")
+            raise TypeError("Spec must be a list or a mapping with 'experiments'")
 
         if not isinstance(experiments, list):
-            raise ValueError("Spec field 'experiments' must be a list")
+            raise TypeError("Spec field 'experiments' must be a list")
 
         if state_path is None:
             state_path = spec_path.with_suffix(".state.json")

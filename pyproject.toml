@@ -37,7 +37,7 @@ docs = [
 tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
 
 [project]
-authors = [{name = "Johann Christensen", email = "johann.christensen@dlr.de"}]
+authors = [{ name = "Johann Christensen", email = "johann.christensen@dlr.de" }]
 classifiers = [
   "Intended Audience :: Science/Research",
   "Natural Language :: English",
@@ -187,9 +187,13 @@ fixable = ["ALL"]
 # E203: incorrectly triggers on array slices: <https://github.com/PyCQA/pycodestyle/issues/373>
 # D105: Docstrings in standard magic methods are superfluous
 # D107: Google docstring style prevents docstrings in __init__ function
-ignore = ["E203", "D105", "D107"]
+ignore = [
+  "whitespace-before-punctuation",
+  "undocumented-magic-method",
+  "undocumented-public-init"
+]
 preview = true
-select = [
+extend-select = [
   "A",
   "ANN",
   "ARG",
@@ -240,45 +244,28 @@ select = [
 ban-relative-imports = "all"
 
 [tool.ruff.lint.per-file-ignores]
-"docs/conf.py" = ["INP001"]
-# Rebuttal experiment scripts are research drivers, not library code:
-# long explanatory docstrings, grid magic-numbers, typer boolean flags, and
-# long driver functions are expected and intentional (mirrors the tests/*
-# relaxation above).
-"experiments/rebuttal/*" = [
-  "W505",
-  "PLR2004",
-  "FBT001",
-  "FBT002",
-  "C901",
-  "PLR0911",
-  "PLR0912",
-  "PLR0913",
-  "PLR0914",
-  "PLR0915",
-  "PLR0917",
-  "DOC201",
-  "DOC501",
-  "S101",
-  "S404",
-  "S607"
+"docs/conf.py" = ["implicit-namespace-package"]
+"src/autosafe/__init__.py" = ["non-empty-init-module"]
+"src/autosafe/kernels/__init__.py" = ["non-empty-init-module"]
+"src/autosafe/kernels/kernel.py" = [
+  "missing-type-args",
+  "missing-type-kwargs",
+  "unused-noqa",
+  "invalid-rule-code"
 ]
-"src/autosafe/__init__.py" = ["RUF067"]
-"src/autosafe/kernels/__init__.py" = ["RUF067"]
-"src/autosafe/kernels/kernel.py" = ["ANN002", "ANN003", "RUF100", "RUF102"]
 "tests/*" = [
-  "S101",
-  "ANN201",
-  "ANN205",
+  "assert",
+  "missing-return-type-undocumented-public-function",
+  "missing-return-type-static-method",
   "D",
-  "E501",
-  "PLR0904",
-  "PLC2701",
-  "PLC0415",
-  "PLR2004",
-  "SLF001",
-  "S307",
-  "W505"
+  "line-too-long",
+  "too-many-public-methods",
+  "import-private-name",
+  "import-outside-top-level",
+  "magic-value-comparison",
+  "private-member-access",
+  "suspicious-eval-usage",
+  "doc-line-too-long"
 ]
 
 [tool.ruff.lint.pycodestyle]

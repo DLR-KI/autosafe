@@ -73,3 +73,67 @@ experiments:
     dataset_path: data/vcas_state_variables.csv
     threshold_mode: linear
     threshold_count: 100
+
+  # ---------------------------------------------------------------------------
+  # HCAS/VCAS examples with kernel params + closest-sample caching
+  #
+  # Cache behavior in evaluate workflow:
+  # - Leave odd_json and odd_json_out unset.
+  # - ODD cache path is auto-derived from:
+  #   dataset_path + closest_sample_mode + kernel_type + kernel_kwargs.
+  # - Jobs with same tuple above reuse closest samples/ODD from cache.
+  # ---------------------------------------------------------------------------
+
+  # NOTE: Rebuilding the global-mode ODD caches is expected and slow (hours).
+  # Before the production run, delete experiments/run_all_spec.state.json (or
+  # remove these two ids from it) because both ids are marked completed from
+  # the broken runs.
+  #
+  # NOTE (threshold sweep fix): threshold_mode was dropped from
+  # eval-vcas-rbf, eval-hcas-rbf, and eval-minimal-hcas-rbf below. Dataset
+  # mode now always sweeps the adaptive two-sided "edges" grid
+  # (build_threshold_pairs) instead of the old fixed linear/log grids, which
+  # fixes the affinity-saturation-at-ζ=1 artifact (see
+  # docs/log-space-affinity.md). All three ids are already marked completed
+  # in experiments/run_all_spec.state.json from the old runs; remove them
+  # from that file (or delete it) before rerunning so the new grid actually
+  # gets applied.
+  - id: eval-vcas-rbf
+    mode: dataset
+    dataset_path: data/vcas_state_variables.csv
+    evaluation_samples: 1000000
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_c: 1.0
+      calibration_s: 3.0
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.0
+    threshold_count: 100
+
+  - id: eval-hcas-rbf
+    mode: dataset
+    dataset_path: data/hcas_state_variables.csv
+    evaluation_samples: 1000000
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_c: 1.0
+      calibration_s: 3.0
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.0
+    threshold_count: 100
+
+  - id: eval-minimal-hcas-rbf
+    mode: dataset
+    dataset_path: data/hcas_state_variables-minimal.csv
+    evaluation_samples: 100000
+    closest_sample_mode: per_dimension
+    kernel_type: RBF
+    threshold_count: 101

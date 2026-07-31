@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 
-from autosafe import _jax_config  # noqa: F401
+from autosafe import _jax_config  # ruff:ignore[unused-import]
 from autosafe.kernels.kernel import Kernel
 from autosafe.typing import (
     Affinity,
@@ -26,7 +26,7 @@ from autosafe.typing import (
 )
 
 # Relative lower bound for the sigma law :
-# sigma_kk = (kappa - lam) * exp(-eta * d) + lam  # noqa: ERA001
+# sigma_kk = (kappa - lam) * exp(-eta * d) + lam  # ruff:ignore[commented-out-code]
 # with lam = SIGMA_FLOOR_RATIO * kappa.
 # lam is defined relative to kappa so the law stays scale-equivariant.
 SIGMA_FLOOR_RATIO = float(np.exp(-10.0))
@@ -132,9 +132,9 @@ class RBFKernel(Kernel):
         ValueError: If `sigma` is not psd or does not match the
             dimension of `x_i`. Or if `sigma` is not one of the
             expected types (`"eye"`, a square matrix, or `None`).
-    """  # noqa: W505
+    """  # ruff:ignore[doc-line-too-long]
 
-    def __init__(  # noqa: PLR0913, PLR0917
+    def __init__(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
         self,
         x_i: NPVector,
         sigma: NPSquareMatrix | Literal["eye"] | NPFloatType | float | None = None,
@@ -225,7 +225,7 @@ class RBFKernel(Kernel):
             self._sigma_inv_full_jax = jnp.asarray(self.sigma_inv)
         return self._sigma_inv_full_jax
 
-    def update(  # pylint: disable=W0221  # noqa: C901,PLR0912
+    def update(  # pylint: disable=W0221  # ruff:ignore[complex-structure, too-many-branches]
         self,
         *,
         x_nn: Vector | Matrix | NPVector | NPMatrix | None = None,
@@ -385,14 +385,14 @@ class RBFKernel(Kernel):
             NPSquareMatrix: The diagonal elements of the sigma matrix.
 
         Raises:
-            ValueError: If `x_nn` is not a numpy array or if the dtype
-                does not match `NPFloatType`. Also if lam >= kappa for
-                any dimension.
+            TypeError: If `x_nn` is not a numpy array or if the dtype
+                does not match `NPFloatType`.
+            ValueError: If `lam` >= `kappa` for any dimension.
         """
         if not isinstance(x_nn, (np.ndarray, jax.Array)):
-            raise ValueError("x_nn must be a numpy array.")
+            raise TypeError("x_nn must be a numpy array.")
         if isinstance(x_nn, np.ndarray) and x_nn.dtype != NPFloatType:
-            raise ValueError("x_nn must be of dtype FloatType.")
+            raise TypeError("x_nn must be of dtype FloatType.")
         x_nn = _to_np(x_nn)
 
         kappa_ = _validate_and_broadcast_param(kappa, "kappa", self.x_i.shape[0])
@@ -416,7 +416,7 @@ class RBFKernel(Kernel):
         eta_col = eta_.reshape((dim, 1))
         lam_col = lam_.reshape((dim, 1))
 
-        if x_nn.ndim == 2:  # noqa: PLR2004
+        if x_nn.ndim == 2:  # ruff:ignore[magic-value-comparison]
             # Per-dimension mode: x_nn is (dim, dim) where column j is
             # the nearest neighbor found in dimension j.  Only the
             # diagonal d[i, i] = neighbor_i[i] - x_i[i] drives
@@ -540,7 +540,7 @@ class RBFKernel(Kernel):
         return f"RBFKernel with x_i={self.x_i!s}, sigma={self.sigma!s}"
 
 
-def calibrate_rbf_scale(
+def calibrate_rbf_scale_median(
     d_nn: NPMatrix,
     *,
     c: float = 1.0,
@@ -573,7 +573,7 @@ def calibrate_rbf_scale(
             are zero.
     """
     d = np.asarray(d_nn, dtype=NPFloatType)
-    if d.ndim != 2:  # noqa: PLR2004
+    if d.ndim != 2:  # ruff:ignore[magic-value-comparison]
         raise ValueError("d_nn must have shape (n_anchors, n_dims)")
     med = np.median(d, axis=0)
     positive = med > 0.0
@@ -586,22 +586,18 @@ def calibrate_rbf_scale(
     return kappa.astype(NPFloatType), eta.astype(NPFloatType)
 
 
-def calibrate_rbf_scale_isotropic(
+def calibrate_rbf_scale_d_tilde(
     d_nn_l2: NPVector,
     *,
     c: float = 1.0,
     s: float = 3.0,
 ) -> tuple[float, float]:
-    """Derive isotropic (kappa, eta) from full-space NN distances.
+    """Derive scalar (kappa, eta) from full-space NN distances.
 
     Implements eta = c / d_tilde and kappa = (s * d_tilde)**2 where
     d_tilde is the median of the positive full-space (L2) nearest-
     neighbor distances. Exact-duplicate anchors (distance 0) are
     excluded from the median. See docs/bandwidth-calibration.md.
-
-    The pipeline auto mode uses this isotropic variant; see
-    calibrate_rbf_scale for the per-dimension variant used in tests
-    and ablations.
 
     Args:
         d_nn_l2 (NPVector): Full-space NN distances, shape (n_anchors,),

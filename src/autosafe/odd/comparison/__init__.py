@@ -21,17 +21,14 @@ from autosafe.odd.comparison.base import (
     ODIComparisonResult,
     validate_comparison_config,
 )
-from autosafe.odd.comparison.cluster import (
-    ClusteredConvexHulls,
-    DBSCANCluster,
-    KMeansBoundaries,
-    KNNMonitor,
-    auto_detect_optimal_k,
-)
+from autosafe.odd.comparison.clustered_hull import ClusteredConvexHulls
+from autosafe.odd.comparison.dbscan import DBSCANCluster
 from autosafe.odd.comparison.density import (
     ClusteredSuperlevelSetMonitor,
     SuperlevelSetMonitor,
 )
+from autosafe.odd.comparison.kmeans import KMeansBoundaries, auto_detect_optimal_k
+from autosafe.odd.comparison.knn import KNNMonitor
 
 __all__ = [
     "ClusteredConvexHulls",

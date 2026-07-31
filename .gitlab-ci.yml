@@ -196,9 +196,9 @@ pytest:
   <<: *python_settings
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
+      - PYTHON_VERSION: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"]
   rules:
-    - if: '$PYTHON_VERSION == "3.13t" || $PYTHON_VERSION == "3.14t"'
+    - if: '$PYTHON_VERSION == "3.14t" || $PYTHON_VERSION == "3.15t"'
       allow_failure: true
     - when: always
   image: ghcr.io/astral-sh/uv:debian

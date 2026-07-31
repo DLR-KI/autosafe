@@ -118,3 +118,109 @@ def test_no_ood_keys_leave_base_cache_untagged(tmp_path: Path) -> None:
 
     assert "-ood" not in odd_path.name
     assert _sidecar(csv_path)["ood_iterations"] is None
+
+
+def _make_dataset_with_ood_subset(tmp_path: Path, n_ood: int = 8) -> tuple[Path, Path]:
+    """Build a dataset whose OOD CSV rows are copied out of the dataset.
+
+    Args:
+        tmp_path (Path): pytest temporary directory.
+        n_ood (int): How many dataset rows to reuse as OOD points.
+
+    Returns:
+        tuple[Path, Path]: (dataset CSV path, OOD CSV path).
+    """
+    ds, _ = _make_dataset_with_ood(tmp_path)
+    lines = ds.read_text(encoding="utf-8").splitlines()
+    header, rows = lines[0], lines[1:]
+    ood = tmp_path / "ood_subset.csv"
+    ood.write_text("\n".join([header, *rows[:n_ood]]), encoding="utf-8")
+    return ds, ood
+
+
+def test_anchors_exclude_ood_rows(tmp_path: Path) -> None:
+    """Anchors are complement of the OOD set: D_ID cap D_OOD = empty."""
+    n_ood = 8
+    ds, ood = _make_dataset_with_ood_subset(tmp_path, n_ood=n_ood)
+    n_dataset = len(ds.read_text(encoding="utf-8").splitlines()) - 1
+
+    _, csv_path, odd_path = evaluate_dataset_mode(
+        ds,
+        closest_sample_mode="global",
+        kernel_kwargs={"calibration": "auto"},
+        references=["knn"],
+        n_samples=1500,
+        threshold_count=7,
+        ood_path=ood,
+        ood_xi=0.1,
+    )
+
+    sc = _sidecar(csv_path)
+    assert sc["ood_anchor_coincidences"] == 0
+    assert sc["n_anchors"] == n_dataset - n_ood
+    assert sc["ood_n_points"] == n_ood
+    assert sc["ood_anchor_exclusion_tag"] is not None
+    assert "-ex" in odd_path.name
+    assert float(sc["ood_max_affinity_final"]) <= 0.1 + 1e-12
+
+
+def test_ood_tag_separates_anchor_caches(tmp_path: Path) -> None:
+    """Different OOD sets get different ODD and neighbor caches.
+
+    filename_tag keys both the ODD JSON and the nearest-neighbor .npz,
+    and neither validates the anchor set it was built from, so an
+    untagged run would silently reuse a cache built from the unfiltered
+    pool.
+    """
+    ds, ood_a = _make_dataset_with_ood_subset(tmp_path, n_ood=6)
+    ood_b = tmp_path / "ood_subset_b.csv"
+    lines = ds.read_text(encoding="utf-8").splitlines()
+    ood_b.write_text("\n".join([lines[0], *lines[20:26]]), encoding="utf-8")
+
+    def _run(ood: Path) -> Path:
+        _, _csv, odd_path = evaluate_dataset_mode(
+            ds,
+            closest_sample_mode="global",
+            kernel_kwargs={"calibration": "auto"},
+            references=["knn"],
+            n_samples=1200,
+            threshold_count=5,
+            ood_path=ood,
+            ood_xi=0.1,
+        )
+        return odd_path
+
+    path_a = _run(ood_a)
+    path_b = _run(ood_b)
+    assert path_a != path_b
+    npz_names = {p.name for p in tmp_path.glob("*-nn-global*.npz")}
+    assert len(npz_names) >= 2, npz_names
+
+
+def test_ood_run_does_not_overwrite_non_ood_csv(tmp_path: Path) -> None:
+    """An OOD run and a non-OOD run write different CSV/sidecar paths."""
+    ds, ood = _make_dataset_with_ood_subset(tmp_path, n_ood=5)
+
+    _, csv_plain, _ = evaluate_dataset_mode(
+        ds,
+        closest_sample_mode="global",
+        kernel_kwargs={"calibration": "auto"},
+        references=["knn"],
+        n_samples=1200,
+        threshold_count=5,
+    )
+    _, csv_ood, _ = evaluate_dataset_mode(
+        ds,
+        closest_sample_mode="global",
+        kernel_kwargs={"calibration": "auto"},
+        references=["knn"],
+        n_samples=1200,
+        threshold_count=5,
+        ood_path=ood,
+        ood_xi=0.1,
+    )
+
+    assert csv_plain != csv_ood
+    assert csv_plain.exists()
+    assert _sidecar(csv_plain)["ood_iterations"] is None
+    assert _sidecar(csv_ood)["ood_anchor_coincidences"] == 0

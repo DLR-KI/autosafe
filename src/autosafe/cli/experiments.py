@@ -235,7 +235,7 @@ def run_pipeline_command(
         if verbose:
             typer.echo(f"Processing {dataset_path.name}...")
 
-        try:  # noqa: PLW0717
+        try:  # ruff:ignore[too-many-statements-in-try-clause]
             manager = ExperimentManager(
                 config=KernelExperimentConfig(
                     kernel_type=kernel_type,
@@ -355,7 +355,7 @@ def glob_run_mc_sample(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0914
+def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # ruff:ignore[too-many-locals]
     dataset_path = pathlib.Path(str(item["dataset_path"]))
     comparison_methods = item.get("comparison_methods")
     if comparison_methods is not None:
@@ -369,7 +369,7 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0914
 
     kernel_kwargs = item.get("kernel_kwargs", {})
     if not isinstance(kernel_kwargs, dict):
-        raise ValueError(f"kernel_kwargs must be a mapping, got {type(kernel_kwargs)}")
+        raise TypeError(f"kernel_kwargs must be a mapping, got {type(kernel_kwargs)}")
 
     mode_str = str(item.get("closest_sample_mode", "per_dimension"))
     if mode_str == "global":
@@ -391,6 +391,8 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0914
     ood_path = pathlib.Path(item["ood_path"]) if item.get("ood_path") else None
     ood_xi = float(item["ood_xi"]) if item.get("ood_xi") is not None else None
     ood_shrink_factor = float(item.get("ood_shrink_factor", 0.9))
+    ood_max_iterations = int(item.get("ood_max_iterations", 1_000_000))
+    ood_batch_jump = bool(item.get("ood_batch_jump"))
 
     _, csv_path, odd_path = evaluate_dataset_mode(
         dataset_path=dataset_path,
@@ -423,6 +425,8 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0914
         ood_path=ood_path,
         ood_xi=ood_xi,
         ood_shrink_factor=ood_shrink_factor,
+        ood_max_iterations=ood_max_iterations,
+        ood_batch_jump=ood_batch_jump,
     )
     return {
         "mode": "dataset",

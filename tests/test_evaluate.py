@@ -438,9 +438,12 @@ def test_workflows_extractors_and_helpers(
             return _Region(), "desc"
 
     monkeypatch.setattr(
-        "autosafe.tools.evaluate.workflows.load_yaml_odd_config", lambda _p: {"x": 1}
+        "autosafe.tools.evaluate.dataset.ground_truth.load_yaml_odd_config",
+        lambda _p: {"x": 1},
     )
-    monkeypatch.setattr("autosafe.tools.evaluate.workflows.ODDFactory", _Factory)
+    monkeypatch.setattr(
+        "autosafe.tools.evaluate.dataset.ground_truth.ODDFactory", _Factory
+    )
     gt = _ground_truth_labels_from_yaml(gt_yaml, np.array([[0.1, 0.2], [0.3, 0.4]]))
     assert gt.dtype == np.bool_
 
@@ -539,7 +542,7 @@ def test_workflows_baselines_and_build_or_load(
     assert odd_path == odd_json
 
     monkeypatch.setattr(
-        "autosafe.tools.evaluate.workflows.load_dataset",
+        "autosafe.tools.evaluate.dataset.build.load_dataset",
         lambda _p, **_kw: (pl.DataFrame({"x": [0.0]}), "csv"),
     )
 
@@ -548,7 +551,9 @@ def test_workflows_baselines_and_build_or_load(
     def _to_json(_odd: object, path: Path) -> None:
         written.append(path)
 
-    monkeypatch.setattr("autosafe.tools.evaluate.workflows.autosafe.to_json", _to_json)
+    monkeypatch.setattr(
+        "autosafe.tools.evaluate.dataset.build.autosafe.to_json", _to_json
+    )
 
     built, built_path = _build_or_load_affinity_odd(
         dataset_path=tmp_path / "dataset.csv",
@@ -784,7 +789,7 @@ def test_workflows_remaining_default_path_branches(
         ),
     )
     monkeypatch.setattr(
-        "autosafe.tools.evaluate.workflows._baseline_memberships",
+        "autosafe.tools.evaluate.dataset.baselines._baseline_memberships",
         lambda _a, _b, _m, **_kw: {},
     )
     monkeypatch.setattr(
@@ -813,11 +818,11 @@ def test_workflows_remaining_default_path_branches(
         lambda _dataset_path, **_kwargs: (_DummyOdd(), tmp_path / "odd.json"),
     )
     monkeypatch.setattr(
-        "autosafe.tools.evaluate.workflows._baseline_memberships",
+        "autosafe.tools.evaluate.dataset.baselines._baseline_memberships",
         lambda _a, _b, _m, **_kw: {"knn": np.array([True, False])},
     )
     monkeypatch.setattr(
-        "autosafe.tools.evaluate.workflows._ground_truth_labels_from_yaml",
+        "autosafe.tools.evaluate.dataset.baselines._ground_truth_labels_from_yaml",
         lambda _yaml, _points, **_kw: np.array([True, False]),
     )
     monkeypatch.setattr(

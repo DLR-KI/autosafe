@@ -11,7 +11,7 @@ import dataclasses
 import datetime
 import pathlib
 import secrets
-from typing import Any, Protocol
+from typing import Any
 
 import numpy as np
 
@@ -30,30 +30,8 @@ from autosafe.tools.experiments.utils import (
 from autosafe.typing import (
     ClosestSampleModeType,
     KernelType,
-    Matrix,
-    NPAffinityVector,
-    NPMatrix,
     NPVector,
 )
-
-
-class _HasSamples(Protocol):
-    @property
-    def samples(self) -> list[Any]:
-        """The sample collection."""
-
-    def __call__(self, points: Matrix | NPMatrix) -> NPAffinityVector:
-        """Evaluate the ODD on a batch of points.
-
-        Returns affinity values corresponding to the
-        input points. The shape of the output should be (n_samples,)
-        where n_samples is the number of rows in the input points
-        matrix.
-
-        Args:
-            points (Matrix | NPMMatrix): Array of shape
-                (n_samples, n_features) to evaluate.
-        """
 
 
 @dataclasses.dataclass(frozen=True)

@@ -16,17 +16,17 @@ from autosafe.odd.comparison.base import (
     ODDComparisonConfig,
     validate_comparison_config,
 )
-from autosafe.odd.comparison.cluster import (
-    ClusteredConvexHulls,
-    DBSCANCluster,
-    KMeansBoundaries,
-    KNNMonitor,
-    auto_detect_optimal_k,
-)
+from autosafe.odd.comparison.clustered_hull import ClusteredConvexHulls
+from autosafe.odd.comparison.dbscan import DBSCANCluster
 from autosafe.odd.comparison.density import (
     ClusteredSuperlevelSetMonitor,
     SuperlevelSetMonitor,
 )
+from autosafe.odd.comparison.kmeans import (
+    KMeansBoundaries,
+    auto_detect_optimal_k,
+)
+from autosafe.odd.comparison.knn import KNNMonitor
 from autosafe.tools.comparison.cli import COMP_APP, _display_comparison_summary
 from autosafe.tools.comparison.core import (
     _evaluate_comparison_methods,
@@ -179,7 +179,7 @@ def test_kmeans_cluster_hulls_and_dbscan(monkeypatch: pytest.MonkeyPatch):
         raise ValueError("x")
 
     monkeypatch.setattr(
-        "autosafe.odd.comparison.cluster.silhouette_score", _raise_silhouette
+        "autosafe.odd.comparison.kmeans.silhouette_score", _raise_silhouette
     )
     assert kmeans._calculate_silhouette_score(ref) == pytest.approx(0.0)
 
@@ -499,7 +499,9 @@ def test_cluster_remaining_clustered_hulls_and_dbscan(monkeypatch: pytest.Monkey
     def _raise_hull(_pts: np.ndarray) -> None:
         raise ValueError("hull")
 
-    monkeypatch.setattr("autosafe.odd.comparison.cluster.ConvexHull", _raise_hull)
+    monkeypatch.setattr(
+        "autosafe.odd.comparison.clustered_hull.ConvexHull", _raise_hull
+    )
     ch_exc = ClusteredConvexHulls(n_clusters=1)
     ch_exc.fit(ref)
     assert ch_exc.hulls == [None]
@@ -776,7 +778,7 @@ def test_clustered_hulls_evaluate_batch_and_ball_fallback(
     # Bounding-ball fallback: hull=None but ball exists.
     # Monkeypatch ConvexHull to fail so hull stays None while ball is kept.
     monkeypatch.setattr(
-        "autosafe.odd.comparison.cluster.ConvexHull",
+        "autosafe.odd.comparison.clustered_hull.ConvexHull",
         lambda _pts: (_ for _ in ()).throw(ValueError("hull")),
     )
     ch_ball = ClusteredConvexHulls(n_clusters=1).fit(ref)
@@ -843,7 +845,7 @@ def test_clustered_hulls_empty_cluster(monkeypatch: pytest.MonkeyPatch):
         def fit_predict(data: np.ndarray) -> np.ndarray:
             return np.zeros(data.shape[0], dtype=int)
 
-    monkeypatch.setattr("autosafe.odd.comparison.cluster.KMeans", _FakeKMeans)
+    monkeypatch.setattr("autosafe.odd.comparison.clustered_hull.KMeans", _FakeKMeans)
     ch = ClusteredConvexHulls(n_clusters=2).fit(ref)
     assert ch.hulls[1] is None
     assert ch._cluster_balls[1] is None

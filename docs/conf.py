@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path("..").resolve()))
 
 project = "autosafe"
-copyright = "2026, German Aerospace Center (DLR e.V.) <https://dlr.de>"  # noqa: A001
+copyright = "2026, German Aerospace Center (DLR e.V.) <https://dlr.de>"  # ruff:ignore[builtin-variable-shadowing]
 author = "Johann Christensen"
 release = "1.0.3"
 

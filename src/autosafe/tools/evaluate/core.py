@@ -15,17 +15,11 @@ import polars as pl
 import scipy.spatial
 import tqdm.rich
 
+from autosafe.exceptions import ConvexHullError
 from autosafe.tools.monte_carlo.dicts import (
     ConfusionMatrixDict,
     PerformanceMetricsDict,
 )
-
-
-class ConvexHullError(RuntimeError):
-    """Raised when convex hull creation fails for all Qhull.
-
-    strategies.
-    """
 
 
 def calculate_confusion_matrix(
@@ -213,10 +207,7 @@ def create_convex_hull(data: pl.DataFrame) -> scipy.spatial.ConvexHull:
             hull = None
 
     if hull is None:
-        raise ConvexHullError(
-            "Convex hull computation failed for all Qhull options. "
-            "Input points are likely degenerate."
-        )
+        raise ConvexHullError
 
     return hull
 

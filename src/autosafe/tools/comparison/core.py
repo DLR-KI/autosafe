@@ -12,7 +12,7 @@ import json
 import operator
 import pathlib
 from pathlib import Path
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -29,6 +29,19 @@ from autosafe.odd.comparison import (
     SuperlevelSetMonitor,
 )
 from autosafe.odd.comparison.base import DecisionBoundary
+from autosafe.tools.comparison.method_kwargs import (
+    ClusteredDensityMethodKwargs,
+    ClusteredHullMethodKwargs,
+    DBSCANMethodKwargs,
+    DensityMethodKwargs,
+    KMeansMethodKwargs,
+    KNNMethodKwargs,
+)
+from autosafe.tools.comparison.results import (
+    ComparisonEvaluationResults,
+    ComparisonMethodResult,
+    ComparisonSummary,
+)
 from autosafe.tools.experiments.utils import load_dataset
 from autosafe.typing import Matrix, NPMatrix
 
@@ -41,162 +54,6 @@ MethodName = Literal[
     "density_clustered",
     "dbscan_cluster",
 ]
-
-
-class ComparisonMethodResult(TypedDict):
-    """Result for a single comparison method.
-
-    Args:
-        method (MethodName): Name of the comparison method used.
-        coverage_ratio (float): Proportion of test points covered by the
-            method's decision boundary (between 0 and 1).
-        conservatism (float): A measure of how conservative the method
-            is, with higher values indicating more conservative
-            boundaries (between 0 and 1).
-        parameters (dict[str, Any]): Dictionary of parameters used for
-            the method (e.g., k for knn, n_clusters for kmeans).
-        decision_boundary (DecisionBoundary): Detailed information about
-            the decision boundary, including type, parameters, coverage
-            metrics, and conservatism score.
-    """
-
-    method: MethodName
-    coverage_ratio: float
-    conservatism: float
-    parameters: dict[str, Any]
-    decision_boundary: DecisionBoundary
-
-
-class ComparisonSummary(TypedDict):
-    """Summary of comparison method evaluation.
-
-    Args:
-        most_conservative (str): Name of the method with the highest.
-            conservatism score.
-        best_coverage (str): Name of the method with the best coverage
-            ratio.
-        method_count (int): Total number of comparison methods.
-            evaluated.
-    """
-
-    most_conservative: str
-    best_coverage: str
-    method_count: int
-
-
-class ComparisonEvaluationResults(TypedDict):
-    """Full comparison evaluation output.
-
-    Args:
-        dataset (str): Name of the dataset used for evaluation.
-        reference_points (int): Number of reference points.
-        test_points (int): Number of test points.
-        comparison_methods (dict[str, ComparisonMethodResult]): Mapping
-            of method names to their respective results.
-        summary (ComparisonSummary): Summary of the evaluation results.
-    """
-
-    dataset: str
-    reference_points: int
-    test_points: int
-    comparison_methods: dict[str, ComparisonMethodResult]
-    summary: ComparisonSummary
-
-
-class KNNMethodKwargs(TypedDict, total=False):
-    """Keyword arguments for KNN comparison method.
-
-    Args:
-        k (int): Number of nearest neighbors.
-        gamma (float | None): Distance threshold for membership (if
-            None, auto-detected).
-        metric (str): Distance metric for KDTree (default: "euclidean").
-        leaf_size (int): KDTree optimization parameter (default: 40).
-    """
-
-    k: int
-    gamma: np.float64 | None
-    metric: str
-    leaf_size: int
-
-
-class KMeansMethodKwargs(TypedDict, total=False):
-    """Keyword arguments for k-means comparison method.
-
-    Args:
-        n_clusters (int): Number of clusters for k-means.
-        metric (str): Distance metric for clustering (default:
-            "euclidean").
-        min_cluster_size (int): Minimum cluster size to consider for
-            boundary construction.
-    """
-
-    n_clusters: int
-    metric: str
-    min_cluster_size: int
-
-
-class DensityMethodKwargs(TypedDict, total=False):
-    """Keyword arguments for density-based comparison method.
-
-    Args:
-        gamma (float): Density threshold for superlevel set membership.
-        bandwidth (Literal["scott", "silverman"] | None): Bandwidth
-            method for KDE (None for auto).
-        sigmoid_weight (float): Weighting factor for sigmoid
-            transformation of density scores.
-    """
-
-    gamma: np.float64
-    bandwidth: Literal["scott", "silverman"] | None
-    sigmoid_weight: np.float64
-
-
-class ClusteredHullMethodKwargs(TypedDict, total=False):
-    """Keyword arguments for clustered convex hull comparison method.
-
-    Args:
-        n_clusters (int): Number of clusters for partitioning reference
-            points before hull construction.
-        method (Literal["kmeans", "dbscan"]): Clustering method to use.
-            for partitioning.
-    """
-
-    n_clusters: int
-    method: Literal["kmeans", "dbscan"]
-
-
-class ClusteredDensityMethodKwargs(TypedDict, total=False):
-    """Keyword arguments for clustered density comparison method.
-
-    Args:
-        n_clusters (int): Number of clusters for partitioning reference
-            points before density estimation.
-        gamma (float): Density threshold for superlevel set membership.
-        bandwidth (Literal["scott", "silverman"] | None): Bandwidth
-            method for KDE (None for auto).
-        min_cluster_size (int): Minimum cluster size to consider for.
-            boundary construction.
-    """
-
-    n_clusters: int
-    gamma: np.float64
-    bandwidth: Literal["scott", "silverman"] | None
-    min_cluster_size: int
-
-
-class DBSCANMethodKwargs(TypedDict, total=False):
-    """Keyword arguments for DBSCAN-based comparison method.
-
-    Args:
-        eps (np.float64): Maximum distance between two samples for them
-            to be considered as in the same neighborhood.
-        min_samples (int): Minimum number of samples in a neighborhood
-            for a point to be considered as a core point.
-    """
-
-    eps: np.float64
-    min_samples: int
 
 
 def _hull_membership(
@@ -591,6 +448,15 @@ def _evaluate_comparison_methods(  # ruff:ignore[too-many-arguments, too-many-po
 
 
 __all__ = [
+    "ClusteredDensityMethodKwargs",
+    "ClusteredHullMethodKwargs",
+    "ComparisonEvaluationResults",
+    "ComparisonMethodResult",
+    "ComparisonSummary",
+    "DBSCANMethodKwargs",
+    "DensityMethodKwargs",
+    "KMeansMethodKwargs",
+    "KNNMethodKwargs",
     "_evaluate_comparison_methods",
     "build_comparison_results_dataframe",
     "create_comparison_test_grid",

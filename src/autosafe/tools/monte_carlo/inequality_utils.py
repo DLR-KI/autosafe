@@ -140,10 +140,11 @@ def _normalize_constraint(
             bound, and description.
 
     Raises:
+        TypeError: If the constraint is not a dictionary.
         ValueError: If the constraint is invalid.
     """
     if not isinstance(constraint, dict):
-        raise ValueError(f"Each constraint must be a dict, got {type(constraint)}")
+        raise TypeError(f"Each constraint must be a dict, got {type(constraint)}")
 
     constraint_type = constraint.get("type", "linear")
     if constraint_type != "linear":
