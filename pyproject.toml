@@ -37,7 +37,7 @@ docs = [
 tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
 
 [project]
-authors = [{name = "Johann Christensen", email = "johann.christensen@dlr.de"}]
+authors = [{ name = "Johann Christensen", email = "johann.christensen@dlr.de" }]
 classifiers = [
   "Intended Audience :: Science/Research",
   "Natural Language :: English",
@@ -185,6 +185,16 @@ unsafe-fixes = true
 preview = true
 
 [tool.ruff.lint]
+fixable = ["ALL"]
+# E203: incorrectly triggers on array slices: <https://github.com/PyCQA/pycodestyle/issues/373>
+# D105: Docstrings in standard magic methods are superfluous
+# D107: Google docstring style prevents docstrings in __init__ function
+ignore = [
+  "whitespace-before-punctuation",
+  "undocumented-magic-method",
+  "undocumented-public-init"
+]
+preview = true
 extend-select = [
   "A",
   "ANN",

@@ -3,10 +3,19 @@
 # SPDX-License-Identifier: MIT
 """Result containers for ODD comparison runs."""
 
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from autosafe.odd.comparison.base import DecisionBoundary
-from autosafe.typing import MethodName
+
+MethodName = Literal[
+    "hull_single",
+    "knn",
+    "kmeans",
+    "density_single",
+    "hull_clustered",
+    "density_clustered",
+    "dbscan_cluster",
+]
 
 
 class ComparisonMethodResult(TypedDict):

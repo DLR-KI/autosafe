@@ -5,7 +5,6 @@
 
 import hashlib
 import json
-import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -125,15 +124,13 @@ def _odd_matches_cache_spec(odd: Samples, cache_spec: _ODDCacheSpec) -> bool:
 # Bump whenever the calibration implementation changes: it is hashed
 # into the ODD cache digest so stale calibrated caches are never
 # silently reused.
-_CALIBRATION_VERSION = 3
+_CALIBRATION_VERSION = 2
 
-_CALIBRATION_META_KEYS = (
-    "calibration",
-    "calibration_c",
-    "calibration_gamma",
-    "calibration_s",
-    "calibration_lambda_rel",
-)
+_CALIBRATION_META_KEYS = ("calibration", "calibration_c", "calibration_s")
+
+# Bump whenever the calibration implementation changes: it is hashed
+# into the ODD cache digest so stale calibrated caches are never
+# silently reused.
 
 
 def _resolve_kernel_calibration(
@@ -166,25 +163,13 @@ def _resolve_kernel_calibration(
 
     Raises:
         ValueError: If an unknown calibration mode is specified.
-        TypeError: If a relative variance floor is not numeric.
     """
     meta = dict(kernel_kwargs)
     mode = str(meta.pop("calibration", "manual"))
-    raw_gamma = meta.pop("calibration_gamma", None)
-    legacy_c = meta.pop("calibration_c", None)
-    if raw_gamma is not None and legacy_c is not None:
-        raise ValueError("define calibration_gamma or calibration_c, not both")
-    if legacy_c is not None:
-        warnings.warn(
-            "calibration_c is deprecated; use calibration_gamma",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        raw_gamma = legacy_c
-    gamma = float(raw_gamma) if isinstance(raw_gamma, (int, float)) else 1.0
+    raw_c = meta.pop("calibration_c", 1.0)
+    c = float(raw_c) if isinstance(raw_c, (int, float)) else 1.0
     raw_s = meta.pop("calibration_s", 3.0)
     s = float(raw_s) if isinstance(raw_s, (int, float)) else 3.0
-    raw_lambda_rel = meta.pop("calibration_lambda_rel", None)
     if mode == "manual":
         return meta
     if mode != "auto":
@@ -198,14 +183,7 @@ def _resolve_kernel_calibration(
     pts = np.asarray(reference_points, dtype=float)
     idx = np.asarray(indices)  # global mode: shape (N,)
     d_l2 = np.linalg.norm(pts[idx] - pts, axis=1)
-    kappa, eta = calibrate_rbf_scale_d_tilde(d_l2, gamma=gamma, s=s)
+    kappa, eta = calibrate_rbf_scale_d_tilde(d_l2, c=c, s=s)
     meta["kappa"] = kappa
     meta["eta"] = eta
-    if raw_lambda_rel is not None:
-        if not isinstance(raw_lambda_rel, (int, float)):
-            raise TypeError("calibration_lambda_rel must be numeric")
-        lambda_rel = float(raw_lambda_rel)
-        if not 0.0 < lambda_rel < 1.0:
-            raise ValueError("calibration_lambda_rel must be in (0, 1)")
-        meta["lam"] = lambda_rel * kappa
     return meta

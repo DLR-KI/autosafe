@@ -21,6 +21,7 @@ import tqdm.rich
 from autosafe import (
     _affinity,
     _jax_config,  # ruff:ignore[unused-import]
+    ood_consistency,
 )
 from autosafe.kernels import KernelDict
 from autosafe.kernels.rbf import RBFKernel
@@ -42,6 +43,18 @@ from autosafe.typing import (
     NPVector,
     SampleLike,
     Vector,
+)
+
+SampleLike: TypeAlias = (
+    Sample
+    | list[float]
+    | Vector
+    | NPVector
+    | list[Sample]
+    | list[list[float]]
+    | list[Vector]
+    | list[NPVector]
+    | Matrix
 )
 
 

@@ -11,6 +11,16 @@ from typing import Literal, TypedDict
 
 import numpy as np
 
+MethodName = Literal[
+    "hull_single",
+    "knn",
+    "kmeans",
+    "density_single",
+    "hull_clustered",
+    "density_clustered",
+    "dbscan_cluster",
+]
+
 
 class KNNMethodKwargs(TypedDict, total=False):
     """Keyword arguments for KNN comparison method.

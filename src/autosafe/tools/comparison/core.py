@@ -12,7 +12,7 @@ import json
 import operator
 import pathlib
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -43,7 +43,17 @@ from autosafe.tools.comparison.results import (
     ComparisonSummary,
 )
 from autosafe.tools.experiments.utils import load_dataset
-from autosafe.typing import Matrix, MethodName, NPMatrix
+from autosafe.typing import Matrix, NPMatrix
+
+MethodName = Literal[
+    "hull_single",
+    "knn",
+    "kmeans",
+    "density_single",
+    "hull_clustered",
+    "density_clustered",
+    "dbscan_cluster",
+]
 
 
 def _hull_membership(
