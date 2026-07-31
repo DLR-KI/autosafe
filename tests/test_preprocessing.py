@@ -206,11 +206,18 @@ def test_preprocessing_error_paths_and_inverse_branches():
     assert len(iqr_bounds) == 2
 
     zscore = RangeNormalizer(method="zscore")
-    zscore.fit(data)
-    with pytest.raises(ValueError, match="not implemented"):
-        zscore.inverse_transform(data)
+    zscore_norm = zscore.fit_transform(data)
+    reconstructed_zscore = zscore.inverse_transform(zscore_norm)
+    assert np.allclose(reconstructed_zscore, data, atol=1e-6)
     with pytest.raises(ValueError, match="Range bounds not available"):
         _ = zscore.range_bounds_
+
+    zscore.ref_mean_ = None
+    with pytest.raises(ValueError, match="requires fitted mean/std"):
+        zscore.inverse_transform(zscore_norm)
+
+    with pytest.raises(ValueError, match="not implemented"):
+        unknown.inverse_transform(data)
 
 
 def test_preprocessing_transform_missing_fitted_values():

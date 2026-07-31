@@ -55,7 +55,10 @@ For complete command options, method definitions, and workflow semantics, see:
 Python API
 ----------
 
-A minimal API example:
+For fitting with calibrated or manual parameters, observed OOD data, and
+fixed or conformal membership thresholds, see :doc:`high_level_api`.
+
+A minimal low-level API example:
 
 .. code-block:: python
 

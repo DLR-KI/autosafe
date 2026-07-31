@@ -4,7 +4,7 @@
 """Batched JAX affinity kernels with anchor-validity masking."""
 
 import functools
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING, overload
 
 import jax
 import jax.numpy as jnp
@@ -12,12 +12,10 @@ import jax.numpy as jnp
 from autosafe import (
     _jax_config,  # ruff:ignore[unused-import]  # MUST precede first jnp use
 )
+from autosafe.typing import DualVariant, StandardVariant
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-StandardVariant = Literal["diag", "full_dense"]
-DualVariant = Literal["diag_dual", "full_dense_dual"]
 
 DEFAULT_ANCHOR_CHUNK = 256
 DEFAULT_POINT_CHUNK = 4096

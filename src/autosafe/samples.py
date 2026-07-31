@@ -10,7 +10,7 @@ how likely any given vector is in the ODD.
 """
 
 from collections.abc import Iterator
-from typing import Any, TypeAlias, cast, overload
+from typing import Any, cast, overload
 
 import jax
 import jax.numpy as jnp
@@ -41,19 +41,8 @@ from autosafe.typing import (
     NPFloatType,
     NPMatrix,
     NPVector,
+    SampleLike,
     Vector,
-)
-
-SampleLike: TypeAlias = (
-    Sample
-    | list[float]
-    | Vector
-    | NPVector
-    | list[Sample]
-    | list[list[float]]
-    | list[Vector]
-    | list[NPVector]
-    | Matrix
 )
 
 

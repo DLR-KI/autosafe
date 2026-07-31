@@ -25,6 +25,8 @@ General Information
 
     pages/installation
     pages/usage
+    pages/high_level_api
+    pages/openodd_derivation
     pages/tools
     pages/comparison_methods
     pages/developing

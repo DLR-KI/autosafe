@@ -333,7 +333,7 @@ def glob_run_mc_sample(item: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 "kernel_type must be one of {'RBF', 'Laplacian'} in run-spec"
             )
-        config["kernel_config"]["type"] = cast("KernelType", kernel_type_str)
+        config["kernel_config"]["type"] = kernel_type_str
 
     if kernel_kwargs_from_spec is not None:
         config["kernel_config"]["params"] = cast(

@@ -16,8 +16,7 @@ from autosafe.tools.comparison import (
     _evaluate_comparison_methods,
     create_comparison_test_grid,
 )
-from autosafe.tools.comparison.core import MethodName
-from autosafe.typing import Matrix, NPMatrix
+from autosafe.typing import Matrix, MethodName, NPMatrix
 
 
 def _create_test_grid(

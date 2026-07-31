@@ -543,12 +543,13 @@ class RBFKernel(Kernel):
 def calibrate_rbf_scale_median(
     d_nn: NPMatrix,
     *,
-    c: float = 1.0,
+    gamma: float = 1.0,
     s: float = 3.0,
+    c: float | None = None,
 ) -> tuple[NPVector, NPVector]:
     """Derive scale-invariant kappa, eta from NN distances.
 
-    Implements the calibration rule eta_j = c / median_i(d_ij) and
+    Implements the calibration rule eta_j = gamma / median_i(d_ij) and
     kappa_j = (s * median_i(d_ij))**2, where d_ij is the per-dimension
     nearest-neighbor distance of anchor i in dimension j. See
     docs/bandwidth-calibration.md for the derivation and the proof of
@@ -561,8 +562,9 @@ def calibrate_rbf_scale_median(
     Args:
         d_nn (NPMatrix): Per-dimension nearest-neighbor distances,
             shape (n_anchors, n_dims), non-negative.
-        c (float): Decay constant; eta_j = c / median_j.
+        gamma (float): Decay constant; eta_j = gamma / median_j.
         s (float): Width multiple; kappa_j = (s * median_j)**2.
+        c (float | None): Deprecated alias for ``gamma``.
 
     Returns:
         tuple[NPVector, NPVector]: (kappa, eta) arrays of shape
@@ -572,6 +574,20 @@ def calibrate_rbf_scale_median(
         ValueError: If d_nn is not 2D, or all per-dimension medians
             are zero.
     """
+    if c is not None:
+        gamma_is_default = bool(np.isclose(gamma, 1.0))
+        gamma_matches_alias = bool(np.isclose(gamma, c))
+        if not gamma_is_default and not gamma_matches_alias:
+            raise ValueError("gamma and deprecated c cannot define different values")
+        warnings.warn(
+            "'c' is deprecated for RBF calibration; use 'gamma'",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        gamma = c
+    if gamma <= 0.0 or s <= 0.0:
+        raise ValueError("gamma and s must be greater than 0")
+
     d = np.asarray(d_nn, dtype=NPFloatType)
     if d.ndim != 2:  # ruff:ignore[magic-value-comparison]
         raise ValueError("d_nn must have shape (n_anchors, n_dims)")
@@ -582,19 +598,20 @@ def calibrate_rbf_scale_median(
     floor = float(np.median(med[positive]))
     med = np.where(positive, med, floor)
     kappa = (s * med) ** 2
-    eta = c / med
+    eta = gamma / med
     return kappa.astype(NPFloatType), eta.astype(NPFloatType)
 
 
 def calibrate_rbf_scale_d_tilde(
     d_nn_l2: NPVector,
     *,
-    c: float = 1.0,
+    gamma: float = 1.0,
     s: float = 3.0,
+    c: float | None = None,
 ) -> tuple[float, float]:
     """Derive scalar (kappa, eta) from full-space NN distances.
 
-    Implements eta = c / d_tilde and kappa = (s * d_tilde)**2 where
+    Implements eta = gamma / d_tilde and kappa = (s * d_tilde)**2 where
     d_tilde is the median of the positive full-space (L2) nearest-
     neighbor distances. Exact-duplicate anchors (distance 0) are
     excluded from the median. See docs/bandwidth-calibration.md.
@@ -602,8 +619,9 @@ def calibrate_rbf_scale_d_tilde(
     Args:
         d_nn_l2 (NPVector): Full-space NN distances, shape (n_anchors,),
             non-negative.
-        c (float): Decay constant; eta = c / d_tilde.
+        gamma (float): Decay constant; eta = gamma / d_tilde.
         s (float): Width multiple; kappa = (s * d_tilde)**2.
+        c (float | None): Deprecated alias for ``gamma``.
 
     Returns:
         tuple[float, float]: (kappa, eta) scalars.
@@ -611,6 +629,20 @@ def calibrate_rbf_scale_d_tilde(
     Raises:
         ValueError: If d_nn_l2 is not 1D or has no positive entries.
     """
+    if c is not None:
+        gamma_is_default = bool(np.isclose(gamma, 1.0))
+        gamma_matches_alias = bool(np.isclose(gamma, c))
+        if not gamma_is_default and not gamma_matches_alias:
+            raise ValueError("gamma and deprecated c cannot define different values")
+        warnings.warn(
+            "'c' is deprecated for RBF calibration; use 'gamma'",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        gamma = c
+    if gamma <= 0.0 or s <= 0.0:
+        raise ValueError("gamma and s must be greater than 0")
+
     d = np.asarray(d_nn_l2, dtype=NPFloatType)
     if d.ndim != 1:
         raise ValueError("d_nn_l2 must have shape (n_anchors,)")
@@ -618,7 +650,7 @@ def calibrate_rbf_scale_d_tilde(
     if positive.size == 0:
         raise ValueError("all full-space nn distances are zero")
     d_tilde = float(np.median(positive))
-    return float((s * d_tilde) ** 2), float(c / d_tilde)
+    return float((s * d_tilde) ** 2), float(gamma / d_tilde)
 
 
 GaussianKernel = RBFKernel

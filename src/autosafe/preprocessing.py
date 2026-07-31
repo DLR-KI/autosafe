@@ -224,6 +224,12 @@ class RangeNormalizer:
             span = jnp.maximum(upper - lower, min_denom)
             x_normalized = (x_j - self.target_min) / self.target_span
             return x_normalized * span + lower
+        if self.method == "zscore":
+            if self.ref_mean_ is None or self.ref_std_ is None:
+                raise ValueError("Z-score normalizer requires fitted mean/std values.")
+            x_normalized = (x_j - self.target_min) / self.target_span
+            z_scores = x_normalized * 6.0 - 3.0
+            return z_scores * self.ref_std_ + self.ref_mean_
         raise ValueError(f"Inverse transform not implemented for method: {self.method}")
 
     @property

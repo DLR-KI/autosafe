@@ -14,15 +14,17 @@ Addressing all structural concerns:
 """
 
 import pathlib
-from typing import Annotated, cast
+from typing import TYPE_CHECKING, Annotated, cast
 
 import typer
 
 from autosafe.tools.comparison.core import (
     ComparisonEvaluationResults,
-    MethodName,
     _evaluate_comparison_methods,
 )
+
+if TYPE_CHECKING:
+    from autosafe.typing import MethodName
 
 # Create independent comparison CLI app
 COMP_APP = typer.Typer(

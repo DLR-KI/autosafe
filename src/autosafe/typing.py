@@ -4,7 +4,7 @@
 """Collection of custom type definitions for autoSAFE."""
 
 from collections.abc import Sequence
-from typing import Annotated, Literal, TypeAlias
+from typing import TYPE_CHECKING, Annotated, Literal, TypeAlias, Union
 
 import jax  # ruff:ignore[unused-import]
 import jax.numpy as jnp
@@ -12,11 +12,41 @@ import numpy as np
 from annotated_types import Ge, Le
 from jaxtyping import Array, Float
 
+if TYPE_CHECKING:
+    from autosafe.odd.config import (
+        CalibratedRBFConfig,
+        ConformalMembershipConfig,
+        FixedMembershipConfig,
+        ManualRBFConfig,
+    )
+    from autosafe.odd.openodd import (
+        OpenODDCategoricalFeature,
+        OpenODDNumericFeature,
+    )
+    from autosafe.sample import Sample
+
 KernelType: TypeAlias = Literal["RBF", "Laplacian"]
 """Kernel implementation selector."""
 
 ClosestSampleModeType: TypeAlias = Literal["global", "per_dimension"]
 """Nearest-anchor search strategy: global or per-dimension."""
+
+StandardVariant: TypeAlias = Literal["diag", "full_dense"]
+"""Standard batched-affinity implementation selector."""
+
+DualVariant: TypeAlias = Literal["diag_dual", "full_dense_dual"]
+"""Dual affinity/log-survival implementation selector."""
+
+MethodName: TypeAlias = Literal[
+    "hull_single",
+    "knn",
+    "kmeans",
+    "density_single",
+    "hull_clustered",
+    "density_clustered",
+    "dbscan_cluster",
+]
+"""Supported ODD comparison method name."""
 
 # JAX compute types: used for __call__ return values and computation
 FloatType: TypeAlias = jnp.float64
@@ -31,10 +61,10 @@ Matrix: TypeAlias = Float[Array, "n m"]  # ruff:ignore[forward-annotation-syntax
 SquareMatrix: TypeAlias = Float[Array, "n n"]  # ruff:ignore[forward-annotation-syntax-error]
 """Square 2-D JAX float array of shape (n, n)."""
 
-Affinity = Annotated[Float[Array, ""], Ge(0), Le(1)]  # ruff:ignore[forward-annotation-syntax-error]
+Affinity: TypeAlias = Annotated[Float[Array, ""], Ge(0), Le(1)]  # ruff:ignore[forward-annotation-syntax-error]
 """Scalar JAX affinity value constrained to [0, 1]."""
 
-AffinityVector = Annotated[Float[Array, "n"], Ge(0), Le(1)]  # ruff:ignore[undefined-name]
+AffinityVector: TypeAlias = Annotated[Float[Array, "n"], Ge(0), Le(1)]  # ruff:ignore[undefined-name, quoted-type-alias]
 """1-D JAX array of affinity values, each constrained to [0, 1]."""
 
 # NumPy types: used for stored state, FAISS, serializers, hashing
@@ -79,23 +109,62 @@ KernelScaleParam: TypeAlias = NPVector | float
 BoundSpec: TypeAlias = Vector | Sequence[float] | float
 """ODD/sampling bound: JAX vector, sequence, or scalar."""
 
+ScaleValue: TypeAlias = float | tuple[float, ...]
+"""Scalar or per-dimension kernel scale stored in immutable form."""
+
+SampleLike: TypeAlias = Union[
+    "Sample",
+    list[float],
+    Vector,
+    NPVector,
+    list["Sample"],
+    list[list[float]],
+    list[Vector],
+    list[NPVector],
+    Matrix,
+]
+"""Input forms accepted by :class:`autosafe.samples.Samples`."""
+
+KernelConfig: TypeAlias = Union["CalibratedRBFConfig", "ManualRBFConfig"]
+"""Supported high-level kernel configuration."""
+
+MembershipConfig: TypeAlias = Union[
+    "FixedMembershipConfig",
+    "ConformalMembershipConfig",
+]
+"""Fixed or data-calibrated ODD membership configuration."""
+
+OpenODDFeature: TypeAlias = Union[
+    "OpenODDNumericFeature",
+    "OpenODDCategoricalFeature",
+]
+"""Supported mappings from fitted dimensions to OpenODD concepts."""
+
 __all__ = [
     "Affinity",
     "AffinityVector",
     "Array",
     "BoundSpec",
     "ClosestSampleModeType",
+    "DualVariant",
     "Float",
     "FloatType",
+    "KernelConfig",
     "KernelScaleParam",
     "KernelType",
     "Matrix",
+    "MembershipConfig",
+    "MethodName",
     "NPAffinity",
     "NPAffinityVector",
     "NPFloatType",
     "NPMatrix",
     "NPSquareMatrix",
     "NPVector",
+    "OpenODDFeature",
+    "SampleLike",
+    "ScaleValue",
     "SquareMatrix",
+    "StandardVariant",
     "Vector",
 ]
