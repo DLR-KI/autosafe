@@ -9,7 +9,7 @@ authors:
   - family-names: Christensen
     given-names: Johann Maximilian
     email: johann.christensen@dlr.de
-    affiliation: German Aerospace Center (DLR)
+    affiliation: German Aerospace Center (DLR e.V.)
     orcid: https://orcid.org/0000-0001-9871-122X
 title: "autoSAFE: Autonomous Safety for Operational Design Domains with
   Inexhaustive Data"
@@ -18,3 +18,76 @@ date-released: 2026-07-31
 type: software
 license: MIT
 repository-code: "https://github.com/DLR-KI/autosafe"
+doi: 10.5281/zenodo.22045146
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22045146
+    description: "Concept DOI of the software archive (resolves to the latest version)"
+  # TBD: this DOI must be filled in before release. It will point at the
+  # Zenodo archive record for the benchmark result artifacts underlying the
+  # paper (experiments/benchmark/results/, packaged by
+  # experiments/benchmark/make_archive_bundle.py); the record does not exist
+  # yet. See REPRODUCTION.md.
+  # - type: doi
+  #   value: "TBD"
+  #   description: "Archive of the benchmark result artifacts underlying the paper"
+preferred-citation:
+  type: conference-paper
+  title: "Defining Operational Conditions for Safety-Critical AI-Based Systems
+    from Data"
+  authors:
+    - family-names: Christensen
+      given-names: Johann Maximilian
+      email: johann.christensen@dlr.de
+      affiliation: German Aerospace Center (DLR e.V.)
+      orcid: https://orcid.org/0000-0001-9871-122X
+    - family-names: Hoemann
+      given-names: Elena
+      email: elena.hoemann@dlr.de
+      affiliation: German Aerospace Center (DLR e.V.)
+      orcid: https://orcid.org/0000-0001-9315-548X
+    - family-names: Köster
+      given-names: Frank
+      email: frank.koester@dlr.de
+      affiliation: German Aerospace Center (DLR e.V.)
+    - family-names: Hallerbach
+      given-names: Sven
+      email: sven.hallerbach@dlr.de
+      affiliation: German Aerospace Center (DLR e.V.)
+      orcid: https://orcid.org/0009-0007-9163-0567
+  collection-title: "Advances in Neural Information Processing Systems"
+  collection-type: proceedings
+  volume: 40
+  start: 1
+  end: 39
+  year: 2026
+  month: 12
+  status: in-press
+  publisher:
+    name: "Curran Associates, Inc."
+  conference:
+    name: "Neural Information Processing Systems (NeurIPS 2026)"
+    city: Sydney
+    country: AU
+    date-start: 2026-12-06
+    date-end: 2026-12-12
+  abstract: "Artificial Intelligence (AI) has been on the rise in many domains,
+    including numerous safety-critical applications. However, for complex
+    systems in the real world, defining the underlying environmental conditions
+    in which the AI-based system must operate---the Operational Design Domain
+    (ODD)---is extremely challenging. This often results in an incomplete
+    description of the ODD, which contrasts with the requirements of many
+    domains for certifying AI-based systems. Traditionally, the ODD is created
+    in the early stages of the development process, drawing on sophisticated
+    expert knowledge and related standards. This paper presents a novel
+    Safety-by-Design method to a posteriori define the ODD from previously
+    collected data using a multi-dimensional kernel-based representation. This
+    approach is validated through both Monte Carlo methods and a real-world
+    aviation use case for a future collision-avoidance system. Moreover, by
+    defining under what conditions two ODDs are similar, the paper shows that
+    the data-driven ODD can produce a dataset similar to the original, hidden
+    ODD. Deriving the novel, Safety-by-Design, deterministic kernel-based
+    affinity representation of ODDs is fully automated via a bounded,
+    order-independent algorithm. Utilizing the proposed ODD representation
+    enables future certification of data-driven, safety-critical AI-based
+    systems."
