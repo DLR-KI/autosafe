@@ -112,15 +112,6 @@ def _assert_not_under_paper(path: Path) -> None:
         raise ValueError(f"refusing to write under paper/ (read-only): {resolved}")
 
 
-# ----------------------------------------------------------------------
-# Minimal whitespace-table IO. Values are kept as the RAW string tokens
-# read from disk and never reformatted, so a value's own source
-# precision survives untouched (Plan Sec. 2.2: "preserve source
-# precision, do not reproduce the padding"). Only genuinely computed
-# values (the one aggregate mean, below) are formatted from scratch.
-# ----------------------------------------------------------------------
-
-
 def _read_dat(path: Path) -> Table:
     """Read a whitespace-separated ``.dat`` file with a header row.
 
@@ -171,17 +162,6 @@ def _first_seen_order(rows: list[Row], key: str) -> list[str]:
             index.add(v)
             seen.append(v)
     return seen
-
-
-# ----------------------------------------------------------------------
-# The eighteen recipes (Plan Sec. 2.3). Each builder returns (header,
-# rows) ready for `_write_table`; it raises
-# FileNotFoundError/KeyError/ValueError when a required source artifact
-# is absent or incomplete (e.g. under `--quick` fixtures, where a
-# smaller sweep may not cover every combination a recipe needs) --
-# `run()` catches this per file and reports a skip rather than aborting
-# the whole export.
-# ----------------------------------------------------------------------
 
 
 def _halo(results_dir: Path) -> Table:
@@ -597,14 +577,6 @@ def run(*, results_dir: Path, outdir: Path) -> dict[str, str]:
         _write_table(outdir / spec.filename, header, rows)
         status[spec.filename] = f"written ({len(rows)} rows)"
     return status
-
-
-# ----------------------------------------------------------------------
-# --verify: numeric, cell-by-cell comparison against a reference
-# directory (normally the camera-ready
-# `paper/graphics/data/benchmark/`). Formatting (zero-padding) is
-# explicitly ignored -- see the module docstring.
-# ----------------------------------------------------------------------
 
 
 def _numeric_cell_equal(

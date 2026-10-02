@@ -31,11 +31,6 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-# --------------------------------------------------------------------------
-# Guard rails
-# --------------------------------------------------------------------------
-
-
 def test_refuses_to_write_under_paper(tmp_path: Path) -> None:
     """The exporter refuses paper/ itself and anything nested under it."""
     with pytest.raises(ValueError, match="paper/"):
@@ -59,11 +54,6 @@ def test_exports_list_matches_expected_filenames() -> None:
         export_paper_data.EXPECTED_FILENAMES
     )
     assert len(export_paper_data.EXPECTED_FILENAMES) == 18
-
-
-# --------------------------------------------------------------------------
-# Unit tests: one tiny synthetic fixture per recipe family
-# --------------------------------------------------------------------------
 
 
 def test_halo_verbatim_and_wide_pivot(tmp_path: Path) -> None:
@@ -301,11 +291,6 @@ def test_conformal_n1000_filters_and_pivots(tmp_path: Path) -> None:
     assert rows[0] == {"eps": "0.01", "annulus": "0.01", "linear": "0.02"}
 
 
-# --------------------------------------------------------------------------
-# --verify: numeric comparison, ignoring formatting
-# --------------------------------------------------------------------------
-
-
 def test_verify_against_ignores_padding_and_catches_real_differences(
     tmp_path: Path,
 ) -> None:
@@ -325,11 +310,6 @@ def test_verify_against_ignores_padding_and_catches_real_differences(
     report = export_paper_data.verify_against(generated, reference)
     assert "hole.dat" in report.differs
     assert not report.ok
-
-
-# --------------------------------------------------------------------------
-# Integration: a real (if miniature) results tree from --quick experiment runs
-# --------------------------------------------------------------------------
 
 
 def test_run_against_quick_experiment_outputs(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@
 """Tests for OneClassSVMBoundary and SVDDBoundary (odd.comparison.oneclass)."""
 
 import warnings
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -12,6 +13,8 @@ from autosafe.odd.comparison.base import ODDBoundaryMethod
 from autosafe.odd.comparison.oneclass import (
     OneClassSVMBoundary,
     SVDDBoundary,
+    _kernel_self,
+    _pairwise_kernel,
     _resolve_rbf_gamma,
 )
 
@@ -36,11 +39,6 @@ def _uniform_test_points(
     """
     rng = np.random.default_rng(seed)
     return rng.uniform(low, high, size=(n, 2)).T
-
-
-# --------------------------------------------------------------------------
-# OneClassSVMBoundary
-# --------------------------------------------------------------------------
 
 
 def test_oneclass_svm_boundary_is_odd_boundary_method():
@@ -100,11 +98,6 @@ def test_oneclass_svm_boundary_auto_select_mirrors_benchmark_grid():
     # experiments/benchmark/run_baseline_comparison.py::_score.
     assert monitor.nu in {0.01, 0.05, 0.1}
     assert monitor.gamma in {"scale", 1.0, 10.0}
-
-
-# --------------------------------------------------------------------------
-# SVDDBoundary
-# --------------------------------------------------------------------------
 
 
 def test_svdd_boundary_is_odd_boundary_method():
@@ -185,11 +178,6 @@ def test_resolve_rbf_gamma_zero_variance_fallback():
     assert _resolve_rbf_gamma("scale", constant_data) == pytest.approx(1.0)
 
 
-# --------------------------------------------------------------------------
-# The equivalence claim: this is the point of SVDDBoundary at all.
-# --------------------------------------------------------------------------
-
-
 def test_svdd_rbf_equivalent_to_oneclass_svm_under_matched_hyperparameters():
     """SVDD(kernel='rbf') and OneClassSVM must share a decision boundary.
 
@@ -247,3 +235,64 @@ def test_svdd_poly_kernel_differs_from_oneclass_svm():
     mem_oc = ocsvm.evaluate_batch(test_points)
     mem_poly = svdd_poly.evaluate_batch(test_points)
     assert np.sum(mem_oc != mem_poly) > 0
+
+
+def test_svdd_linear_kernel_is_a_ball_around_the_weighted_center():
+    """Linear SVDD: decision value is R^2 - ||x - a||^2 with a = sum_i alpha_i x_i."""
+    ref = _single_blob(seed=5)
+    svdd = SVDDBoundary(kernel="linear", nu=0.1).fit(ref)
+    assert svdd.alpha is not None
+    center = ref @ svdd.alpha
+    test = _uniform_test_points(seed=6, low=-2.0, high=2.0, n=50)
+    expected = svdd._r_squared - np.sum((test.T - center) ** 2, axis=1)
+    np.testing.assert_allclose(svdd.decision_function(test), expected, atol=1e-9)
+    assert svdd(center)
+    assert not svdd(center + 10.0)
+
+
+def test_svdd_poly_kernel_separates_center_from_far_points():
+    ref = _single_blob(seed=7)
+    svdd = SVDDBoundary(kernel="poly", degree=2, coef0=1.0, nu=0.1).fit(ref)
+    center = ref.mean(axis=1)
+    assert svdd(center)
+    assert not svdd(center + 10.0)
+
+
+def test_svdd_single_point_call_matches_batch():
+    ref = _single_blob(seed=8)
+    svdd = SVDDBoundary(kernel="linear", nu=0.1).fit(ref)
+    test = _uniform_test_points(seed=9, low=-1.0, high=1.0, n=30)
+    batch = svdd.evaluate_batch(test)
+    singles = np.array([svdd(test[:, i]) for i in range(test.shape[1])])
+    np.testing.assert_array_equal(singles, batch)
+    assert batch.any()
+    assert not batch.all()
+
+
+def test_svdd_pairwise_kernel_rejects_unknown_kernel() -> None:
+    x = np.zeros((2, 3))
+    with pytest.raises(ValueError, match="unknown SVDD kernel"):
+        _pairwise_kernel(x, x, kernel="bogus", gamma=1.0, degree=3, coef0=0.0)  # ty: ignore[invalid-argument-type]
+
+
+def test_svdd_kernel_self_rejects_unknown_kernel() -> None:
+    with pytest.raises(ValueError, match="unknown SVDD kernel"):
+        _kernel_self(np.zeros((2, 3)), kernel="bogus", gamma=1.0, degree=3, coef0=0.0)  # ty: ignore[invalid-argument-type]
+
+
+def _unfitted_svdd() -> SVDDBoundary:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        return SVDDBoundary(kernel="linear")
+
+
+@pytest.mark.parametrize(
+    "make_boundary", [OneClassSVMBoundary, _unfitted_svdd], ids=["ocsvm", "svdd"]
+)
+def test_unfitted_boundary_reports_neutral_metadata(
+    make_boundary: Callable[[], OneClassSVMBoundary | SVDDBoundary],
+) -> None:
+    monitor = make_boundary()
+    assert monitor._estimate_coverage() == {}
+    assert monitor._calculate_conservatism() == pytest.approx(0.5)
+    assert monitor.decision_boundary["coverage"] == {}

@@ -147,7 +147,6 @@ def main(
         odd_obj = get_odd(ds)
         grid_raw, grid_lab = odd_obj.sample_validation(n_grid, rng)
 
-        # --- Study A: sampling-density convergence (calibrated arm) ---
         prev_mask: npt.NDArray[np.bool_] | None = None
         for n in density_n:
             id_raw = odd_obj.sample_id(n, rng)
@@ -172,7 +171,6 @@ def main(
                 "iou_selfstab": iou_self,
             })
 
-        # --- Study B: duplicate sensitivity (both arms) ---
         base_raw = odd_obj.sample_id(n_base, rng)
         for arm in arms:
             base_f, grid_f = _frame(arm, base_raw, grid_raw)
@@ -206,7 +204,6 @@ def main(
                     "iou_vs_base": iou_vs_base,
                 })
 
-        # --- Study C: dedup remedy (worst-case dup set, both arms) ---
         for arm in arms:
             base_f, grid_f = _frame(arm, base_raw, grid_raw)
             odd_base = build_odd(base_f, mode=arm)
@@ -231,7 +228,7 @@ def main(
                     "iou_vs_base": iou_vs_base,
                 })
 
-    # --- Controlled check of the 1-(1-a)^m noisy-OR formula ---
+    # Controlled check of the 1-(1-a)^m noisy-OR formula
     # Must hold the kernel WIDTH fixed across duplication to isolate the
     # pure noisy-OR effect: with the sigma-law's eta>0, duplicating an
     # anchor drives its nearest-neighbor distance to 0 and *changes*

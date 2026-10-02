@@ -103,3 +103,19 @@ def test_gaussian_mixture_boundary_not_fitted_raises():
 def test_gaussian_mixture_boundary_requires_random_state():
     with pytest.raises(TypeError):
         GaussianMixtureBoundary()  # ty: ignore[missing-argument]
+
+
+def test_suggest_reasonable_gamma_defaults_to_75th_percentile():
+    monitor = GaussianMixtureBoundary(random_state=0).fit(_two_blob_cloud())
+    assert monitor.ref_points is not None
+    expected = np.percentile(monitor.pdf(monitor.ref_points), 75.0)
+    assert monitor.suggest_reasonable_gamma() == pytest.approx(expected)
+    assert monitor.candidate_gamma == pytest.approx(expected)
+
+
+def test_unfitted_gaussian_mixture_falls_back_and_refuses_pdf():
+    monitor = GaussianMixtureBoundary(random_state=0)
+    assert monitor.suggest_reasonable_gamma() == monitor.gamma
+    assert monitor._calculate_conservatism() == pytest.approx(0.5)
+    with pytest.raises(RuntimeError, match="not fitted yet"):
+        monitor.pdf(np.zeros((2, 3)))

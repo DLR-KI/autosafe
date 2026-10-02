@@ -27,7 +27,7 @@ from autosafe.tools.evaluate.dataset.odd_cache import (
 from autosafe.tools.experiments.utils import DatasetLoadOptions, load_dataset
 
 
-def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-branches, too-many-arguments]
+def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-arguments]
     dataset_path: Path,
     *,
     odd_json: Path | None,
@@ -142,12 +142,6 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-bran
             options=DatasetLoadOptions(normalize=False),
         )
         raw_array = np.asarray(df.to_numpy(), dtype=float)
-        if raw_array.ndim == 0:
-            raw_array = raw_array.reshape(1, 1)
-        elif raw_array.ndim == 1 and df.width == 1:
-            raw_array = raw_array[:, np.newaxis]
-        elif raw_array.ndim == 1:
-            raw_array = raw_array.reshape(1, -1)
         base_array = np.asarray(normalizer.transform(raw_array), dtype=float)
     else:
         df, _ = load_dataset(
@@ -155,12 +149,6 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-bran
             options=DatasetLoadOptions(normalize=cache_spec.normalize_data),
         )
         base_array = np.asarray(df.to_numpy(), dtype=float)
-        if base_array.ndim == 0:
-            base_array = base_array.reshape(1, 1)
-        elif base_array.ndim == 1 and df.width == 1:
-            base_array = base_array[:, np.newaxis]
-        elif base_array.ndim == 1:
-            base_array = base_array.reshape(1, -1)
 
     if (
         preloaded_anchor_array is None

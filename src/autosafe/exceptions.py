@@ -201,6 +201,23 @@ class NonFiniteCoordinateError(ValueError):
         )
 
 
+class ResolutionCellOverflowError(ValueError):
+    """Raised when a resolution cell index does not fit into int64.
+
+    Cell indices are ``floor((x - origin) / resolution)``. Beyond the
+    int64 range the cast wraps, which would silently merge distinct
+    points into one cell.
+    """
+
+    def __init__(self, dim: int, n_bad: int, resolution: float) -> None:
+        super().__init__(
+            f"{n_bad} points have a resolution-cell index beyond the int64 "
+            f"range in dimension {dim} (|x - origin| / resolution exceeds "
+            f"about 9.2e18 with resolution {resolution}); use a coarser "
+            "resolution or an origin closer to the data."
+        )
+
+
 class MissingRecordIdentifierError(ValueError):
     """Raised when ``record_ids`` is incomplete or mismatched in length.
 

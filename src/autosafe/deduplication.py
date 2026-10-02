@@ -45,6 +45,7 @@ from autosafe.exceptions import (
     InvalidResolutionVectorError,
     MissingRecordIdentifierError,
     NonFiniteCoordinateError,
+    ResolutionCellOverflowError,
 )
 
 #: Stable source-record identifier. Ints and strings sort
@@ -58,6 +59,9 @@ RecordId = int | str
 #: algorithm is never silently reused (see odd_cache.py's
 #: ``-dedup<digest>`` tagging).
 DEDUP_ALGORITHM_VERSION = 1
+
+#: Smallest |cell index| the int64 cast cannot represent (2**63).
+_INT64_CELL_LIMIT = float(2**63)
 
 CoordinateSpace = Literal["raw", "normalized"]
 RepresentativeMetric = Literal["resolution_scaled_euclidean"]
@@ -339,6 +343,8 @@ def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
         DeduplicationDimensionMismatchError: If ``points``' column count
             does not match ``policy.n_dims``.
         NonFiniteCoordinateError: If any coordinate is non-finite.
+        ResolutionCellOverflowError: If a cell index does not fit into
+            int64, i.e. the resolution is too fine for the coordinates.
         MissingRecordIdentifierError: If ``record_ids`` is supplied with
             the wrong length or a ``None`` entry.
     """
@@ -387,7 +393,14 @@ def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
 
     constant_dims = tuple(bool(np.ptp(pts[:, d]) <= 0.0) for d in range(n_dims))
 
-    cell_ids_all = np.floor((pts - origin) / resolution).astype(np.int64)
+    cell_ids_float = np.floor((pts - origin) / resolution)
+    overflow = np.abs(cell_ids_float) >= _INT64_CELL_LIMIT
+    if overflow.any():
+        dim = int(np.argmax(overflow.any(axis=0)))
+        raise ResolutionCellOverflowError(
+            dim, int(overflow[:, dim].sum()), float(resolution[dim])
+        )
+    cell_ids_all = cell_ids_float.astype(np.int64)
 
     # Canonical global order: (cell_id tuple, coordinate tuple, id).
     # Primarily sorting by cell id groups every cell's members

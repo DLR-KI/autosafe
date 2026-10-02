@@ -18,6 +18,7 @@ from autosafe.exceptions import (
     InvalidResolutionVectorError,
     MissingRecordIdentifierError,
     NonFiniteCoordinateError,
+    ResolutionCellOverflowError,
 )
 
 
@@ -336,3 +337,19 @@ def test_policy_digest_changes_with_policy() -> None:
         other_space.digest(),
     }
     assert len(digests) == 4
+
+
+def test_cell_index_overflow_raises_instead_of_merging() -> None:
+    """Distinct points must never be merged by a wrapped int64 cell index."""
+    pts = np.array([[0.0], [2.5e19], [5e19], [7.5e19], [1e20]])
+    policy = DeduplicationPolicy(resolution=(1e-6,), origin=(0.0,))
+    with pytest.raises(ResolutionCellOverflowError, match="dimension 0"):
+        deduplicate_points(pts, policy)
+
+
+def test_cell_index_just_inside_int64_is_accepted() -> None:
+    pts = np.array([[0.0], [9.0e18]])
+    result = deduplicate_points(
+        pts, DeduplicationPolicy(resolution=(1.0,), origin=(0.0,))
+    )
+    assert result.points.shape == (2, 1)
