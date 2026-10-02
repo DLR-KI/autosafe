@@ -68,6 +68,12 @@ class SyntheticODD:
         box matters for validation points drawn on the enlarged box: a
         point outside ``X`` that happens to satisfy ``R`` is *not* in
         the ODD, and labelling it otherwise corrupts every metric.
+
+        Args:
+            x (NPArray): Points, shape (M, dim) or (dim,).
+
+        Returns:
+            NPBool: Membership mask, shape (M,).
         """
         x = np.atleast_2d(np.asarray(x, dtype=float))
         in_box = np.all((x >= self.lower) & (x <= self.upper), axis=1)
@@ -96,7 +102,14 @@ class SyntheticODD:
         return np.vstack(out)[:n]
 
     def enlarged_bbox(self, factor: float = 2.0) -> tuple[NPArray, NPArray]:
-        """Return the bbox enlarged by ``factor`` about its center."""
+        """Return the bbox enlarged by ``factor`` about its center.
+
+        Args:
+            factor (float): Scale factor of the box's side lengths.
+
+        Returns:
+            tuple[NPArray, NPArray]: The enlarged (lower, upper) bounds.
+        """
         center = 0.5 * (self.lower + self.upper)
         half = 0.5 * (self.upper - self.lower) * factor
         return center - half, center + half
@@ -187,6 +200,12 @@ _REGISTRY: dict[str, SyntheticODD] = {
 def get_odd(name: str) -> SyntheticODD:
     """Return the registered :class:`SyntheticODD` named ``name``.
 
+    Args:
+        name (str): Registered ODD name, e.g. ``"linear2d"``.
+
+    Returns:
+        SyntheticODD: The registered ODD.
+
     Raises:
         KeyError: If ``name`` is not a registered ODD.
     """
@@ -196,5 +215,9 @@ def get_odd(name: str) -> SyntheticODD:
 
 
 def registry_names() -> list[str]:
-    """Return the sorted list of registered ODD names."""
+    """Return the sorted list of registered ODD names.
+
+    Returns:
+        list[str]: Registered names, sorted.
+    """
     return sorted(_REGISTRY)

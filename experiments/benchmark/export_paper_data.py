@@ -601,6 +601,7 @@ class VerifyReport:
         differs (dict[str, str]): Filenames that differ, mapped to a
             short description of the first difference found.
         missing (list[str]): Filenames absent from either side.
+        ok (bool): True iff all 18 canonical files matched exactly.
     """
 
     matches: list[str]
@@ -674,7 +675,7 @@ def main(
             difference.
 
     Raises:
-        typer.Exit: With a non-zero code if ``--verify`` found any
+        Exit: With a non-zero code if ``--verify`` found any
             difference or missing file.
     """
     status = run(results_dir=results_dir, outdir=Path(outdir))

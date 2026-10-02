@@ -65,7 +65,14 @@ def main(
     seed: int = 42,
     outdir: Path = DEFAULT_OUTDIR,
 ) -> None:
-    """Run the sweep; write per-N curve, AUPR/R2 dats, results.csv."""
+    """Run the sweep; write per-N curve, AUPR/R2 dats, results.csv.
+
+    Args:
+        quick (bool): Run the small ``--quick`` smoke configuration
+            instead of the full-size sweep.
+        seed (int): Random seed.
+        outdir (Path): Directory the results are written to.
+    """
     start = time.perf_counter()
     odd_gt = get_odd("linear2d")
     thresholds = default_thresholds(101 if quick else 256)

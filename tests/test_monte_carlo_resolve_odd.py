@@ -55,7 +55,7 @@ def _config(**overrides: Any) -> Any:  # ruff:ignore[any-type]
     """Build a minimal Monte Carlo config mapping.
 
     Args:
-        **overrides (Any): Keys to override on the base mapping.
+        overrides (Any): Keys to override on the base mapping.
 
     Returns:
         Any: The config mapping accepted by ``_resolve_odd``.

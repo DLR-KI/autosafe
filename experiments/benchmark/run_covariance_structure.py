@@ -4,7 +4,7 @@
 # Research-driver relaxations (grid magic numbers, typer boolean flags,
 # driver-length rules); scoped per file since experiment scripts are not
 # library code.
-# ruff: file-ignore[docstring-missing-exception, boolean-type-hint-positional-argument, boolean-default-value-positional-argument, too-many-locals, too-many-arguments]
+# ruff: file-ignore[boolean-type-hint-positional-argument, boolean-default-value-positional-argument, too-many-locals, too-many-arguments]
 r"""Diagonal vs full covariance under coupling.
 
 Backs the paper's covariance-structure claim (the diagonal-covariance
@@ -89,6 +89,9 @@ def local_cov_scores(
 
     Returns:
         NPArray: (M,) global affinity in [0, 1].
+
+    Raises:
+        ValueError: If ``kind`` is not "iso", "diag", or "full".
     """
     id_pts = np.ascontiguousarray(id_pts, dtype=float)
     x = np.ascontiguousarray(x, dtype=float)
@@ -178,7 +181,14 @@ def main(
     seed: int = 42,
     outdir: Path = DEFAULT_OUTDIR,
 ) -> None:
-    """Run the covariance ablation; write anisotropy/gap-vs-rho dats."""
+    """Run the covariance ablation; write anisotropy/gap-vs-rho dats.
+
+    Args:
+        quick (bool): Run the small ``--quick`` smoke configuration
+            instead of the full-size sweep.
+        seed (int): Random seed.
+        outdir (Path): Directory the results are written to.
+    """
     start = time.perf_counter()
     rng = np.random.default_rng(seed)
     zeta = 0.5

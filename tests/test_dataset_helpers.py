@@ -42,10 +42,10 @@ def _write_yaml(path: Path, text: str) -> Path:
 
 _LEGACY_LIMITS = """\
 limits:
-  h:
-    values: [-100.0, 0.0, 100.0]
-  tau:
-    values: [5.0, 0.0, 40.0]
+    h:
+        values: [-100.0, 0.0, 100.0]
+    tau:
+        values: [5.0, 0.0, 40.0]
 """
 
 
@@ -149,10 +149,10 @@ def test_non_box_yaml_has_no_sampling_bounds(tmp_path: Path) -> None:
 type: polytope
 dim: 2
 constraints:
-  - type: linear
-    coefficients: [1.0, -1.0]
-    relation: ">="
-    bound: 0.0
+    -   type: linear
+        coefficients: [1.0, -1.0]
+        relation: ">="
+        bound: 0.0
 """,
     )
     assert _sampling_bounds_from_yaml(yaml_path) is None

@@ -211,7 +211,7 @@ def main(
         state_path (Path): Local, resumable state file.
 
     Raises:
-        typer.Exit: With a non-zero code if any experiment failed and
+        Exit: With a non-zero code if any experiment failed and
             ``stop_on_error`` is set.
     """
     status = run(

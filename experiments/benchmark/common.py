@@ -161,7 +161,7 @@ def normalize_fit_apply(
 
     Args:
         id_points (NPArray): ID anchor points (used to fit).
-        *others (NPArray): Additional point arrays to transform
+        others (NPArray): Additional point arrays to transform
             identically.
 
     Returns:
@@ -326,7 +326,14 @@ def write_config(outdir: Path, config: dict, *, start_time: float) -> None:
 
 
 def default_thresholds(count: int = 256) -> NPArray:
-    """Return a uniform ζ grid in (0, 1) for curve sweeps."""
+    """Return a uniform ζ grid on [0, 1] for curve sweeps.
+
+    Args:
+        count (int): Number of thresholds.
+
+    Returns:
+        NPArray: ``count`` evenly spaced thresholds from 0 to 1.
+    """
     return np.linspace(0.0, 1.0, count)
 
 

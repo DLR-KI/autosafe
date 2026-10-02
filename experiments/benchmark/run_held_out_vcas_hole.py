@@ -160,10 +160,17 @@ def main(
 ) -> None:
     """Run the held-out VCAS hole; write hole-FP .dat, results, config.
 
-    ``source``: ``auto`` (vcas when the CSV exists, else synthetic),
-    ``vcas``, or ``synthetic``; ``--quick`` always forces synthetic so
-    the smoke tests stay hermetic. ``n_id`` = 0 selects the per-source
-    default (2000 synthetic, 20000 vcas).
+    Args:
+        quick (bool): Run the small ``--quick`` smoke configuration;
+            always forces the synthetic source so the smoke tests stay
+            hermetic.
+        seed (int): Random seed.
+        outdir (Path): Directory the results are written to.
+        source (str): ``auto`` (vcas when the CSV exists, else
+            synthetic), ``vcas``, or ``synthetic``.
+        n_id (int): Number of anchors; 0 selects the per-source default
+            (2000 synthetic, 20000 vcas).
+        m_ood (int): Number of in-hole points used as the OOD set.
     """
     start = time.perf_counter()
     rng = np.random.default_rng(seed)

@@ -96,6 +96,7 @@ class DeduplicationPolicy:
             so the choice is explicit and auditable, not implicit.
         tie_break (TieBreak): The canonical tie-break rule. Fixed by the
             paper to lexicographic-by-coordinates-then-record-id.
+        n_dims (int): Number of dimensions the policy is defined over.
 
     Raises:
         DeduplicationDimensionMismatchError: If ``resolution`` and
@@ -221,6 +222,8 @@ class DeduplicationResult:
             for a dimension where every input row shared the exact
             same coordinate (recorded explicitly rather than silently
             collapsed).
+        n_output (int): Number of retained representatives.
+        n_duplicates (int): Number of input rows collapsed away.
     """
 
     points: npt.NDArray[np.float64]

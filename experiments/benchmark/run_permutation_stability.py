@@ -60,7 +60,14 @@ def main(
     seed: int = 42,
     outdir: Path = DEFAULT_OUTDIR,
 ) -> None:
-    """Run the permutation harness; write permutation_report.json."""
+    """Run the permutation harness; write permutation_report.json.
+
+    Args:
+        quick (bool): Run the small ``--quick`` smoke configuration
+            instead of the full-size sweep.
+        seed (int): Random seed.
+        outdir (Path): Directory the results are written to.
+    """
     start = time.perf_counter()
     rng = np.random.default_rng(seed)
     xi, c = 0.3, 0.9
