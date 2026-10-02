@@ -30,6 +30,7 @@ from autosafe.tools.evaluate.metrics import (
     save_metrics_csv,
 )
 from autosafe.tools.evaluate.workflows import (
+    DEFAULT_DATASET_BASELINES,
     _baseline_memberships,
     _build_or_load_affinity_odd,
     _extract_anchor_points,
@@ -753,6 +754,21 @@ def test_evaluate_affinity_metrics_dual_space():
         (pl.col("affinity_space") == "log") & (pl.col("affinity_threshold") == 1.0)  # ruff:ignore[float-equality-comparison]
     )
     assert log_t1["true_positive"][0] == 1
+
+
+def test_default_dataset_baselines_excludes_expensive_monitors():
+    """GMM is cheap enough (EM, O(n*k*d^2)/iter) to run by default, but
+    oneclass_svm/svdd are not: each comparison monitor is fit on the full
+    anchor set (chunking only affects evaluation), and at aviation scale
+    (622k anchors) OC-SVM is O(n^2)-O(n^3) via libsvm while SVDD builds a
+    dense n x n kernel matrix for its QP (~3 TB at that size). Neither
+    `eval-vcas-rbf` nor `eval-hcas-rbf` overrides `references:`, so adding
+    either to the default would make those spec items unrunnable. They stay
+    available opt-in via an explicit `references:` list.
+    """
+    assert "gmm" in DEFAULT_DATASET_BASELINES
+    assert "oneclass_svm" not in DEFAULT_DATASET_BASELINES
+    assert "svdd" not in DEFAULT_DATASET_BASELINES
 
 
 def test_evaluate_init_exports():

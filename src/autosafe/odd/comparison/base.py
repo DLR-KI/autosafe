@@ -40,6 +40,25 @@ class DensityComparisonResult(TypedDict):
     superlevel_mask: npt.NDArray[np.bool_]  # Binary membership
 
 
+class MixtureComparisonResult(TypedDict):
+    """Results from Gaussian-mixture comparison methods."""
+
+    method: str  # "gmm"
+    log_likelihood: npt.NDArray[np.float64]  # Log-likelihood at reference points
+    threshold: FloatType  # Decision threshold gamma (log-likelihood space)
+    superlevel_mask: npt.NDArray[np.bool_]  # Binary membership
+    n_components: int  # BIC-selected component count
+
+
+class OneClassComparisonResult(TypedDict):
+    """Results from one-class SVM / SVDD comparison methods."""
+
+    method: str  # "oneclass_svm", "svdd"
+    scores: npt.NDArray[np.float64]  # Signed decision scores, + inside
+    threshold: FloatType  # Decision threshold (0.0 by convention)
+    membership_mask: npt.NDArray[np.bool_]  # Binary membership
+
+
 class KNNComparisonResult(TypedDict):
     """Results from KNN-based comparison methods."""
 
@@ -195,8 +214,10 @@ __all__ = [
     "DecisionBoundary",
     "DensityComparisonResult",
     "KNNComparisonResult",
+    "MixtureComparisonResult",
     "ODDBoundaryMethod",
     "ODDComparisonConfig",
     "ODIComparisonResult",
+    "OneClassComparisonResult",
     "validate_comparison_config",
 ]

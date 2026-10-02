@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 import numpy.typing as npt
 
+from autosafe.deduplication import DEDUP_ALGORITHM_VERSION, DeduplicationPolicy
 from autosafe.kernels.rbf import (
     calibrate_rbf_scale_d_tilde,
 )
@@ -120,6 +121,37 @@ def _odd_matches_cache_spec(odd: Samples, cache_spec: _ODDCacheSpec) -> bool:
         and odd.kernel_cls_str == cache_spec.kernel_type
         and odd.kernel_kwargs == cache_spec.kernel_kwargs
     )
+
+
+def _dedup_filename_tag(
+    policy: DeduplicationPolicy,
+    representative_points: "NPMatrix",
+) -> str:
+    """Build the ``-dedup<digest>`` cache tag for a de-duplication run.
+
+    De-duplication changes the anchor set, and neither
+    ``_load_neighbor_indices`` (mode/shape only) nor
+    ``_odd_matches_cache_spec`` (kernel settings only) would notice that
+    change, so an unversioned anchor-set change could be silently
+    absorbed by an existing cache. This follows the same
+    ``-ex<digest>``/``-ood<digest>`` precedent used for OOD exclusion:
+    the tag binds the algorithm version, the fully resolved policy,
+    and a digest of the resulting representative coordinates into the
+    cache path itself, so a different de-duplication outcome always
+    resolves to a different file.
+
+    Args:
+        policy (DeduplicationPolicy): Fully resolved de-duplication
+            policy.
+        representative_points (NPMatrix): Shape ``(n_cells, n_dims)``
+            retained representative coordinates.
+
+    Returns:
+        str: Filename tag of the form ``-dedup<8 hex chars>``.
+    """
+    pts = np.ascontiguousarray(np.asarray(representative_points, dtype=np.float64))
+    payload = f"v{DEDUP_ALGORITHM_VERSION}:{policy.digest()}:".encode() + pts.tobytes()
+    return f"-dedup{hashlib.sha256(payload).hexdigest()[:8]}"
 
 
 # Bump whenever the calibration implementation changes: it is hashed

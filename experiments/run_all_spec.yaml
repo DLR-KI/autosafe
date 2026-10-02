@@ -1,8 +1,15 @@
 # SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
 #
 # SPDX-License-Identifier: CC0-1.0
-# Batch spec for autosafe experiments run-spec
-# Runs Monte Carlo sampling configs (2D..12D) and dataset evaluation for HCAS/VCAS.
+#
+# ============================================================================
+# Batch spec for the ExperimentManager (`autosafe run-spec`).
+#
+# Scope: the manager-runnable (real-data / mc-sample) bucket only. The
+# paper's synthetic benchmark suite is a separate set of standalone scripts
+# (experiments/benchmark/run_*.py, orchestrated by
+# experiments/benchmark/run_all.py) and does NOT go through this manager.
+# ============================================================================
 experiments:
   # NOTE (deprecation): In run-spec mode, prefer setting `samples`,
   # `kernel_type`, and `kernel_kwargs` here in the experiment item.
@@ -49,55 +56,33 @@ experiments:
     mode: mc-sample
     config_file: experiments/dim_12d/sampling_config.yaml
 
-  - id: eval-iris
-    mode: dataset
-    dataset_path: data/iris.csv
-    evaluation_samples: 100000
-    threshold_mode: linear
-    threshold_count: 100
-
-  - id: eval-WineQT
-    mode: dataset
-    dataset_path: data/WineQT.csv
-    threshold_mode: linear
-    threshold_count: 100
-
-  - id: eval-hcas
-    mode: dataset
-    dataset_path: data/hcas_state_variables.csv
-    threshold_mode: linear
-    threshold_count: 100
-
-  - id: eval-vcas
-    mode: dataset
-    dataset_path: data/vcas_state_variables.csv
-    threshold_mode: linear
-    threshold_count: 100
-
   # ---------------------------------------------------------------------------
-  # HCAS/VCAS examples with kernel params + closest-sample caching
+  # Camera-ready calibrated production runs on real data (HCAS/VCAS). These
+  # back the paper's real-data numbers.
   #
-  # Cache behavior in evaluate workflow:
+  # Cache behavior in the evaluate workflow:
   # - Leave odd_json and odd_json_out unset.
-  # - ODD cache path is auto-derived from:
+  # - The ODD cache path is auto-derived from:
   #   dataset_path + closest_sample_mode + kernel_type + kernel_kwargs.
-  # - Jobs with same tuple above reuse closest samples/ODD from cache.
-  # ---------------------------------------------------------------------------
-
-  # NOTE: Rebuilding the global-mode ODD caches is expected and slow (hours).
-  # Before the production run, delete experiments/run_all_spec.state.json (or
-  # remove these two ids from it) because both ids are marked completed from
-  # the broken runs.
+  # - Jobs with the same tuple above reuse closest samples/ODD from cache.
   #
-  # NOTE (threshold sweep fix): threshold_mode was dropped from
+  # RUNTIME WARNING: the full-size VCAS/HCAS runs take on the order of a day
+  # each (622k anchors, global closest-sample mode). Do not run these in a
+  # dev session; the OOD/subsample items below are subsampled to stay
+  # tractable in comparison.
+  #
+  # NOTE: Rebuilding the global-mode ODD caches is expected and slow (hours).
+  # Before a fresh production run, delete
+  # experiments/run_all_spec.state.local.json (or remove the relevant ids
+  # from it) if it still marks these ids completed from a stale
+  # configuration -- the manager's resume logic will otherwise skip them.
+  #
+  # NOTE (threshold sweep fix): threshold_mode is intentionally unset on
   # eval-vcas-rbf, eval-hcas-rbf, and eval-minimal-hcas-rbf below. Dataset
-  # mode now always sweeps the adaptive two-sided "edges" grid
-  # (build_threshold_pairs) instead of the old fixed linear/log grids, which
-  # fixes the affinity-saturation-at-ζ=1 artifact (see
-  # docs/log-space-affinity.md). All three ids are already marked completed
-  # in experiments/run_all_spec.state.json from the old runs; remove them
-  # from that file (or delete it) before rerunning so the new grid actually
-  # gets applied.
+  # mode always sweeps the adaptive two-sided "edges" grid
+  # (build_threshold_pairs) instead of a fixed linear/log grid, which avoids
+  # an affinity-saturation-at-zeta=1 artifact (see docs/log-space-affinity.md).
+  # ---------------------------------------------------------------------------
   - id: eval-vcas-rbf
     mode: dataset
     dataset_path: data/vcas_state_variables.csv
@@ -128,6 +113,132 @@ experiments:
       auto_scale: true
     local_noise_mode: nn
     local_noise_multiplier: 3.0
+    threshold_count: 100
+
+  # ---------------------------------------------------------------------------
+  # OOD consistency loop on real data (VCAS). PREREQUISITE:
+  # data/vcas_ood_hole.csv -- the VCAS anchors inside the excluded near-CPA
+  # sub-box (h in [-300, 300] AND tau in [0, 8]), the same construction
+  # experiments/benchmark/run_held_out_vcas_hole.py::_vcas_with_hole uses for
+  # the synthetic-side held-out-hole experiment. One-off generation:
+  #   uv run python -c "import pandas as pd; df=pd.read_csv('data/vcas_state_variables.csv'); \
+  #     m=(df['h'].between(-300,300))&(df['tau'].between(0,8)); \
+  #     df[m].to_csv('data/vcas_ood_hole.csv', index=False)"
+  # (VCAS header: h,hdot_own,hdot_int,tau,s_adv.) This item enforces
+  # alpha(x) <= xi on those points and caches an -ood-tagged ODD, exercising
+  # the paper's non-convex OOD exclusion on real data through the shipped
+  # pipeline (not just the synthetic benchmark counterpart).
+  #
+  # See docs/ood-consistency.md for the underlying mathematics. In short:
+  # `dataset_path` is the FULL VCAS CSV while `ood_path` is the in-hole
+  # subset of that same file, so a naive anchor pool would include points
+  # that are also OOD points. A Gaussian at its own centre is exp(0)=1 for
+  # ANY Sigma, so `max alpha <= xi` would be unreachable if any anchor
+  # coincided with an OOD point -- the termination proof requires
+  # D_ID cap D_OOD = empty. `evaluate_dataset_mode` therefore SUBTRACTS the
+  # `ood_path` rows from the anchor pool before subsampling, so `dataset_path`
+  # can safely stay the full CSV. The ODD JSON and the nearest-neighbor .npz
+  # carry an `-ex<digest>` tag keyed to the OOD file so a cache built from an
+  # unfiltered pool is never silently reused. `Samples.enforce_ood_consistency`
+  # raises before running if any OOD point coincides with an anchor, and the
+  # per-point log-survival is maintained incrementally (O((M+N)n) per
+  # iteration rather than O(MNn)), which is what keeps this loop tractable at
+  # N=20,000 anchors. `ood_max_iterations` is raised above the default because
+  # the worst case sum_i K_i <= N*K is on the order of 1e6 at this N (see
+  # docs/ood-consistency.md for the derivation).
+  # ---------------------------------------------------------------------------
+  - id: eval-vcas-rbf-ood
+    mode: dataset
+    dataset_path: data/vcas_state_variables.csv # anchors = complement of ood_path
+    evaluation_samples: 200000
+    subsample_anchors: 20000
+    seed: 0
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_c: 1.0
+      calibration_s: 3.0
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.0
+    threshold_count: 100
+    ood_path: data/vcas_ood_hole.csv
+    ood_xi: 0.3
+    ood_shrink_factor: 0.9
+    ood_max_iterations: 2000000
+
+  # ---------------------------------------------------------------------------
+  # Anchor-subsampling stability on real data: same configuration, different
+  # subsample seeds/sizes, to compare the resulting curves and show
+  # sensitivity (or lack thereof) to ID subset size and selection.
+  # ---------------------------------------------------------------------------
+  - id: eval-vcas-rbf-sub5000-s1
+    mode: dataset
+    dataset_path: data/vcas_state_variables.csv
+    evaluation_samples: 200000
+    subsample_anchors: 5000
+    seed: 1
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_c: 1.0
+      calibration_s: 3.0
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.0
+    threshold_count: 100
+
+  - id: eval-vcas-rbf-sub5000-s2
+    mode: dataset
+    dataset_path: data/vcas_state_variables.csv
+    evaluation_samples: 200000
+    subsample_anchors: 5000
+    seed: 2
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_c: 1.0
+      calibration_s: 3.0
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.00
+    threshold_count: 100
+
+  # ===========================================================================
+  # NOT used in the paper. Working examples on small/public datasets, kept for
+  # manual sanity-checking of the manager and the dataset-evaluation pipeline.
+  # Their outputs are not published (they are not part of the reproduction
+  # bundle in experiments/benchmark/).
+  # ===========================================================================
+  - id: eval-iris
+    mode: dataset
+    dataset_path: data/iris.csv
+    evaluation_samples: 100000
+    threshold_mode: linear
+    threshold_count: 100
+
+  - id: eval-WineQT
+    mode: dataset
+    dataset_path: data/WineQT.csv
+    threshold_mode: linear
+    threshold_count: 100
+
+  - id: eval-hcas
+    mode: dataset
+    dataset_path: data/hcas_state_variables.csv
+    threshold_mode: linear
+    threshold_count: 100
+
+  - id: eval-vcas
+    mode: dataset
+    dataset_path: data/vcas_state_variables.csv
+    threshold_mode: linear
     threshold_count: 100
 
   - id: eval-minimal-hcas-rbf

@@ -16,9 +16,11 @@ from autosafe.odd.comparison.base import (
     DecisionBoundary,
     DensityComparisonResult,
     KNNComparisonResult,
+    MixtureComparisonResult,
     ODDBoundaryMethod,
     ODDComparisonConfig,
     ODIComparisonResult,
+    OneClassComparisonResult,
     validate_comparison_config,
 )
 from autosafe.odd.comparison.clustered_hull import ClusteredConvexHulls
@@ -29,6 +31,8 @@ from autosafe.odd.comparison.density import (
 )
 from autosafe.odd.comparison.kmeans import KMeansBoundaries, auto_detect_optimal_k
 from autosafe.odd.comparison.knn import KNNMonitor
+from autosafe.odd.comparison.mixture import GaussianMixtureBoundary
+from autosafe.odd.comparison.oneclass import OneClassSVMBoundary, SVDDBoundary
 
 __all__ = [
     "ClusteredConvexHulls",
@@ -37,12 +41,17 @@ __all__ = [
     "DBSCANCluster",
     "DecisionBoundary",
     "DensityComparisonResult",
+    "GaussianMixtureBoundary",
     "KMeansBoundaries",
     "KNNComparisonResult",
     "KNNMonitor",
+    "MixtureComparisonResult",
     "ODDBoundaryMethod",
     "ODDComparisonConfig",
     "ODIComparisonResult",
+    "OneClassComparisonResult",
+    "OneClassSVMBoundary",
+    "SVDDBoundary",
     "SuperlevelSetMonitor",
     "auto_detect_optimal_k",
     "validate_comparison_config",

@@ -477,6 +477,9 @@ class AutoSafeODD:
     ) -> float | npt.NDArray[np.float64]:
         """Evaluate linear-space affinity for one or more rows.
 
+        Args:
+            data (npt.ArrayLike): One row or a matrix of query rows.
+
         Returns:
             float | npt.NDArray[np.float64]: Affinity value or vector.
         """
@@ -491,6 +494,9 @@ class AutoSafeODD:
         data: npt.ArrayLike,
     ) -> float | npt.NDArray[np.float64]:
         """Evaluate stable ``log(1 - affinity)`` for query rows.
+
+        Args:
+            data (npt.ArrayLike): One row or a matrix of query rows.
 
         Returns:
             float | npt.NDArray[np.float64]: Log-survival value or
@@ -508,6 +514,9 @@ class AutoSafeODD:
         data: npt.ArrayLike,
     ) -> bool | npt.NDArray[np.bool_]:
         """Classify query rows using the authoritative log threshold.
+
+        Args:
+            data (npt.ArrayLike): One row or a matrix of query rows.
 
         Returns:
             bool | npt.NDArray[np.bool_]: Membership decision(s).

@@ -14,8 +14,7 @@ This folder contains ready-to-run experiment files for:
 
 For each dimension `dim_Xd` (`X = 2..12`):
 
-- `sampling_config.yaml`: unified Monte Carlo config
-  (sampling + embedded `odd` section)
+- `sampling_config.yaml`: unified Monte Carlo config (sampling + embedded `odd` section)
 
 ## Unified YAML config
 
@@ -48,6 +47,5 @@ The spec performs:
 
 - ODD limits are configured for `[-10, 10]` ranges.
 - Box limits are configured to exactly double ODD limits (`[-20, 20]`).
-- ODD constraints contain only coupling inequalities (no duplicated box
-  constraints), with one coupling constraint per dimension minus one.
+- ODD constraints contain only coupling inequalities (no duplicated box constraints), with one coupling constraint per dimension minus one.
 - Output JSON files are written under `experiments/results/`.

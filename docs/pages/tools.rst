@@ -69,8 +69,7 @@ Alias compatibility:
 
 ``baselines_only``:
 
-- When ``true`` on a spec item, the affinity ODD is loaded from ``odd_json`` instead of being rebuilt, and requires that cached ODD to match the requested kernel settings exactly -- it never silently refreshes or rebuilds one.
-  Use this to add new baseline-reference rows to an existing evaluation without re-incurring the (potentially expensive) ODD build, and with the autoSAFE affinity column guaranteed byte-identical to the run that produced ``odd_json``.
+- When ``true`` on a spec item, the affinity ODD is loaded from ``odd_json`` instead of being rebuilt, and requires that cached ODD to match the requested kernel settings exactly -- it never silently refreshes or rebuilds one. Use this to add new baseline-reference rows to an existing evaluation without re-incurring the (potentially expensive) ODD build, and with the autoSAFE affinity column guaranteed byte-identical to the run that produced ``odd_json``.
 
 sampling-results
 ^^^^^^^^^^^^^^^^

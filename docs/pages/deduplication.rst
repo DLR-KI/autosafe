@@ -34,11 +34,9 @@ The policy is a documented assurance input, not a hyperparameter
 ``resolution`` and ``origin`` describe the *acquisition system's* grid -- sensor quantization step, timestamp granularity, or another recorded acquisition resolution from the source system's metadata.
 They are not free parameters to search over:
 
-- Never choose or tune ``resolution``/``origin`` against evaluation metrics (precision, recall, coverage, or anything else computed downstream).
-  Doing so would let the de-duplication grid itself become an unaudited lever on the reported numbers.
+- Never choose or tune ``resolution``/``origin`` against evaluation metrics (precision, recall, coverage, or anything else computed downstream). Doing so would let the de-duplication grid itself become an unaudited lever on the reported numbers.
 - Document where a chosen ``resolution`` comes from (the sensor spec, the logging interval, etc.) alongside any result that used it.
-- When no coarser acquisition resolution is justified for a dataset, use :func:`~autosafe.deduplication.exact_equality_policy`, which builds a policy with a cell width far below any real sensor's precision (default ``epsilon=1e-12``).
-  It only ever merges records that are exact duplicates (up to floating-point/round-tripping noise), so it is always a safe, conservative default that never invents a coarser grid than the data already has.
+- When no coarser acquisition resolution is justified for a dataset, use :func:`~autosafe.deduplication.exact_equality_policy`, which builds a policy with a cell width far below any real sensor's precision (default ``epsilon=1e-12``). It only ever merges records that are exact duplicates (up to floating-point/round-tripping noise), so it is always a safe, conservative default that never invents a coarser grid than the data already has.
 
 The deterministic rule
 ------------------------
@@ -46,8 +44,7 @@ The deterministic rule
 Fixed by the paper's Algorithm 1, not a design choice made in this module:
 
 - **Cell assignment**: componentwise ``floor((x - o) / q)`` for the resolution vector ``q`` and grid origin ``o`` (the source system's own quantizer mapping, when available, in place of this formula).
-- **Representative selection**: the cell's representative is an *actually observed* member minimizing the dimensionless resolution-scaled distance ``‖(x - mean) / q‖₂`` -- never the synthetic cell mean itself.
-  The representative is always a row that was really recorded.
+- **Representative selection**: the cell's representative is an *actually observed* member minimizing the dimensionless resolution-scaled distance ``‖(x - mean) / q‖₂`` -- never the synthetic cell mean itself. The representative is always a row that was really recorded.
 - **Tie-break**: ties in that minimization break lexicographically, first by coordinates, then by a stable source-record identifier.
 - Cell means are computed in canonical (lexicographically sorted) member order, in float64.
 
@@ -59,23 +56,19 @@ Pipeline placement
 Within ``evaluate_dataset_mode`` (see ``src/autosafe/tools/evaluate/dataset/dedup_integration.py``, :func:`~autosafe.tools.evaluate.dataset.dedup_integration.run_dataset_deduplication`), the fixed order is:
 
 1. Load raw data with stable record ids (the row index).
-2. **Reserve split-conformal calibration records** -- the last ``dedup_n_calibration_reserved`` rows by row index are held out *before* de-duplication and never de-duplicated or instantiated as kernels.
-   They keep their original observed frequency, because a calibration set's job is to reflect the true operational distribution, not the deduplicated support set.
+2. **Reserve split-conformal calibration records** -- the last ``dedup_n_calibration_reserved`` rows by row index are held out *before* de-duplication and never de-duplicated or instantiated as kernels. They keep their original observed frequency, because a calibration set's job is to reflect the true operational distribution, not the deduplicated support set.
 3. Subtract OOD rows (exact match, in raw coordinates) from the remaining ID candidates.
 4. De-duplicate the ID candidates and, independently, the OOD set, under the same policy.
 5. Fit (or apply, if given externally) the normalizer on the retained ID representatives only -- fitting on the full, undeduplicated pool would let sampling density back into the geometry through the normalization statistics.
-6. Re-check ID/OOD disjointness in the normalized space used by the OOD consistency loop.
-7. **Anchor subsampling happens after de-duplication**: ``subsample_anchors`` is applied to the de-duplicated representative set inside ``_build_or_load_affinity_odd``, not to the raw candidate pool.
-   If subsampling ran first, it would draw from a pool whose density still reflected coverage rather than support.
+6. Re-check ID/OOD disjointedness in the normalized space used by the OOD consistency loop.
+7. **Anchor subsampling happens after de-duplication**: ``subsample_anchors`` is applied to the de-duplicated representative set inside ``_build_or_load_affinity_odd``, not to the raw candidate pool. If subsampling ran first, it would draw from a pool whose density still reflected coverage rather than support.
 
 Provenance artifact
 ----------------------
 
 :func:`~autosafe.tools.evaluate.dataset.dedup_integration.write_dedup_provenance` writes two files beside the dataset, both named with the same ``-dedup<digest>`` tag as the cache (see `Cache implications`_):
 
-- ``<dataset>-dedup-provenance<tag>.parquet``: one row per (cell, source-record), for every cell and every reserved calibration record.
-  Columns are ``label`` (``"id"``, ``"ood"``, or ``"calibration"``), ``cell_index`` (``-1`` for calibration rows, which are not de-duplicated), ``member_record_id``, ``member_rank`` (position within the cell's canonical member order), and ``is_representative``.
-  This is the full group membership -- potentially large -- so it is kept out of the ODD JSON entirely.
+- ``<dataset>-dedup-provenance<tag>.parquet``: one row per (cell, source-record), for every cell and every reserved calibration record. Columns are ``label`` (``"id"``, ``"ood"``, or ``"calibration"``), ``cell_index`` (``-1`` for calibration rows, which are not de-duplicated), ``member_record_id``, ``member_rank`` (position within the cell's canonical member order), and ``is_representative``. This is the full group membership -- potentially large -- so it is kept out of the ODD JSON entirely.
 - ``<dataset>-dedup-summary<tag>.json``: a small human-inspectable summary -- the resolved policy, ``id_n_input``/``id_n_output``/ ``id_n_duplicates``, the cell-multiplicity histogram (``id_cell_count_distribution``), input/output digests, the OOD result's input/output counts (``null`` when no OOD file was given), the label conflict count and a sample of conflicting cells, the calibration-reserved count, and the Parquet file's own path and SHA-256 digest.
 
 Cache implications
@@ -93,10 +86,8 @@ ID/OOD label conflicts
 
 Two distinct checks guard against ID and OOD anchors disagreeing about the same region of state space:
 
-- **Exact coordinate coincidence** between an ID and an OOD representative is always a hard error (:class:`~autosafe.exceptions.OODAnchorCoincidenceError`), raised inside ``run_dataset_deduplication`` after normalization.
-  It is not specific to de-duplication -- an anchor's affinity is 1 for any covariance, so the OOD consistency loop could never converge if an OOD point sat exactly on an anchor.
-- **Resolution-cell co-membership** without exact coincidence (:func:`~autosafe.deduplication.check_label_conflicts`) is weaker evidence: it means an ID and an OOD point were close enough to land in the same acquisition cell, which may or may not indicate an actual labeling problem.
-  By default this is only *reported* -- the conflicting cell ids are recorded in the provenance summary (``label_conflicts_count``/``label_conflicts_sample``) for a data owner to adjudicate -- and only raises (:class:`~autosafe.exceptions.DeduplicationLabelConflictError`) when ``dedup_strict_label_conflict``/``strict_label_conflict`` is explicitly set.
+- **Exact coordinate coincidence** between an ID and an OOD representative is always a hard error (:class:`~autosafe.exceptions.OODAnchorCoincidenceError`), raised inside ``run_dataset_deduplication`` after normalization. It is not specific to de-duplication -- an anchor's affinity is 1 for any covariance, so the OOD consistency loop could never converge if an OOD point sat exactly on an anchor.
+- **Resolution-cell co-membership** without exact coincidence (:func:`~autosafe.deduplication.check_label_conflicts`) is weaker evidence: it means an ID and an OOD point were close enough to land in the same acquisition cell, which may or may not indicate an actual labeling problem. By default this is only *reported* -- the conflicting cell ids are recorded in the provenance summary (``label_conflicts_count``/``label_conflicts_sample``) for a data owner to adjudicate -- and only raises (:class:`~autosafe.exceptions.DeduplicationLabelConflictError`) when ``dedup_strict_label_conflict``/``strict_label_conflict`` is explicitly set.
 
 Worked API example
 ----------------------
@@ -140,17 +131,17 @@ De-duplication stays off unless ``dedup_resolution`` is present:
 .. code-block:: yaml
 
     experiments:
-      - id: iris-dedup-demo
-        mode: dataset
-        dataset_path: data/iris.csv
-        evaluation_samples: 200
-        closest_sample_mode: global
-        kernel_type: RBF
-        csv_output: iris-dedup-demo.csv
-        odd_json_out: iris-dedup-demo-odd.json
-        dedup_resolution: [1e-12, 1e-12, 1e-12, 1e-12]
-        dedup_origin: [0.0, 0.0, 0.0, 0.0]
-        dedup_coordinate_space: raw
+        -   id: iris-dedup-demo
+            mode: dataset
+            dataset_path: data/iris.csv
+            evaluation_samples: 200
+            closest_sample_mode: global
+            kernel_type: RBF
+            csv_output: iris-dedup-demo.csv
+            odd_json_out: iris-dedup-demo-odd.json
+            dedup_resolution: [1e-12, 1e-12, 1e-12, 1e-12]
+            dedup_origin: [0.0, 0.0, 0.0, 0.0]
+            dedup_coordinate_space: raw
 
 Running this spec against ``data/iris.csv`` reproduces the same 150 -> 147 collapse as the API example above, and additionally writes the ``-dedup<digest>``-tagged provenance Parquet/JSON pair beside the dataset.
 The full set of de-duplication spec keys:

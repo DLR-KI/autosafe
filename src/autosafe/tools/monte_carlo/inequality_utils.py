@@ -166,6 +166,12 @@ def _normalize_constraint(
             f"space dimension {dim}",
         )
 
+    # Keep the constraint as written, for the description: negating
+    # the coefficients and bound while keeping the original relation
+    # symbol names the opposite half-space.
+    written_coefficients = list(coefficients)
+    written_bound = bound
+
     if relation in {">=", ">"}:
         coefficients = [-c for c in coefficients]
         bound = -bound
@@ -174,8 +180,8 @@ def _normalize_constraint(
 
     description = (
         "("
-        + " ".join(f"{coefficients[i]:g}x{i + 1}" for i in range(dim))
-        + f") {relation} {bound:g}"
+        + " ".join(f"{written_coefficients[i]:g}x{i + 1}" for i in range(dim))
+        + f") {relation} {written_bound:g}"
     )
     return coefficients, relation, bound, description
 

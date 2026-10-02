@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
 #
 # SPDX-License-Identifier: MIT
-import math
 import re
 from typing import Any
 
@@ -10,6 +9,7 @@ import msgspec.json
 import numpy as np
 import pytest
 
+from autosafe.exceptions import EmptyODDError
 from autosafe.kernels.rbf import RBFKernel
 from autosafe.sample import Sample
 from autosafe.samples import (
@@ -881,20 +881,15 @@ def test_affinity_batched_matches_loop():
     )
 
 
-def test_samples_call_empty_samples_1d():
-    """Empty Samples returns 0.0 for a 1-D query."""
-    s = Samples([])
-    result = s(np.array([1.0, 2.0, 3.0]))
-    assert math.isclose(float(result), 0.0)
-
-
-def test_samples_call_empty_samples_matrix():
-    """Empty Samples returns zero vector for a 2-D query."""
-    s = Samples([])
-    pts = np.array([[1.0, 2.0], [3.0, 4.0]])  # shape (2, 2)
-    result = s(pts)
-    assert result.shape[0] > 0
-    assert math.isclose(float(np.asarray(result).sum()), 0.0)
+@pytest.mark.parametrize(
+    "x",
+    [np.array([1.0, 2.0, 3.0]), np.zeros((5, 2)), np.zeros((2, 5))],
+    ids=["vector", "rows", "columns"],
+)
+def test_samples_call_empty_samples_raises(x: np.ndarray):
+    """An ODD without anchors cannot be evaluated."""
+    with pytest.raises(EmptyODDError, match="no anchor points"):
+        Samples([])(x)
 
 
 def test_affinity_full_dense_basic():
@@ -920,3 +915,81 @@ def test_get_tile_unknown_variant_raises():
 
     with pytest.raises(ValueError, match="unknown variant"):
         _build_tile("not_a_real_variant_xyz")
+
+
+def _full_covariance_samples() -> Samples:
+    """Three 2D anchors whose kernels all have a rotated (non-diagonal) sigma.
+
+    Returns:
+        Samples: The ODD, with its batch cache invalidated.
+    """
+    odd = Samples(
+        [Sample(x=np.array(p)) for p in ([0.0, 0.0], [1.0, 0.5], [-0.5, 1.0])],
+        closest_sample_mode="global",
+        kernel_cls="RBF",
+    )
+    sigma = np.array([[0.5, 0.3], [0.3, 0.4]])
+    for s in odd.samples:
+        assert isinstance(s.kernel, RBFKernel)
+        s.kernel.update(sigma=sigma)
+    odd.invalidate_batch_cache()
+    return odd
+
+
+def test_affinity_dual_full_covariance_matches_reference():
+    odd = _full_covariance_samples()
+    _, _, all_diagonal = odd.batch_arrays()
+    assert not all_diagonal
+
+    x = np.array([[0.2, 0.1], [2.0, -1.0], [0.5, 0.5], [-3.0, 3.0]])
+    sigma_inv = np.linalg.inv(np.array([[0.5, 0.3], [0.3, 0.4]]))
+    anchors = np.array([s.x for s in odd.samples])
+    diff = x[None, :, :] - anchors[:, None, :]
+    k = np.exp(-0.5 * np.einsum("nmd,de,nme->nm", diff, sigma_inv, diff))
+
+    alpha, survival = odd.affinity_dual(x)
+    np.testing.assert_allclose(alpha, 1.0 - np.prod(1.0 - k, axis=0), atol=1e-12)
+    np.testing.assert_allclose(survival, np.sum(np.log1p(-k), axis=0), rtol=1e-10)
+
+    alpha_0, survival_0 = odd.affinity_dual(x[0])
+    assert np.isclose(float(alpha_0), float(alpha[0]))
+    assert np.isclose(float(survival_0), float(survival[0]))
+
+
+@pytest.mark.parametrize("x", [np.zeros(2), np.zeros((5, 2))], ids=["vector", "matrix"])
+def test_affinity_dual_empty_samples_raises(x: np.ndarray):
+    with pytest.raises(EmptyODDError, match="no anchor points"):
+        Samples([]).affinity_dual(x)
+
+
+def test_sync_kernel_cache_invalidates_for_non_diagonal_kernel():
+    odd = Samples(
+        [Sample(x=np.array(p)) for p in ([0.0, 0.0], [1.0, 1.0])],
+        closest_sample_mode="global",
+        kernel_cls="RBF",
+    )
+    odd.batch_arrays()  # build the all-diagonal fast-path cache
+    kern = odd.samples[0].kernel
+    assert isinstance(kern, RBFKernel)
+    kern.update(sigma=np.array([[0.5, 0.3], [0.3, 0.4]]))
+    odd.sync_kernel_cache(0)
+    _, _, all_diagonal = odd.batch_arrays()
+    assert not all_diagonal
+
+
+def test_sync_kernel_cache_keeps_affinity_exact_for_non_diagonal_kernel():
+    odd = Samples(
+        [Sample(x=np.array(p)) for p in ([0.0, 0.0], [1.0, 1.0])],
+        closest_sample_mode="global",
+        kernel_cls="RBF",
+    )
+    x = np.array([[0.3, -0.2], [0.8, 1.1]])
+    odd.batch_arrays()
+    kern = odd.samples[0].kernel
+    assert isinstance(kern, RBFKernel)
+    kern.update(sigma=np.array([[0.5, 0.3], [0.3, 0.4]]))
+    odd.sync_kernel_cache(0)
+    alpha, _ = odd.affinity_dual(x)
+    # Reference: the per-sample loop, which never uses the batch cache.
+    k = np.array([[float(s(p)) for p in x] for s in odd.samples])
+    np.testing.assert_allclose(alpha, 1.0 - np.prod(1.0 - k, axis=0), atol=1e-12)

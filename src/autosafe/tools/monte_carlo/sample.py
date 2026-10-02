@@ -63,7 +63,11 @@ def _resolve_odd(
         ValueError: If the custom ODD configuration cannot be parsed.
         NotImplementedError: If the ODD type is not supported.
     """
-    if hasattr(config, "custom_odd_config") and config.get("custom_odd_config"):
+    # `config` is a MonteCarloConfig, i.e. a TypedDict, which is a plain
+    # dict at runtime -- `hasattr` never sees its keys, so guarding with
+    # `hasattr` silently disabled every polytope ODD and fell through to
+    # the box branch below. Guard on the key itself.
+    if config.get("custom_odd_config"):
         custom_odd_config = config["custom_odd_config"]
         if isinstance(custom_odd_config, str) and custom_odd_config.endswith((
             ".yaml",

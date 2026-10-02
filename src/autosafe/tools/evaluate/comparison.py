@@ -12,10 +12,13 @@ from autosafe.odd.comparison import (
     ClusteredConvexHulls,
     ClusteredSuperlevelSetMonitor,
     DBSCANCluster,
+    GaussianMixtureBoundary,
     KMeansBoundaries,
     KNNMonitor,
     ODDBoundaryMethod,
+    OneClassSVMBoundary,
     SuperlevelSetMonitor,
+    SVDDBoundary,
 )
 from autosafe.odd.comparison.base import DecisionBoundary
 from autosafe.typing import FloatType, Matrix, NPMatrix, NPVector, Vector
@@ -223,6 +226,23 @@ def create_comparison_monitor(method_name: str, **params: Any) -> ODDBoundaryMet
         ),
         # New fast approximation method
         "fast_hull_approx": FastHullApproximation,
+        "gmm": lambda: GaussianMixtureBoundary(
+            random_state=params.get("random_state", 0),
+            n_components_range=params.get("n_components_range", (1, 10)),
+            gamma=params.get("gamma"),
+        ),
+        "oneclass_svm": lambda: OneClassSVMBoundary(
+            gamma=params.get("gamma", "scale"),
+            nu=params.get("nu", 0.05),
+            auto_select=params.get("auto_select", False),
+        ),
+        "svdd": lambda: SVDDBoundary(
+            kernel=params.get("kernel", "rbf"),
+            gamma=params.get("gamma", "scale"),
+            nu=params.get("nu", 0.05),
+            degree=params.get("degree", 3),
+            coef0=params.get("coef0", 0.0),
+        ),
     }
 
     if method_name not in method_instances:
@@ -249,6 +269,9 @@ def get_available_method_names() -> list[str]:
         "density_clustered",
         "dbscan_cluster",
         "fast_hull_approx",
+        "gmm",
+        "oneclass_svm",
+        "svdd",
     ]
 
 

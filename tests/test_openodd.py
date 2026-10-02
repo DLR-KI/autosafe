@@ -116,15 +116,15 @@ def test_validator_rejects_unknown_condition_reference() -> None:
 def test_validator_rejects_duplicate_yaml_keys() -> None:
     text = """
 TAXONOMY:
-  conditions:
-    speed: float velocity
+    conditions:
+        speed: float velocity
 ODD:
-  main:
-    TITLE: First
-    TITLE: Second
-    ACTIVE: true
-    INCLUDE_AND:
-      speed: "[0 .. 10] km/h"
+    main:
+        TITLE: First
+        TITLE: Second
+        ACTIVE: true
+        INCLUDE_AND:
+            speed: "[0 .. 10] km/h"
 """
     with pytest.raises(OpenODDValidationError, match="duplicate YAML key"):
         parse_openodd_yaml(text)
@@ -302,7 +302,9 @@ def test_full_covariance_boxes_and_kernel_errors() -> None:
         )
 
 
-def test_nonfinite_original_bounds_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_nonfinite_original_bounds_are_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         exporter,
         "_normalized_kernel_boxes",
@@ -320,21 +322,27 @@ def test_integer_and_categorical_regions_can_be_unrepresentable() -> None:
         concept_id="count",
         primitive_type="integer",
     )
-    assert exporter._numeric_expression(
-        integer,
-        np.array([0.1]),
-        np.array([0.9]),
-    ) is None
+    assert (
+        exporter._numeric_expression(
+            integer,
+            np.array([0.1]),
+            np.array([0.9]),
+        )
+        is None
+    )
     categorical = OpenODDCategoricalFeature(
         indices=(0,),
         concept_id="color",
         literals={"red": (1.0,)},
     )
-    assert exporter._region_conditions(
-        (categorical,),
-        np.array([0.0]),
-        np.array([0.5]),
-    ) is None
+    assert (
+        exporter._region_conditions(
+            (categorical,),
+            np.array([0.0]),
+            np.array([0.5]),
+        )
+        is None
+    )
 
 
 def test_build_skips_unrepresentable_and_duplicate_regions(

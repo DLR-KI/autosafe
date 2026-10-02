@@ -536,6 +536,9 @@ def parse_openodd_yaml(text: str) -> dict[str, Any]:
 def load_openodd_yaml(path: pathlib.Path | str) -> dict[str, Any]:
     """Load and validate an ASAM OpenODD 1.0.0 YAML file.
 
+    Args:
+        path (pathlib.Path | str): YAML file to load.
+
     Returns:
         dict[str, Any]: Validated YAML mapping.
     """
@@ -545,6 +548,9 @@ def load_openodd_yaml(path: pathlib.Path | str) -> dict[str, Any]:
 
 def dump_openodd_yaml(document: Mapping[str, object]) -> str:
     """Validate and serialize an ASAM OpenODD 1.0.0 YAML document.
+
+    Args:
+        document (Mapping[str, object]): Decoded OpenODD document.
 
     Returns:
         str: YAML source.

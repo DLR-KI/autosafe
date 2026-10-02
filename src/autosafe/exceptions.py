@@ -115,6 +115,128 @@ class EmptyAnchorPoolError(ValueError):
         )
 
 
+class BaselinesOnlyRequiresCachedODDError(ValueError):
+    """Raised when ``baselines_only`` is set without a cached ODD JSON.
+
+    ``baselines_only`` exists to skip the expensive affinity-ODD
+    build/calibration step and reuse a previously exported ODD; without
+    ``odd_json`` there is nothing to reuse, so proceeding would either
+    fail downstream or silently perform the full (expensive) rebuild it
+    was meant to avoid.
+    """
+
+    def __init__(self, dataset_path: Path) -> None:
+        super().__init__(
+            f"baselines_only=True requires a cached odd_json for "
+            f"{dataset_path}, since its entire purpose is to reuse an "
+            "already-built affinity ODD instead of rebuilding one. Pass "
+            "the odd_json path written by the original (non-baselines_only) "
+            "run."
+        )
+
+
+class BaselinesOnlyCacheMismatchError(ValueError):
+    """Raised when the cached ODD does not match the requested kernel.
+
+    Silently refreshing kernels to match would recompute calibration
+    and contradict the guarantee ``baselines_only`` exists to provide:
+    that the autoSAFE affinity column stays byte-identical to the
+    already-reported run.
+    """
+
+    def __init__(self, odd_json: Path) -> None:
+        super().__init__(
+            f"baselines_only=True but the cached ODD at {odd_json} does not "
+            "match the requested closest_sample_mode/kernel_type/"
+            "kernel_kwargs. Refreshing it would recompute kernel "
+            "calibration, contradicting the byte-identical-autoSAFE "
+            "guarantee baselines_only exists to provide. Rebuild the ODD "
+            "for these kernel settings without baselines_only first, then "
+            "point odd_json at the result."
+        )
+
+
+class DeduplicationDimensionMismatchError(ValueError):
+    """Raised when a policy and a point array disagree on dimension.
+
+    Covers both a wrong-length ``resolution``/``origin`` vector (a
+    partial vector) and a point array whose column count does not match
+    the policy. See ``src/autosafe/deduplication.py``.
+    """
+
+    def __init__(self, expected: int, got: int) -> None:
+        super().__init__(
+            f"de-duplication policy is defined for {expected} dimension(s) "
+            f"but the input has {got}; resolution, origin and the point "
+            "array must all agree on dimensionality. Partial resolution/"
+            "origin vectors are rejected rather than silently broadcast or "
+            "truncated."
+        )
+
+
+class InvalidResolutionVectorError(ValueError):
+    """Raised when a resolution component is not positive and finite.
+
+    The acquisition resolution is a documented assurance input, never a
+    tuned hyperparameter, so a zero, negative, ``NaN`` or infinite entry
+    is rejected outright rather than silently clamped.
+    """
+
+    def __init__(self, index: int, value: float) -> None:
+        super().__init__(
+            f"resolution[{index}] = {value!r} is not a positive finite "
+            "number; every dimension's acquisition resolution must be "
+            "documented and strictly positive."
+        )
+
+
+class NonFiniteCoordinateError(ValueError):
+    """Raised when de-duplication input has a non-finite coordinate."""
+
+    def __init__(self, n_bad: int, n_total: int, first_index: int) -> None:
+        super().__init__(
+            f"{n_bad} of {n_total} input points contain a non-finite "
+            f"coordinate (first at row {first_index}); de-duplication "
+            "requires finite coordinates throughout."
+        )
+
+
+class MissingRecordIdentifierError(ValueError):
+    """Raised when ``record_ids`` is incomplete or mismatched in length.
+
+    Every input row must resolve to exactly one stable identifier:
+    either every row supplies one explicitly, or none do (the row
+    index is used instead). A partially supplied sequence, or one
+    containing ``None``, is rejected rather than silently patched.
+    """
+
+    def __init__(self, expected: int, got: int) -> None:
+        super().__init__(
+            f"record_ids must supply exactly one identifier per input row "
+            f"({expected} expected, {got} usable entries found; a missing "
+            "entry counts as unusable); omit record_ids entirely to fall "
+            "back to the row index."
+        )
+
+
+class DeduplicationLabelConflictError(ValueError):
+    """Raised when an ID/OOD resolution cell coincides, strict mode.
+
+    Cell co-membership between the ID and OOD de-duplication results
+    is reported for data-owner adjudication by default; this error is
+    raised only when the caller opts into the strict label-conflict
+    flag.
+    """
+
+    def __init__(self, n_conflicts: int, first_cell: tuple[int, ...]) -> None:
+        super().__init__(
+            f"{n_conflicts} resolution cell(s) contain both ID and OOD "
+            f"representatives (first at cell {first_cell}); this is "
+            "reported for data-owner adjudication and raised as an error "
+            "only because strict label-conflict checking is enabled."
+        )
+
+
 class ConvexHullError(RuntimeError):
     """Raised when hull creation fails for every Qhull strategy."""
 
@@ -122,6 +244,39 @@ class ConvexHullError(RuntimeError):
         super().__init__(
             "Convex hull computation failed for all Qhull options. "
             "Input points are likely degenerate."
+        )
+
+
+class EmptyODDError(ValueError):
+    """Raised when evaluating the affinity of an ODD without anchors.
+
+    With no anchors the affinity is undefined in practice, and the ODD
+    does not know its dimension, so it cannot even tell which axis of a
+    query matrix indexes the points.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "cannot evaluate an ODD that has no anchor points; add samples "
+            "before evaluating it."
+        )
+
+
+class SigmaNotInvertibleError(ValueError):
+    """Raised when a kernel's sigma cannot be repaired to be invertible.
+
+    A sigma without a finite inverse is first repaired by flooring its
+    eigenvalues at machine epsilon. That repair needs a finite
+    eigendecomposition, which fails when every entry of sigma is
+    subnormal, e.g. a scalar sigma below the smallest normal float64.
+    """
+
+    def __init__(self, dim: int) -> None:
+        super().__init__(
+            f"the {dim}x{dim} sigma matrix is not invertible and could not "
+            "be repaired: its inverse is still not finite after flooring the "
+            "eigenvalues. Its entries are likely too small for float64 (e.g. "
+            "a scalar sigma below the smallest normal float)."
         )
 
 
@@ -143,12 +298,20 @@ class NearAnchorOODWarning(UserWarning):
 
 
 __all__ = [
+    "BaselinesOnlyCacheMismatchError",
+    "BaselinesOnlyRequiresCachedODDError",
     "ConvexHullError",
+    "DeduplicationDimensionMismatchError",
+    "DeduplicationLabelConflictError",
     "EmptyAnchorPoolError",
+    "InvalidResolutionVectorError",
     "KernelSaturationError",
+    "MissingRecordIdentifierError",
     "NearAnchorOODWarning",
+    "NonFiniteCoordinateError",
     "OODAnchorCoincidenceError",
     "OODConsistencyNotReachedError",
     "OODDimensionMismatchError",
     "RowShapeMismatchError",
+    "SigmaNotInvertibleError",
 ]

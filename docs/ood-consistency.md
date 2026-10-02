@@ -97,8 +97,8 @@ The incident's implementation applied step 3 as two *independent* updates, $\Sig
 Two consequences, both observed:
 
 1. **The `max_iterations = 10^6` cap permits far more iterations than the arithmetic supports.**
-   Past $t \approx 6.6\cdot10^3$ the loop computes $0 \cdot \infty = \texttt{NaN}$, `np.argmax` over an array containing `NaN` returns the first `NaN` index, `NaN <= xi` is `False`, and the loop continues on corrupted state.
-   Note that `sigma_inv` is *not* "finite for any finite iteration count", as was once assumed: it is finite only for $t \lesssim 6.6\cdot10^3$.
+  Past $t \approx 6.6\cdot10^3$ the loop computes $0 \cdot \infty = \texttt{NaN}$, `np.argmax` over an array containing `NaN` returns the first `NaN` index, `NaN <= xi` is `False`, and the loop continues on corrupted state.
+  Note that `sigma_inv` is *not* "finite for any finite iteration count", as was once assumed: it is finite only for $t \lesssim 6.6\cdot10^3$.
 2. **$\Sigma$ and $\Sigma^{-1}$ stopped being consistent inverses long before either saturated**, because $c$ and $c^{-1}$ are not exact reciprocals in binary floating point, so scaling the two arrays independently lets them drift apart.
 
 ### 3.1 What the implementation does instead
@@ -153,10 +153,10 @@ The reported `max_ood_affinity` is therefore backed by an exact sweep, and the r
 
 Disjoint synthetic ID/OOD sets ($n = 5$, $\xi = 0.3$, $c = 0.9$), comparing the measured loop against $T \times$ the measured cost of one full $M \times N$ sweep---the pre-fix per-iteration cost:
 
-| $N$ | $M$ | $T$ | loop | ms/iter | exact sweeps | one sweep | pre-fix estimate | speedup |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 000 | 5 000 | 77 493 | 31.5 s | 0.41 | 79 | 6.6 ms | 512 s | **16.2×** |
-| 8 000 | 15 000 | 343 020 | 327 s | 0.95 | 345 | 41.1 ms | 14 109 s | **43.1×** |
+|   $N$ |    $M$ |     $T$ |   loop | ms/iter | exact sweeps | one sweep | pre-fix estimate |   speedup |
+| ----: | -----: | ------: | -----: | ------: | -----------: | --------: | ---------------: | --------: |
+| 2 000 |  5 000 |  77 493 | 31.5 s |    0.41 |           79 |    6.6 ms |            512 s | **16.2×** |
+| 8 000 | 15 000 | 343 020 |  327 s |    0.95 |          345 |   41.1 ms |         14 109 s | **43.1×** |
 
 Both runs verify $\max_y \alpha(y) = 0.29997 \le \xi$ against an independent evaluation.
 The per-iteration cost is dominated by fixed NumPy/Python overhead rather than arithmetic---$(M+N)n$ is only $4\cdot10^{5}$ element operations at the second row---so the speedup is *overhead*-limited and grows with $MN/(M+N)$ (1 429 and 5 217 for the two rows) rather than tracking it exactly.

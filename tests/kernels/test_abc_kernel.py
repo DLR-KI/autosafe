@@ -10,4 +10,4 @@ from autosafe.kernels import Kernel
 def test_kernel_abstract_methods_raises_typeerror():
     """Test that abstract methods raise TypeError when called."""
     with pytest.raises(TypeError):
-        _ = Kernel()  # ty: ignore[missing-argument]
+        _ = Kernel()  # ty: ignore[call-non-callable, missing-argument]

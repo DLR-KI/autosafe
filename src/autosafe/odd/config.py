@@ -871,6 +871,9 @@ class AutoSafeConfig:
     ) -> dict[str, object]:
         """Serialize parameters using canonical or paper names.
 
+        Args:
+            style (Literal["canonical", "paper"]): Output naming style.
+
         Returns:
             dict[str, object]: JSON-compatible configuration mapping.
 

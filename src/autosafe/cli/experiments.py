@@ -8,6 +8,7 @@ from typing import Annotated, Any, cast
 
 import typer
 
+from autosafe.deduplication import DeduplicationPolicy
 from autosafe.tools.evaluate.workflows import (
     collect_monte_carlo_files,
     evaluate_dataset_mode,
@@ -355,6 +356,54 @@ def glob_run_mc_sample(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _resolve_dedup_policy(item: dict[str, Any]) -> DeduplicationPolicy | None:
+    """Resolve the optional de-duplication policy spec keys.
+
+    OFF BY DEFAULT: returns ``None`` (de-duplication disabled) unless
+    the spec item supplies ``dedup_resolution`` explicitly.
+
+    Args:
+        item (dict[str, Any]): One ``run-spec`` dataset-mode item.
+
+    Returns:
+        DeduplicationPolicy | None: The resolved policy, or ``None``
+            when ``dedup_resolution`` is absent.
+
+    Raises:
+        TypeError: If ``dedup_resolution``/``dedup_origin`` are
+            supplied but are not sequences of numbers.
+        ValueError: If ``dedup_coordinate_space`` is set and is neither
+            ``"raw"`` nor ``"normalized"``.
+    """
+    raw_resolution = item.get("dedup_resolution")
+    if raw_resolution is None:
+        return None
+    if not isinstance(raw_resolution, list):
+        raise TypeError(f"dedup_resolution must be a list, got {type(raw_resolution)}")
+    resolution = tuple(float(v) for v in raw_resolution)
+
+    raw_origin = item.get("dedup_origin")
+    if raw_origin is None:
+        origin = tuple(0.0 for _ in resolution)
+    else:
+        if not isinstance(raw_origin, list):
+            raise TypeError(f"dedup_origin must be a list, got {type(raw_origin)}")
+        origin = tuple(float(v) for v in raw_origin)
+
+    coordinate_space = str(item.get("dedup_coordinate_space", "raw"))
+    if coordinate_space not in {"raw", "normalized"}:
+        raise ValueError(
+            f"dedup_coordinate_space must be 'raw' or 'normalized', got "
+            f"{coordinate_space!r}"
+        )
+
+    return DeduplicationPolicy(
+        resolution=resolution,
+        origin=origin,
+        coordinate_space=coordinate_space,  # type: ignore[arg-type]
+    )
+
+
 def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # ruff:ignore[too-many-locals]
     dataset_path = pathlib.Path(str(item["dataset_path"]))
     comparison_methods = item.get("comparison_methods")
@@ -393,6 +442,10 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # ruff:ignore[too
     ood_shrink_factor = float(item.get("ood_shrink_factor", 0.9))
     ood_max_iterations = int(item.get("ood_max_iterations", 1_000_000))
     ood_batch_jump = bool(item.get("ood_batch_jump"))
+    baselines_only = bool(item.get("baselines_only"))
+    dedup_policy = _resolve_dedup_policy(item)
+    dedup_n_calibration_reserved = int(item.get("dedup_n_calibration_reserved", 0))
+    dedup_strict_label_conflict = bool(item.get("dedup_strict_label_conflict"))
 
     _, csv_path, odd_path = evaluate_dataset_mode(
         dataset_path=dataset_path,
@@ -427,6 +480,10 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # ruff:ignore[too
         ood_shrink_factor=ood_shrink_factor,
         ood_max_iterations=ood_max_iterations,
         ood_batch_jump=ood_batch_jump,
+        baselines_only=baselines_only,
+        dedup_policy=dedup_policy,
+        dedup_n_calibration_reserved=dedup_n_calibration_reserved,
+        dedup_strict_label_conflict=dedup_strict_label_conflict,
     )
     return {
         "mode": "dataset",

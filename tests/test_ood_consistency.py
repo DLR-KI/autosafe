@@ -20,6 +20,12 @@ from autosafe.exceptions import (
     OODDimensionMismatchError,
     RowShapeMismatchError,
 )
+from autosafe.kernels.rbf import RBFKernel as _RBFKernel
+from autosafe.ood_consistency import (
+    batch_shrink_count,
+    invert_covariance,
+    kernel_over_points,
+)
 from autosafe.sample import Sample
 from autosafe.samples import Samples, rows_in
 
@@ -365,3 +371,82 @@ def test_max_iterations_message_is_honest() -> None:
     assert "raise max_iterations" in message
     assert "(near-)coincident" in message
     assert "xi may be too small" not in message
+
+
+def test_full_covariance_constraint_satisfied() -> None:
+    """The adjustment also holds for rotated (non-diagonal) kernels."""
+    odd, ood = _build_fixture()
+    sigma = np.array([[1.0, 0.6], [0.6, 1.0]])
+    for s in odd.samples:
+        assert isinstance(s.kernel, _RBFKernel)
+        s.kernel.update(sigma=sigma)
+    odd.invalidate_batch_cache()
+    assert not odd.batch_arrays()[2]
+
+    xi = 0.3
+    assert float(np.max(np.asarray(odd.affinity_dual(ood)[0]))) > xi
+    summary = odd.enforce_ood_consistency(ood, xi=xi, shrink_factor=0.9)
+    assert cast("int", summary["iterations"]) > 0
+    alpha, _ = odd.affinity_dual(ood)
+    assert float(np.max(np.asarray(alpha))) <= xi + 1e-9
+    # Shrinking keeps sigma and sigma_inv mutually consistent.
+    for s in odd.samples:
+        assert isinstance(s.kernel, _RBFKernel)
+        assert s.kernel.sigma is not None
+        assert s.kernel.sigma_inv is not None
+        np.testing.assert_allclose(
+            s.kernel.sigma @ s.kernel.sigma_inv, np.eye(2), atol=1e-8
+        )
+
+
+def test_invert_covariance_dense_and_singular() -> None:
+    sigma = np.array([[2.0, 0.5], [0.5, 1.0]])
+    np.testing.assert_allclose(invert_covariance(sigma), np.linalg.inv(sigma))
+    singular = np.array([[1.0, 1.0], [1.0, 1.0]])
+    assert np.all(np.isinf(invert_covariance(singular)))
+
+
+def test_kernel_over_points_requires_sigma_inv() -> None:
+    with pytest.raises(RuntimeError, match="kernel has no sigma_inv"):
+        kernel_over_points(_RBFKernel(x_i=np.zeros(2)), np.zeros((3, 2)))
+
+
+@pytest.mark.parametrize(
+    ("k_old_worst", "survival_worst", "log_target"),
+    [
+        (0.0, -1.0, -0.5),  # kernel value already zero
+        (1.0, -1.0, -0.5),  # exact hit: no finite Mahalanobis distance
+        # Other kernels contribute nothing (L(x*) == log(1 - k_i*)) and xi
+        # is so close to 1 that 1 - exp(log_target) rounds to 1: b == 0.
+        (0.5, float(np.log1p(-0.5)), -50.0),
+    ],
+    ids=["k_zero", "k_one", "b_underflow"],
+)
+def test_batch_shrink_count_degenerate_inputs_fall_back_to_one(
+    k_old_worst: float, survival_worst: float, log_target: float
+) -> None:
+    sigma = np.eye(2)
+    count = batch_shrink_count(
+        survival_worst=survival_worst,
+        log1m_old_worst=float(np.log1p(-k_old_worst)) if k_old_worst < 1 else -np.inf,
+        k_old_worst=k_old_worst,
+        k_vals=np.array([k_old_worst, 0.0]),
+        i_star=0,
+        log_target=log_target,
+        shrink_factor=0.9,
+        sigma=sigma,
+        sigma_inv=sigma,
+    )
+    assert count == 1
+
+
+def test_non_rbf_kernel_is_rejected() -> None:
+    """OOD consistency only knows how to shrink RBF kernels."""
+    odd = Samples(
+        [Sample(x=np.array(p)) for p in ([0.0, 0.0], [1.0, 0.0])],
+        closest_sample_mode="global",
+        kernel_cls="Laplacian",
+        kernel_kwargs={"alpha": 0.5},
+    )
+    with pytest.raises(TypeError, match="only supports RBFKernel"):
+        odd.enforce_ood_consistency(np.array([[0.5, 0.1]]), xi=0.1)

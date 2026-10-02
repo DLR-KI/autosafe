@@ -103,7 +103,7 @@ def kernel_over_points(
         raise RuntimeError("kernel has no sigma_inv")
     diff = np.asarray(points, dtype=float) - np.asarray(kern.x_i, dtype=float)
     inv = np.asarray(kern.sigma_inv, dtype=float)
-    if kern._sigma_is_diagonal:  # ruff:ignore[private-member-access]
+    if kern.sigma_is_diagonal:
         mahal = np.einsum("md,d->m", diff * diff, np.diag(inv))
     else:
         mahal = np.einsum("md,de,me->m", diff, inv, diff)
@@ -247,7 +247,7 @@ def _dominant_kernel(
     k_vals = kernel_values_at(odd, point)
     i_star = int(np.argmax(k_vals))
     kern = odd.samples[i_star].kernel
-    if kern is None:
+    if kern is None:  # pragma: no cover
         raise RuntimeError(f"Kernel {i_star} is not defined.")
     if not isinstance(kern, RBFKernel):
         raise TypeError(
@@ -545,7 +545,7 @@ def _adjust_loop(  # ruff:ignore[too-many-arguments]
     odd: "Samples",
     ood: npt.NDArray[np.float64],
     state: _LoopState,
-    progress: "tqdm.rich.tqdm[object]",
+    progress: "tqdm.rich.tqdm",
     xi: float,
     log_target: float,
     shrink_factor: float,
@@ -560,7 +560,7 @@ def _adjust_loop(  # ruff:ignore[too-many-arguments]
         odd (Samples): The ODD to adjust, mutated in place.
         ood (npt.NDArray[np.float64]): OOD points, (M, n_dims).
         state (_LoopState): Running state, mutated in place.
-        progress (tqdm.rich.tqdm[object]): Progress bar to advance.
+        progress (tqdm.rich.tqdm): Progress bar to advance.
         xi (float): Maximum allowed OOD affinity.
         log_target (float): ``log1p(-xi)``.
         shrink_factor (float): Covariance scale factor c.

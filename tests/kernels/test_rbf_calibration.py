@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 import warnings
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -92,3 +93,54 @@ def test_lam_zero_raises():
     kernel = RBFKernel(x_i=np.zeros(2))
     with pytest.raises(ValueError, match="lam must be strictly positive"):
         kernel.update(x_nn=np.ones(2), kappa=1.0, eta=1.0, lam=0.0)
+
+
+def _calibrate_median(**kwargs: float) -> tuple[object, object]:
+    return calibrate_rbf_scale_median(np.ones((4, 2)), **kwargs)
+
+
+def _calibrate_d_tilde(**kwargs: float) -> tuple[object, object]:
+    return calibrate_rbf_scale_d_tilde(np.ones(4), **kwargs)
+
+
+_CALIBRATORS = pytest.mark.parametrize(
+    "calibrate", [_calibrate_median, _calibrate_d_tilde], ids=["median", "d_tilde"]
+)
+
+
+@_CALIBRATORS
+def test_deprecated_c_alias_matches_gamma(
+    calibrate: Callable[..., tuple[object, object]],
+) -> None:
+    with pytest.warns(DeprecationWarning, match="use 'gamma'"):
+        kappa_c, eta_c = calibrate(c=2.0)
+    kappa_g, eta_g = calibrate(gamma=2.0)
+    np.testing.assert_array_equal(kappa_c, kappa_g)
+    np.testing.assert_array_equal(eta_c, eta_g)
+
+
+@_CALIBRATORS
+def test_deprecated_c_alias_conflicting_gamma_raises(
+    calibrate: Callable[..., tuple[object, object]],
+) -> None:
+    with pytest.raises(ValueError, match="cannot define different values"):
+        calibrate(gamma=2.0, c=3.0)
+
+
+@_CALIBRATORS
+@pytest.mark.parametrize(("gamma", "s"), [(0.0, 3.0), (-1.0, 3.0), (1.0, 0.0)])
+def test_non_positive_gamma_or_s_raises(
+    calibrate: Callable[..., tuple[object, object]], gamma: float, s: float
+) -> None:
+    with pytest.raises(ValueError, match="gamma and s must be greater than 0"):
+        calibrate(gamma=gamma, s=s)
+
+
+def test_median_calibration_rejects_non_2d_input():
+    with pytest.raises(ValueError, match=r"d_nn must have shape \(n_anchors, n_dims\)"):
+        calibrate_rbf_scale_median(np.ones(4))  # ty: ignore[invalid-argument-type]
+
+
+def test_d_tilde_calibration_rejects_non_1d_input():
+    with pytest.raises(ValueError, match=r"d_nn_l2 must have shape \(n_anchors,\)"):
+        calibrate_rbf_scale_d_tilde(np.ones((4, 2)))  # ty: ignore[invalid-argument-type]

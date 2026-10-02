@@ -420,6 +420,14 @@ def build_openodd_yaml(  # ruff:ignore[too-many-locals]
     only standard OpenODD concepts and expressions.  autoSAFE tuning
     and derivation details are kept in module ``METADATA``.
 
+    Args:
+        odd (AutoSafeODD): Fitted model to export.
+        features (Sequence[OpenODDFeature] | None): Feature-to-taxonomy
+            mappings. Defaults to numeric mappings derived from feature
+            names.
+        metadata (OpenODDExportMetadata | None): Export title,
+            description, root identifier, and additional metadata.
+
     Returns:
         dict[str, Any]: Validated YAML-serializable document.
 
@@ -504,6 +512,13 @@ def write_openodd_yaml(
     metadata: OpenODDExportMetadata | None = None,
 ) -> pathlib.Path:
     """Build, validate, and write an ASAM OpenODD 1.0.0 YAML file.
+
+    Args:
+        odd (AutoSafeODD): Fitted model to export.
+        path (pathlib.Path | str): Destination YAML path.
+        features (Sequence[OpenODDFeature] | None): Feature-to-taxonomy
+            mappings.
+        metadata (OpenODDExportMetadata | None): Export metadata.
 
     Returns:
         pathlib.Path: Written YAML path.

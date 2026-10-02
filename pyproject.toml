@@ -37,7 +37,7 @@ docs = [
 tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
 
 [project]
-authors = [{name = "Johann Christensen", email = "johann.christensen@dlr.de"}]
+authors = [{ name = "Johann Christensen", email = "johann.christensen@dlr.de" }]
 classifiers = [
   "Intended Audience :: Science/Research",
   "Natural Language :: English",
@@ -93,7 +93,7 @@ Source = "https://github.com/DLR-KI/autosafe/"
 Tracker = "https://github.com/DLR-KI/autosafe/issues"
 
 [tool.codespell]
-ignore-words-list = "astroid,nd"
+ignore-words-list = "astroid,nd,disjointness"
 
 [tool.commitizen]
 bump_message = "bump: version $current_version -> $new_version"
@@ -167,7 +167,11 @@ min-similarity-lines = 10
 "tests/*" = "C0114,C0116,E501,R0903,R0904,W0212"
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/autosafe/ --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml"
+# `--cov=experiments/` covers the benchmark experiment package that backs the
+# paper's figures and tables. The path is the top-level package, not the
+# subpackage, so it survives the benchmark rename. `plots/` is not reported: it
+# has no `__init__.py`, and those scripts are standalone debugging aids.
+addopts = "--cov=src/autosafe/ --cov=experiments/ --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml"
 filterwarnings = [
   "ignore::tqdm.TqdmExperimentalWarning",
   "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",

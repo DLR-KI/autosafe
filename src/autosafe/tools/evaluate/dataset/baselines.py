@@ -13,6 +13,7 @@ import numpy.typing as npt
 import scipy.spatial
 import tqdm.rich
 import typer
+from sklearn.exceptions import ConvergenceWarning
 
 from autosafe.preprocessing import RangeNormalizer
 from autosafe.tools.evaluate.comparison import (
@@ -37,6 +38,21 @@ _HULL_FAST_POINTS = 500
 _CHUNK_THRESHOLD = 5000
 
 
+# "oneclass_svm" and "svdd" are deliberately excluded from this default
+# and must stay opt-in via an explicit `references:` list. Each monitor
+# here is *fitted on the full anchor set* (chunking in
+# `_compute_method_membership` only affects evaluation, not fitting),
+# and at aviation scale (622k anchors) OC-SVM is O(n^2)-O(n^3) via
+# libsvm while SVDD builds a dense n x n kernel matrix for its QP --
+# about 3 TB at that size. Putting either in the default would make
+# `eval-vcas-rbf` / `eval-hcas-rbf` unrunnable, since those spec items
+# do not override `references:`. "gmm" is fine here: EM is
+# O(n * k * d^2) per iteration.
+#
+# Adding a reference to this list adds *rows* to the dataset CSV (one
+# row per `source, reference, affinity_space, threshold`) and never
+# alters existing rows, so previously reported baseline numbers are
+# unaffected.
 DEFAULT_DATASET_BASELINES = [
     "hull_single",
     "hull_clustered",
@@ -45,6 +61,7 @@ DEFAULT_DATASET_BASELINES = [
     "density_single",
     "density_clustered",
     "dbscan_cluster",
+    "gmm",
 ]
 
 
@@ -197,6 +214,11 @@ def _compute_method_membership(
                 message=r"Only \d+/\d+ clusters have >=\d+ points\.",
                 category=UserWarning,
             )
+            # GaussianMixtureBoundary's BIC sweep can hit sklearn's EM
+            # iteration cap on small/degenerate reference sets; that is
+            # expected here (the estimator with the best BIC among the
+            # candidates is kept regardless), not a fit failure.
+            warnings.filterwarnings("ignore", category=ConvergenceWarning)
             return monitor.fit(points)
 
     try:  # ruff:ignore[too-many-statements-in-try-clause]
@@ -213,11 +235,22 @@ def _compute_method_membership(
                 chunk_size=5000,
             )
 
+        # "gmm", "oneclass_svm", and "svdd" (see
+        # odd/comparison/mixture.py, odd/comparison/oneclass.py) need
+        # no special casing here: like every other registered method,
+        # they are constructed generically through
+        # create_comparison_monitor and fit/evaluated the same way.
         monitor = create_comparison_monitor(
             method, **(data.method_params or {}).get(method, {})
         )
         _fit_monitor(monitor, data.ref_points_t)
-        chunk_size = 1000 if method == "knn" else 5000
+        # Kernel-based methods materialize an (n_reference, chunk)
+        # kernel block per chunk (O(n_reference) memory per test
+        # point), the same reason "knn" already gets a smaller chunk;
+        # at aviation scale (hundreds of thousands of anchors) the
+        # default 5000 would be tens of GB per chunk.
+        small_chunk_methods = {"knn", "gmm", "oneclass_svm", "svdd"}
+        chunk_size = 1000 if method in small_chunk_methods else 5000
         return _evaluate_monitor_membership(
             monitor,
             data.test_points_t,

@@ -295,3 +295,33 @@ def test_odd_factory_unknown_type():
     factory = ODDFactory(config)
     with pytest.raises(ValueError, match="Unknown ODD type"):
         factory.create_odd()
+
+
+def test_normalize_constraint_description_names_the_written_half_space():
+    """The description must name the constraint as the user wrote it.
+
+    Regression: the canonical form negates coefficients and bound for
+    ``>=``/``>``, but the description kept the original relation symbol.
+    Printing negated coefficients against ``>=`` named the *opposite*
+    half-space, so ``x1 - x2 >= 4`` was described as ``(-1x1 1x2) >= -4``
+    (i.e. ``x1 - x2 <= 4``). The constructed polytope was always correct;
+    only the human-readable label lied.
+    """
+    coefficients, _relation, bound, description = _normalize_constraint(
+        {"type": "linear", "coefficients": [1.0, -1.0], "relation": ">=", "bound": 4.0},
+        dim=2,
+    )
+    # Canonical half-space form is still negated, as the solver needs.
+    assert coefficients == [-1.0, 1.0]
+    assert bound == pytest.approx(-4.0)
+    # ...but the description reports what was written.
+    assert description == "(1x1 -1x2) >= 4"
+
+
+def test_normalize_constraint_description_unchanged_for_le():
+    """``<=`` constraints are not negated, so the description is a no-op case."""
+    _coefficients, _relation, _bound, description = _normalize_constraint(
+        {"type": "linear", "coefficients": [2.0, 1.0], "relation": "<=", "bound": 15.0},
+        dim=2,
+    )
+    assert description == "(2x1 1x2) <= 15"

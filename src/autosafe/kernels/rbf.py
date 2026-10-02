@@ -12,6 +12,7 @@ import numpy as np
 import numpy.typing as npt
 
 from autosafe import _jax_config  # ruff:ignore[unused-import]
+from autosafe.exceptions import SigmaNotInvertibleError
 from autosafe.kernels.kernel import Kernel
 from autosafe.typing import (
     Affinity,
@@ -103,6 +104,38 @@ def _fix_sigma_matrix(sigma: NPSquareMatrix) -> NPSquareMatrix:
     return cast("NPSquareMatrix", np.asarray(sigma_fixed, NPFloatType))
 
 
+def _invert_sigma(sigma: NPSquareMatrix) -> tuple[NPSquareMatrix, NPSquareMatrix]:
+    """Invert sigma, repairing it first if the inverse is not finite.
+
+    Args:
+        sigma (NPSquareMatrix): The sigma matrix to invert.
+
+    Returns:
+        tuple[NPSquareMatrix, NPSquareMatrix]: The (possibly repaired)
+            sigma matrix and its inverse.
+
+    Raises:
+        SigmaNotInvertibleError: If the inverse is still not finite
+            after the repair.
+    """
+    sigma_inv = np.asarray(jnp.linalg.inv(jnp.asarray(sigma)), NPFloatType)
+    if np.isfinite(sigma_inv).all():
+        return sigma, sigma_inv
+    sigma = _fix_sigma_matrix(sigma)
+    sigma_inv = np.asarray(jnp.linalg.inv(jnp.asarray(sigma)), NPFloatType)
+    if not np.isfinite(sigma_inv).all():
+        raise SigmaNotInvertibleError(sigma.shape[0])
+    warnings.warn(
+        message=(
+            "sigma matrix was not invertible and has been adjusted "
+            "to be positive definite."
+        ),
+        category=UserWarning,
+        stacklevel=3,
+    )
+    return sigma, sigma_inv
+
+
 class RBFKernel(Kernel):
     r"""Implementation of the Radial Basis Function (RBF) kernel.
 
@@ -132,6 +165,8 @@ class RBFKernel(Kernel):
         ValueError: If `sigma` is not psd or does not match the
             dimension of `x_i`. Or if `sigma` is not one of the
             expected types (`"eye"`, a square matrix, or `None`).
+        SigmaNotInvertibleError: If `sigma` has no finite inverse,
+            even after repair.
     """  # ruff:ignore[doc-line-too-long]
 
     def __init__(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
@@ -170,9 +205,8 @@ class RBFKernel(Kernel):
             sigma_scalar = NPFloatType(sigma)
             if sigma_scalar <= 0:
                 raise ValueError("sigma must be positive semidefinite (psd).")
-            self.sigma = np.eye(len(self.x_i), dtype=NPFloatType) * sigma_scalar
-            self.sigma_inv = np.asarray(
-                jnp.linalg.inv(jnp.asarray(self.sigma)), NPFloatType
+            self.sigma, self.sigma_inv = _invert_sigma(
+                np.eye(len(self.x_i), dtype=NPFloatType) * sigma_scalar
             )
             self._refresh_sigma_cache()
         elif isinstance(sigma, (np.ndarray, jax.Array)):
@@ -183,10 +217,7 @@ class RBFKernel(Kernel):
                 np.asarray(jnp.linalg.eigvals(jnp.asarray(sigma_np)).real) > 0
             ):
                 raise ValueError("sigma must be positive semidefinite (psd).")
-            self.sigma = sigma_np.astype(NPFloatType)
-            self.sigma_inv = np.asarray(
-                jnp.linalg.inv(jnp.asarray(self.sigma)), NPFloatType
-            )
+            self.sigma, self.sigma_inv = _invert_sigma(sigma_np.astype(NPFloatType))
             self._refresh_sigma_cache()
         else:
             raise ValueError("sigma must be either 'eye', a square matrix, or None.")
@@ -205,6 +236,15 @@ class RBFKernel(Kernel):
         self._x_i_jax = None
         self._sigma_inv_diag_jax = None
         self._sigma_inv_full_jax = None
+
+    @property
+    def sigma_is_diagonal(self) -> bool:
+        """Whether sigma is (numerically) diagonal.
+
+        Returns:
+            bool: True if sigma is set and has no off-diagonal entries.
+        """
+        return self._sigma_is_diagonal
 
     def _get_x_i_jax(self) -> jax.Array:
         if self._x_i_jax is None:
@@ -245,6 +285,11 @@ class RBFKernel(Kernel):
         `kappa` and `eta`. If `kappa` or `eta` are provided, they will
         overwrite the existing values.
 
+        A sigma without a finite inverse is repaired with a warning. If
+        the repair fails,
+        :class:`~autosafe.exceptions.SigmaNotInvertibleError` is raised
+        and the kernel's sigma is left unchanged.
+
         Args:
             x_nn (Vector | Matrix | NPVector | NPMatrix | None): The
                 nearest neighbor(s) to the kernel center point. If x_nn
@@ -277,9 +322,7 @@ class RBFKernel(Kernel):
 
         if sigma is not None:
             if isinstance(sigma, str) and sigma == "eye":
-                sigma = cast(
-                    "NPSquareMatrix", np.eye(self.x_i.shape[0], dtype=NPFloatType)
-                )
+                sigma = np.eye(self.x_i.shape[0], dtype=NPFloatType)
             elif isinstance(sigma, str):
                 raise ValueError(
                     "sigma must be either 'eye', a square matrix, or None.",
@@ -327,21 +370,7 @@ class RBFKernel(Kernel):
                 raise ValueError("x_nn must have the same number of rows as x_i.")
             sigma = self._sigma_ii(x_nn, self.kappa, self.eta, self.lam)
 
-        self.sigma = np.asarray(sigma, NPFloatType)
-        sigma_inv_j = jnp.linalg.inv(jnp.asarray(self.sigma))
-        sigma_inv = np.asarray(sigma_inv_j, NPFloatType)
-        if not np.isfinite(sigma_inv).all():
-            self.sigma = _fix_sigma_matrix(self.sigma)
-            sigma_inv = np.asarray(jnp.linalg.inv(jnp.asarray(self.sigma)), NPFloatType)
-            warnings.warn(
-                message=(
-                    "sigma matrix was not invertible and has been adjusted "
-                    "to be positive definite."
-                ),
-                category=UserWarning,
-                stacklevel=2,
-            )
-        self.sigma_inv = sigma_inv
+        self.sigma, self.sigma_inv = _invert_sigma(np.asarray(sigma, NPFloatType))
         self._refresh_sigma_cache()
 
     def _sigma_ii(

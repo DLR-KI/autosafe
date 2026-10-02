@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import msgspec.json
+import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from autosafe.deduplication import DeduplicationPolicy, deduplicate_points
 from autosafe.samples import Samples
 from autosafe.tools.serializers.msgspec import decode_hook
 from autosafe.typing import ClosestSampleModeType, FloatType, KernelType
@@ -23,6 +25,7 @@ def from_csv(
     closest_sample_mode: ClosestSampleModeType = "global",
     kernel_cls: KernelType = "RBF",
     kernel_kwargs: dict[str, Any] | None = None,
+    dedup_policy: DeduplicationPolicy | None = None,
 ) -> Samples:
     """Import from a CSV file.
 
@@ -34,6 +37,11 @@ def from_csv(
             mode to use.
         kernel_cls (KernelType): The kernel type to use.
         kernel_kwargs (dict[str, Any]): The kernel parameters.
+        dedup_policy (DeduplicationPolicy | None): OFF BY DEFAULT. When
+            set, rows are collapsed to one observed representative per
+            resolution cell (see ``autosafe.deduplication``) before
+            ``Samples`` is constructed, using the CSV row order as the
+            stable record id.
 
     Returns:
         Samples: The imported samples.
@@ -43,6 +51,7 @@ def from_csv(
         closest_sample_mode=closest_sample_mode,
         kernel_cls=kernel_cls,
         kernel_kwargs=kernel_kwargs,
+        dedup_policy=dedup_policy,
     )
 
 
@@ -51,6 +60,7 @@ def from_polars(
     closest_sample_mode: ClosestSampleModeType = "global",
     kernel_cls: KernelType = "RBF",
     kernel_kwargs: dict[str, Any] | None = None,
+    dedup_policy: DeduplicationPolicy | None = None,
 ) -> Samples:
     """Import from a Polars DataFrame.
 
@@ -63,6 +73,8 @@ def from_polars(
             mode to use.
         kernel_cls (KernelType): The kernel type to use.
         kernel_kwargs (dict[str, Any]): The kernel parameters.
+        dedup_policy (DeduplicationPolicy | None): OFF BY DEFAULT. See
+            :func:`from_csv`.
 
     Returns:
         Samples: The imported samples.
@@ -72,6 +84,7 @@ def from_polars(
         closest_sample_mode=closest_sample_mode,
         kernel_cls=kernel_cls,
         kernel_kwargs=kernel_kwargs,
+        dedup_policy=dedup_policy,
     )
 
 
@@ -80,6 +93,7 @@ def from_numpy(
     closest_sample_mode: ClosestSampleModeType = "global",
     kernel_cls: KernelType = "RBF",
     kernel_kwargs: dict[str, Any] | None = None,
+    dedup_policy: DeduplicationPolicy | None = None,
 ) -> Samples:
     """Import from a NumPy array.
 
@@ -91,11 +105,22 @@ def from_numpy(
             mode to use.
         kernel_cls (KernelType): The kernel type to use.
         kernel_kwargs (dict[str, Any]): The kernel parameters.
+        dedup_policy (DeduplicationPolicy | None): OFF BY DEFAULT. When
+            set, rows are collapsed to one observed representative per
+            resolution cell (see ``autosafe.deduplication``) before
+            ``Samples`` is constructed, using the row index as the
+            stable record id. Leave unset to reproduce existing
+            behavior byte-identically.
 
     Returns:
         Samples: The imported samples.
     """
     samples_array = cast("Matrix", data.astype(FloatType))
+
+    if dedup_policy is not None:
+        raw = np.atleast_2d(np.asarray(samples_array, dtype=float))
+        result = deduplicate_points(raw, dedup_policy)
+        samples_array = cast("Matrix", result.points.astype(FloatType))
 
     return Samples(
         samples=samples_array,

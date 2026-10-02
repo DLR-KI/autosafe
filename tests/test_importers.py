@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from autosafe import ROOT_FOLDER
+from autosafe.deduplication import DeduplicationPolicy, deduplicate_points
 from autosafe.sample import Sample
 from autosafe.samples import Samples
 from autosafe.tools.importers import from_csv, from_json, from_numpy, from_polars
@@ -129,3 +130,51 @@ def test_from_numpy():
     samples = from_numpy(data)
     assert isinstance(samples, Samples)
     assert samples.shape == (3, 2)
+
+
+def test_from_numpy_dedup_disabled_by_default_matches_no_kwarg():
+    """Omitting dedup_policy and passing dedup_policy=None are identical."""
+    data = np.array([[1.0, 2.0], [1.0, 2.0], [3.0, 4.0]])
+    default_samples = from_numpy(data)
+    explicit_none_samples = from_numpy(data, dedup_policy=None)
+    assert default_samples.shape == explicit_none_samples.shape == (3, 2)
+
+
+def test_from_numpy_dedup_enabled_collapses_duplicates():
+    """dedup_policy set collapses exact duplicates before Samples is built."""
+    data = np.array([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [9.0, 9.0]])
+    policy = DeduplicationPolicy(resolution=(0.5, 0.5), origin=(0.0, 0.0))
+    samples = from_numpy(data, dedup_policy=policy)
+    assert samples.shape == (2, 2)
+
+
+def test_from_csv_dedup_matches_dataset_workflow_representatives(tmp_path: Path):
+    """The importer and the dataset workflow agree on representatives.
+
+    Both ultimately call ``deduplicate_points`` on the same raw numeric
+    array; this checks that from_csv's wiring does not diverge from
+    calling the core function directly on the same CSV-derived array.
+    """
+    rows = [
+        "x0,x1",
+        "0.100000,0.200000",
+        "0.100000,0.200000",
+        "5.000000,5.000000",
+        "5.010000,5.010000",
+    ]
+    csv_path = tmp_path / "dedup_source.csv"
+    csv_path.write_text("\n".join(rows), encoding="utf-8")
+
+    policy = DeduplicationPolicy(resolution=(0.5, 0.5), origin=(0.0, 0.0))
+    samples = from_csv(csv_path, dedup_policy=policy)
+
+    import polars as pl
+
+    raw = pl.read_csv(csv_path).to_numpy().astype(float)
+    expected = deduplicate_points(raw, policy)
+
+    got_points = np.array([np.asarray(s.x, dtype=float) for s in samples.samples])
+    np.testing.assert_array_equal(
+        got_points[np.lexsort(got_points.T[::-1])],
+        expected.points[np.lexsort(expected.points.T[::-1])],
+    )

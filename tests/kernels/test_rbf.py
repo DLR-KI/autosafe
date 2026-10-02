@@ -10,6 +10,7 @@ import re
 import numpy as np
 import pytest
 
+from autosafe.exceptions import SigmaNotInvertibleError
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
     GaussianKernel,
@@ -139,7 +140,7 @@ class TestRBFKernel:
         with pytest.raises(
             TypeError, match=re.escape("x_nn must be of dtype FloatType.")
         ):
-            kernel._sigma_ii(x_nn=np.array([1.0, 2.0, 3.0], dtype=np.float32))
+            kernel._sigma_ii(x_nn=np.array([1.0, 2.0, 3.0], dtype=np.float32))  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_sigma_ii_x_nn_shape_mismatch(self):
         kernel = copy.deepcopy(self.kernel)
@@ -453,7 +454,7 @@ class TestRBFKernel:
                 "sigma is not of dtype FloatType. Converting to FloatType."
             ),
         ):
-            kernel.update(sigma=np.eye(3, dtype=np.float32))
+            kernel.update(sigma=np.eye(3, dtype=np.float32))  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_set_sigma_sigma_not_valid_string(self):
         kernel = copy.deepcopy(self.kernel)
@@ -528,7 +529,7 @@ class TestRBFKernel:
             UserWarning,
             match=re.escape("x_nn is not of dtype FloatType. Converting to FloatType."),
         ):
-            kernel.update(x_nn=np.array([1.0, 2.0, 3.0], dtype=np.float32))
+            kernel.update(x_nn=np.array([1.0, 2.0, 3.0], dtype=np.float32))  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_set_sigma_x_nn_shape_mismatch(self):
         kernel = copy.deepcopy(self.kernel)
@@ -656,7 +657,7 @@ def test_validate_and_broadcast_param_success_vector_with_dtype_casting():
     param = np.array([math.e, math.pi, -1], dtype=np.float32)
     name = "test_param"
     dim = 3
-    result = _validate_and_broadcast_param(param, name, dim)
+    result = _validate_and_broadcast_param(param, name, dim)  # ty: ignore[invalid-argument-type]
     expected = np.array([math.e, math.pi, -1], dtype=FloatType)
     assert np.allclose(result, expected), (
         "Vector parameter should be returned correctly."
@@ -699,11 +700,42 @@ def test_validate_and_broadcast_param_cast_floattype():
 
 
 def test_fix_sigma_matrix():
-    x_i = np.array(
-        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]], dtype=FloatType
-    )  # Singular matrix
+    # A subnormal eigenvalue passes the psd check, but its reciprocal
+    # overflows, so the inverse is not finite and sigma gets repaired.
+    kernel = RBFKernel(x_i=np.zeros(2, dtype=FloatType))
+    with pytest.warns(UserWarning, match="sigma matrix was not invertible"):
+        kernel.update(sigma=np.diag([1e-320, 1.0]).astype(FloatType))
+    assert kernel.sigma is not None
+    assert kernel.sigma_inv is not None
+    eps = np.finfo(FloatType).eps
+    np.testing.assert_allclose(kernel.sigma, np.diag([eps, 1.0]))
+    assert np.isfinite(kernel.sigma_inv).all()
+    np.testing.assert_allclose(kernel.sigma @ kernel.sigma_inv, np.eye(2), atol=1e-12)
 
-    RBFKernel(x_i=x_i)
+
+def test_fix_sigma_matrix_in_constructor():
+    with pytest.warns(UserWarning, match="sigma matrix was not invertible"):
+        kernel = RBFKernel(
+            x_i=np.zeros(2, dtype=FloatType),
+            sigma=np.diag([1e-320, 1.0]).astype(FloatType),
+        )
+    assert kernel.sigma_inv is not None
+    assert np.isfinite(kernel.sigma_inv).all()
+
+
+def test_unrepairable_sigma_update_raises_and_keeps_sigma():
+    # An all-subnormal sigma has no finite eigendecomposition, so the
+    # eigenvalue repair cannot help.
+    kernel = RBFKernel(x_i=np.zeros(2, dtype=FloatType), sigma="eye")
+    with pytest.raises(SigmaNotInvertibleError, match="could not be repaired"):
+        kernel.update(sigma=1e-320)
+    np.testing.assert_array_equal(kernel.sigma, np.eye(2))
+    np.testing.assert_array_equal(kernel.sigma_inv, np.eye(2))
+
+
+def test_unrepairable_sigma_in_constructor_raises():
+    with pytest.raises(SigmaNotInvertibleError, match="could not be repaired"):
+        RBFKernel(x_i=np.zeros(2, dtype=FloatType), sigma=1e-320)
 
 
 _SIGMA_NON_DIAG = np.array(

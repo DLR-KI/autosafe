@@ -18,11 +18,17 @@ import typer
 
 import autosafe
 from autosafe import ROOT_FOLDER
+from autosafe.deduplication import DEDUP_ALGORITHM_VERSION, DeduplicationPolicy
+from autosafe.exceptions import (
+    BaselinesOnlyCacheMismatchError,
+    BaselinesOnlyRequiresCachedODDError,
+)
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
     RBFKernel,
 )
 from autosafe.samples import (
+    Samples,
     rows_in,
 )
 from autosafe.tools.evaluate.core import process_files
@@ -38,6 +44,11 @@ from autosafe.tools.evaluate.dataset.baselines import (
     _hull_membership,
 )
 from autosafe.tools.evaluate.dataset.build import _build_or_load_affinity_odd
+from autosafe.tools.evaluate.dataset.dedup_integration import (
+    DatasetDeduplicationOutcome,
+    run_dataset_deduplication,
+    write_dedup_provenance,
+)
 from autosafe.tools.evaluate.dataset.ground_truth import (
     _ground_truth_labels_from_yaml,
 )
@@ -216,6 +227,10 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
     ood_shrink_factor: float = 0.9,
     ood_max_iterations: int = 1_000_000,
     ood_batch_jump: bool = False,
+    baselines_only: bool = False,
+    dedup_policy: DeduplicationPolicy | None = None,
+    dedup_n_calibration_reserved: int = 0,
+    dedup_strict_label_conflict: bool = False,
 ) -> tuple[pl.DataFrame, Path, Path]:
     """Evaluate real-data workflow with optional ground truth YAML.
 
@@ -280,6 +295,44 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             per iteration instead of one. Faster but may over-shrink
             relative to the one-shrink-per-iteration procedure; off by
             default.
+        baselines_only (bool): Skip building/refreshing the affinity
+            ODD and require ``odd_json`` to already hold one matching
+            the requested ``closest_sample_mode``/``kernel_type``/
+            ``kernel_kwargs`` exactly. Rebuilding a large real-data ODD
+            (e.g. hundreds of thousands of anchors) is the expensive
+            step, and is wasted work when only new baseline-reference
+            rows are wanted: the ODD is loaded as-is, so ``affinities``/
+            ``survival`` are recomputed from the identical cached
+            object and the same (seeded) sampled test points, and are
+            therefore byte-identical to the run that produced
+            ``odd_json``. Off by default.
+        dedup_policy (DeduplicationPolicy | None): OFF BY DEFAULT.
+            When set, ID anchor candidates and (independently) the OOD
+            set are collapsed to one observed representative per
+            resolution cell before the normalizer is fit, anchors are
+            subsampled, or kernels are built; see
+            ``autosafe.deduplication`` and ``dedup_integration.py``.
+            Enabling this changes the anchor set and therefore every
+            downstream affinity value---leave unset to reproduce the
+            existing (non-de-duplicated) pipeline byte-identically. The
+            cache path gains a ``-dedup<digest>`` tag so a
+            de-duplicated run never overwrites a non-de-duplicated
+            cache. Internally raises ``EmptyAnchorPoolError`` if
+            nothing is left to de-duplicate and
+            ``OODAnchorCoincidenceError`` if a de-duplicated OOD point
+            coincides with a de-duplicated ID representative---see
+            ``run_dataset_deduplication`` in ``dedup_integration.py``.
+        dedup_n_calibration_reserved (int): Only used when
+            ``dedup_policy`` is set. Number of raw ID rows (the last
+            this many by row index) reserved for split-conformal
+            calibration before de-duplication. Reserved rows retain
+            their observed frequency and never instantiate kernels.
+        dedup_strict_label_conflict (bool): Only used when
+            ``dedup_policy`` is set. When ``True``, an ID and an OOD
+            resolution cell coinciding (without their representative
+            coordinates being exactly equal, which is always a hard
+            error) raises instead of only being reported for
+            adjudication.
 
     Returns:
         tuple[pl.DataFrame, Path, Path]: metrics_df, csv_path,
@@ -289,6 +342,11 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         ValueError: If no reference labels are available, if
             local_noise_mode is unknown, or if ood_path is set without
             ood_xi.
+        BaselinesOnlyRequiresCachedODDError: If ``baselines_only`` is
+            set without ``odd_json``.
+        BaselinesOnlyCacheMismatchError: If ``baselines_only`` is set
+            and the cached ODD at ``odd_json`` does not match the
+            requested kernel settings.
     """
     if threshold_mode is not None:
         warnings.warn(
@@ -325,6 +383,15 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         yaml_normalize=yaml_norm,
     )
 
+    if baselines_only:
+        if odd_json is None:
+            raise BaselinesOnlyRequiresCachedODDError(dataset_path)
+        cached_odd = autosafe.from_json(odd_json)
+        if isinstance(cached_odd, Samples) and not _odd_matches_cache_spec(
+            cached_odd, cache_spec
+        ):
+            raise BaselinesOnlyCacheMismatchError(odd_json)
+
     # The OOD points are needed BEFORE the ODD is built, because the
     # anchor pool is the complement of the OOD set (see
     # docs/ood-consistency.md). Two digests: the anchor set depends only
@@ -343,11 +410,43 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
                 ood_bytes + f":{ood_xi}:{ood_shrink_factor}".encode()
             ).hexdigest()[:8]
         )
-        ood_norm = _normalize_ood_points(
-            ood_path,
+        if dedup_policy is None:
+            ood_norm = _normalize_ood_points(
+                ood_path,
+                dataset_path,
+                yaml_normalizer=yaml_normalizer,
+                normalize_data=normalize_data,
+            )
+
+    # De-duplication (R3): OFF BY DEFAULT. Reached only when the caller
+    # passes an explicit dedup_policy; with dedup_policy=None (the
+    # default) nothing below runs and the pipeline is exactly the one
+    # above, unchanged. See dedup_integration.py for the pipeline
+    # order (reserve calibration records -> subtract OOD ->
+    # de-duplicate ID and OOD independently -> fit normalizer on
+    # retained representatives -> re-check ID/OOD disjointedness) and
+    # odd_cache.py's ``_dedup_filename_tag`` for the cache-isolation
+    # tag.
+    dedup_outcome: DatasetDeduplicationOutcome | None = None
+    dedup_tag = ""
+    preloaded_anchor_array: npt.NDArray[np.float64] | None = None
+    dedup_provenance_path: Path | None = None
+    dedup_provenance_digest: str | None = None
+    if dedup_policy is not None:
+        dedup_outcome = run_dataset_deduplication(
             dataset_path,
+            policy=dedup_policy,
+            ood_path=ood_path,
             yaml_normalizer=yaml_normalizer,
             normalize_data=normalize_data,
+            n_calibration_reserved=dedup_n_calibration_reserved,
+            strict_label_conflict=dedup_strict_label_conflict,
+        )
+        preloaded_anchor_array = dedup_outcome.id_points_normalized
+        ood_norm = dedup_outcome.ood_points_normalized
+        dedup_tag = dedup_outcome.filename_tag
+        dedup_provenance_path, _dedup_summary_path, dedup_provenance_digest = (
+            write_dedup_provenance(dataset_path, outcome=dedup_outcome)
         )
 
     odd, odd_export_path = _build_or_load_affinity_odd(
@@ -358,8 +457,9 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         normalizer=yaml_normalizer,
         subsample_anchors=subsample_anchors,
         seed=seed,
-        exclude_points=ood_norm,
-        extra_filename_tag=ood_file_tag,
+        exclude_points=ood_norm if dedup_policy is None else None,
+        extra_filename_tag=ood_file_tag + dedup_tag,
+        preloaded_anchor_array=preloaded_anchor_array,
     )
 
     # OOD consistency adjustment.
@@ -506,13 +606,18 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
     )
 
     if csv_output is None:
-        # ood_run_tag keeps an OOD run from overwriting the CSV and
-        # sidecar of the otherwise identically-configured non-OOD run.
+        # ood_run_tag/dedup_tag keep an OOD or de-duplicated run from
+        # overwriting the CSV and sidecar of the otherwise
+        # identically-configured plain run.
         tag = (
-            f"-sub{subsample_anchors}-seed{seed}"
-            if subsample_anchors is not None
-            else ""
-        ) + ood_run_tag
+            (
+                f"-sub{subsample_anchors}-seed{seed}"
+                if subsample_anchors is not None
+                else ""
+            )
+            + ood_run_tag
+            + dedup_tag
+        )
         csv_output = dataset_path.with_name(
             f"{dataset_path.stem}-evaluation-edges{tag}.csv"
         )
@@ -584,6 +689,60 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         ),
         "ood_max_iterations": (ood_max_iterations if ood_path is not None else None),
         "ood_batch_jump": ood_batch_jump if ood_path is not None else None,
+        "baselines_only": baselines_only,
+        "dedup_enabled": dedup_outcome is not None,
+        "dedup_policy": (
+            {
+                "resolution": dedup_outcome.id_result.policy.resolution,
+                "origin": dedup_outcome.id_result.policy.origin,
+                "coordinate_space": dedup_outcome.id_result.policy.coordinate_space,
+                "representative_metric": (
+                    dedup_outcome.id_result.policy.representative_metric
+                ),
+                "tie_break": dedup_outcome.id_result.policy.tie_break,
+            }
+            if dedup_outcome is not None
+            else None
+        ),
+        "dedup_id_n_input": (
+            dedup_outcome.id_result.n_input if dedup_outcome is not None else None
+        ),
+        "dedup_id_n_output": (
+            dedup_outcome.id_result.n_output if dedup_outcome is not None else None
+        ),
+        "dedup_id_n_duplicates": (
+            dedup_outcome.id_result.n_duplicates if dedup_outcome is not None else None
+        ),
+        "dedup_id_cell_count_distribution": (
+            dedup_outcome.id_result.cell_count_distribution()
+            if dedup_outcome is not None
+            else None
+        ),
+        "dedup_ood_n_input": (
+            dedup_outcome.ood_result.n_input
+            if dedup_outcome is not None and dedup_outcome.ood_result is not None
+            else None
+        ),
+        "dedup_ood_n_output": (
+            dedup_outcome.ood_result.n_output
+            if dedup_outcome is not None and dedup_outcome.ood_result is not None
+            else None
+        ),
+        "dedup_label_conflicts_count": (
+            len(dedup_outcome.label_conflicts) if dedup_outcome is not None else None
+        ),
+        "dedup_calibration_reserved_count": (
+            len(dedup_outcome.calibration_record_ids)
+            if dedup_outcome is not None
+            else None
+        ),
+        "dedup_provenance_path": (
+            str(dedup_provenance_path) if dedup_provenance_path is not None else None
+        ),
+        "dedup_provenance_digest": dedup_provenance_digest,
+        "dedup_algorithm_version": (
+            DEDUP_ALGORITHM_VERSION if dedup_outcome is not None else None
+        ),
         "calibration_version": _CALIBRATION_VERSION,
         "baseline_params_resolved": resolved_baseline_params,
         "threshold_mode": "edges",
@@ -632,8 +791,11 @@ def collect_monte_carlo_files(inputs: list[str]) -> list[Path]:
 
 
 __all__ = [
+    "DEDUP_ALGORITHM_VERSION",
     "DEFAULT_DATASET_BASELINES",
     "_CALIBRATION_VERSION",
+    "DatasetDeduplicationOutcome",
+    "DeduplicationPolicy",
     "_BaselineEvaluationData",
     "_ComparisonMonitor",
     "_ODDCacheSpec",
@@ -667,4 +829,6 @@ __all__ = [
     "collect_monte_carlo_files",
     "evaluate_dataset_mode",
     "evaluate_monte_carlo_results",
+    "run_dataset_deduplication",
+    "write_dedup_provenance",
 ]

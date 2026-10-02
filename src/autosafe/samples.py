@@ -23,6 +23,7 @@ from autosafe import (
     _jax_config,  # ruff:ignore[unused-import]
     ood_consistency,
 )
+from autosafe.exceptions import EmptyODDError
 from autosafe.kernels import KernelDict
 from autosafe.kernels.rbf import RBFKernel
 from autosafe.neighbors import (
@@ -254,7 +255,7 @@ class Samples:
             if (
                 isinstance(k, RBFKernel)
                 and k.sigma_inv is not None
-                and k._sigma_is_diagonal  # ruff:ignore[private-member-access]
+                and k.sigma_is_diagonal
             ):
                 diags.append(np.diag(k.sigma_inv))
             else:
@@ -327,13 +328,12 @@ class Samples:
             Affinity | AffinityVector: The affinity of the vector x or
                 the vector of affinities with respect to the samples, a
                 JAX array value between 0 and 1.
+
+        Raises:
+            EmptyODDError: If the ODD has no samples.
         """
         if len(self.samples) == 0:
-            x_j = jnp.asarray(x)
-            if x_j.ndim == 1:
-                return FloatType(0.0)
-            n_pts = x_j.shape[0] if x_j.shape[1] == self.dim else x_j.shape[1]
-            return jnp.zeros(n_pts, dtype=FloatType)
+            raise EmptyODDError
 
         if not self._batch_cache_valid:
             self._build_batch_arrays()
@@ -373,14 +373,12 @@ class Samples:
                 anchors); survival = log(1 - alpha) computed stably
                 (-inf only on exact anchor hits). See
                 docs/log-space-affinity.md.
+
+        Raises:
+            EmptyODDError: If the ODD has no samples.
         """
         if len(self.samples) == 0:
-            x_j = jnp.asarray(x)
-            if x_j.ndim == 1:
-                return FloatType(0.0), FloatType(0.0)
-            n_pts = x_j.shape[0] if x_j.shape[1] == self.dim else x_j.shape[1]
-            zeros = jnp.zeros(n_pts, dtype=FloatType)
-            return zeros, zeros
+            raise EmptyODDError
 
         if not self._batch_cache_valid:
             self._build_batch_arrays()
@@ -444,12 +442,16 @@ class Samples:
             index (int): Index of the kernel whose sigma was replaced.
         """
         kern = self.samples[index].kernel
+        kernel_is_diagonal_rbf = (
+            isinstance(kern, RBFKernel)
+            and kern.sigma_inv is not None
+            and kern.sigma_is_diagonal
+        )
         if (
             self._batch_cache_valid
             and self._all_kernels_diagonal_rbf
             and self._inv_diag_np is not None
-            and isinstance(kern, RBFKernel)
-            and kern.sigma_inv is not None
+            and kernel_is_diagonal_rbf
         ):
             self._inv_diag_np[index] = np.diag(kern.sigma_inv)
         else:

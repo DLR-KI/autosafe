@@ -18,9 +18,7 @@ The paper defines an ODD as the structure :math:`\mathcal{O} = (X, R_1^\mathcal{
 The Monte Carlo sampler mirrors this split directly:
 
 - The outer sampling box (``odd_lower_limits``/``odd_upper_limits``, or ``--odd-limits`` on the CLI) always defines an axis-aligned taxonomy :math:`X`.
-- A ``custom_odd_config`` (below) adds ontology predicates on top of it.
-  When its ``type`` is ``polytope``, each ``constraints`` entry is one linear half-space predicate :math:`R_i`; the polytope library ANDs them together internally, so the resulting region is already :math:`\mathcal{R}^\mathcal{O} = \bigcap_i R_i^\mathcal{O}`.
-  When its ``type`` is ``box``, the region is itself another axis-aligned taxonomy-like set -- useful standalone (see :ref:`mc-third-entry-point`), but redundant with the outer box if combined with it.
+- A ``custom_odd_config`` (below) adds ontology predicates on top of it. When its ``type`` is ``polytope``, each ``constraints`` entry is one linear half-space predicate :math:`R_i`; the polytope library ANDs them together internally, so the resulting region is already :math:`\mathcal{R}^\mathcal{O} = \bigcap_i R_i^\mathcal{O}`. When its ``type`` is ``box``, the region is itself another axis-aligned taxonomy-like set -- useful standalone (see :ref:`mc-third-entry-point`), but redundant with the outer box if combined with it.
 - Ground truth for a validation point is membership in :math:`X` intersected with the custom region, matching :math:`X \cap \mathcal{R}^\mathcal{O}`.
 
 Read on for the exact schema; :ref:`mc-known-issue` documents one place where the *implementation* of this intersection currently does not match this description for the ``autosafe montecarlo sample`` pipeline specifically.
@@ -31,11 +29,8 @@ The ``box`` and ``polytope`` config types
 A custom ODD configuration is a mapping validated by ``autosafe.tools.monte_carlo.inequality_utils.validate_odd_config``.
 Both types require ``type`` and ``dim``:
 
-- ``type: box`` -- an axis-aligned region given directly by ``lower_bounds``/``upper_bounds``.
-  Prefer this whenever the region *is* a product of per-dimension intervals: it is shorter, and the bounds read directly as the taxonomy ranges.
-  The previous, now-removed draft of this page expressed every box as four separate ``polytope`` inequalities (:math:`x_1 \geq -5`, :math:`x_1 \leq 5`, ...); that still works, but ``type: box`` says the same thing in two fields instead of eight.
-- ``type: polytope`` -- one or more linear half-space ``constraints``.
-  Use this for genuine ontology predicates that are not axis-aligned, such as :math:`x_1 - x_2 \geq 4` (coupling two dimensions) -- exactly the constraint used in ``experiments/dim_2d/sampling_config.yaml`` through ``dim_12d``.
+- ``type: box`` -- an axis-aligned region given directly by ``lower_bounds``/``upper_bounds``. Prefer this whenever the region *is* a product of per-dimension intervals: it is shorter, and the bounds read directly as the taxonomy ranges. The previous, now-removed draft of this page expressed every box as four separate ``polytope`` inequalities (:math:`x_1 \geq -5`, :math:`x_1 \leq 5`, ...); that still works, but ``type: box`` says the same thing in two fields instead of eight.
+- ``type: polytope`` -- one or more linear half-space ``constraints``. Use this for genuine ontology predicates that are not axis-aligned, such as :math:`x_1 - x_2 \geq 4` (coupling two dimensions) -- exactly the constraint used in ``experiments/dim_2d/sampling_config.yaml`` through ``dim_12d``.
 
 .. code-block:: yaml
 
@@ -51,10 +46,10 @@ Both types require ``type`` and ``dim``:
     type: polytope
     dim: 2
     constraints:
-      - type: linear
-        coefficients: [1.0, -1.0]
-        relation: ">="
-        bound: 4.0
+        -   type: linear
+            coefficients: [1.0, -1.0]
+            relation: ">="
+            bound: 4.0
 
 Field reference
 -----------------
@@ -65,24 +60,24 @@ Top-level fields:
     :header-rows: 1
     :widths: 15 15 70
 
-    * - Field
-      - Required
-      - Description
-    * - ``type``
-      - Yes
-      - ``"box"`` or ``"polytope"``.
-        Any other value raises ``ValueError``.
-    * - ``dim``
-      - Yes
-      - Number of dimensions.
-        Every constraint's ``coefficients`` (polytope) or every bounds list (box) must match this length.
-    * - ``lower_bounds``, ``upper_bounds``
-      - Only for ``box``
-      - Per-dimension bound lists (or a single scalar broadcast to all dimensions when used via :class:`~autosafe.tools.monte_carlo.inequality_utils.ODDFactory`).
-    * - ``constraints``
-      - Only for ``polytope``
-      - Non-empty list of constraint mappings (below).
-        Missing, non-list, or empty raises ``ValueError``.
+    *   -   Field
+        -   Required
+        -   Description
+    *   -   ``type``
+        -   Yes
+        -   ``"box"`` or ``"polytope"``.
+            Any other value raises ``ValueError``.
+    *   -   ``dim``
+        -   Yes
+        -   Number of dimensions.
+            Every constraint's ``coefficients`` (polytope) or every bounds list (box) must match this length.
+    *   -   ``lower_bounds``, ``upper_bounds``
+        -   Only for ``box``
+        -   Per-dimension bound lists (or a single scalar broadcast to all dimensions when used via :class:`~autosafe.tools.monte_carlo.inequality_utils.ODDFactory`).
+    *   -   ``constraints``
+        -   Only for ``polytope``
+        -   Non-empty list of constraint mappings (below).
+            Missing, non-list, or empty raises ``ValueError``.
 
 Each entry in ``constraints``:
 
@@ -90,24 +85,24 @@ Each entry in ``constraints``:
     :header-rows: 1
     :widths: 15 15 70
 
-    * - Field
-      - Required
-      - Description
-    * - ``type``
-      - No (default ``"linear"``)
-      - Only ``"linear"`` is supported; any other value raises ``ValueError``.
-        There is no quadratic, cubic, or trigonometric constraint type.
-    * - ``coefficients``
-      - Yes
-      - Length-``dim`` coefficient vector :math:`\bm{a}`.
-        A length that does not equal ``dim`` raises ``ValueError``.
-    * - ``relation``
-      - Yes
-      - One of ``"<="``, ``"<"``, ``">="``, ``">"``.
-        Anything else raises ``ValueError``.
-    * - ``bound``
-      - Yes
-      - Scalar :math:`b`, coerced with ``float()``.
+    *   -   Field
+        -   Required
+        -   Description
+    *   -   ``type``
+        -   No (default ``"linear"``)
+        -   Only ``"linear"`` is supported; any other value raises ``ValueError``.
+            There is no quadratic, cubic, or trigonometric constraint type.
+    *   -   ``coefficients``
+        -   Yes
+        -   Length-``dim`` coefficient vector :math:`\bm{a}`.
+            A length that does not equal ``dim`` raises ``ValueError``.
+    *   -   ``relation``
+        -   Yes
+        -   One of ``"<="``, ``"<"``, ``">="``, ``">"``.
+            Anything else raises ``ValueError``.
+    *   -   ``bound``
+        -   Yes
+        -   Scalar :math:`b`, coerced with ``float()``.
 
 Every constraint is normalized to the canonical half-space form :math:`\bm{a} \cdot \bm{x} \leq b` before being handed to the ``polytope`` library.
 For ``relation`` in ``{"<=", "<"}`` this is a no-op; for ``{">=", ">"}`` both the coefficients and the bound are negated (:math:`\bm{a} \cdot \bm{x} \geq b \iff -\bm{a} \cdot \bm{x} \leq -b`), so ``coefficients: [1.0, -1.0], relation: ">=", bound: 4.0`` (i.e. :math:`x_1 - x_2 \geq 4`) is stored internally as coefficients ``[-1.0, 1.0]`` with bound ``-4.0``.
@@ -147,13 +142,13 @@ An ``odd:`` (or ``odd_config:``) key inside a full sampling config YAML is renam
     samples: 50
     filename: mc_odd_config_example-results.json
     odd:
-      type: polytope
-      dim: 2
-      constraints:
-        - type: linear
-          coefficients: [1.0, -1.0]
-          relation: ">="
-          bound: 4.0
+        type: polytope
+        dim: 2
+        constraints:
+            -   type: linear
+                coefficients: [1.0, -1.0]
+                relation: ">="
+                bound: 4.0
 
 .. code-block:: console
 
@@ -222,36 +217,36 @@ Errors you will hit
     :header-rows: 1
     :widths: 40 20 40
 
-    * - Situation
-      - Raised by
-      - Exception
-    * - Missing ``type`` or ``dim``
-      - ``validate_odd_config``
-      - ``ValueError``
-    * - ``type`` not ``"box"``/``"polytope"``
-      - ``validate_odd_config``
-      - ``ValueError``
-    * - ``polytope`` without a non-empty ``constraints`` list
-      - ``validate_odd_config``
-      - ``ValueError``
-    * - ``box`` without ``lower_bounds``/``upper_bounds``
-      - ``validate_odd_config``
-      - ``ValueError``
-    * - Constraint ``coefficients`` length :math:`\neq` ``dim``
-      - ``ODDFactory.create_odd`` (via ``_normalize_constraint``)
-      - ``ValueError``
-    * - Constraint ``relation`` not one of ``<=``, ``<``, ``>=``, ``>``
-      - ``ODDFactory.create_odd``
-      - ``ValueError``
-    * - Constraint ``type`` other than ``"linear"``
-      - ``ODDFactory.create_odd``
-      - ``ValueError``
-    * - Constraint missing ``coefficients``/``relation``/``bound``
-      - ``ODDFactory.create_odd``
-      - ``ValueError``
-    * - A ``constraints`` entry that is not a mapping
-      - ``ODDFactory.create_odd``
-      - ``TypeError``
+    *   -   Situation
+        -   Raised by
+        -   Exception
+    *   -   Missing ``type`` or ``dim``
+        -   ``validate_odd_config``
+        -   ``ValueError``
+    *   -   ``type`` not ``"box"``/``"polytope"``
+        -   ``validate_odd_config``
+        -   ``ValueError``
+    *   -   ``polytope`` without a non-empty ``constraints`` list
+        -   ``validate_odd_config``
+        -   ``ValueError``
+    *   -   ``box`` without ``lower_bounds``/``upper_bounds``
+        -   ``validate_odd_config``
+        -   ``ValueError``
+    *   -   Constraint ``coefficients`` length :math:`\neq` ``dim``
+        -   ``ODDFactory.create_odd`` (via ``_normalize_constraint``)
+        -   ``ValueError``
+    *   -   Constraint ``relation`` not one of ``<=``, ``<``, ``>=``, ``>``
+        -   ``ODDFactory.create_odd``
+        -   ``ValueError``
+    *   -   Constraint ``type`` other than ``"linear"``
+        -   ``ODDFactory.create_odd``
+        -   ``ValueError``
+    *   -   Constraint missing ``coefficients``/``relation``/``bound``
+        -   ``ODDFactory.create_odd``
+        -   ``ValueError``
+    *   -   A ``constraints`` entry that is not a mapping
+        -   ``ODDFactory.create_odd``
+        -   ``TypeError``
 
 ``validate_odd_config`` only checks the *top-level* shape (``type``, ``dim``, and that ``constraints``/bounds are present in the right form); the per-constraint checks in the second half of the table are raised later, when ``ODDFactory.create_odd()`` normalizes each constraint.
 A YAML file that passes ``load_yaml_odd_config`` (which calls ``validate_odd_config``) can still fail once a region is actually built from it.

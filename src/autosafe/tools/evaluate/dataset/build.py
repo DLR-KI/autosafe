@@ -38,6 +38,7 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-bran
     seed: int = 0,
     exclude_points: npt.NDArray[np.float64] | None = None,
     extra_filename_tag: str = "",
+    preloaded_anchor_array: npt.NDArray[np.float64] | None = None,
 ) -> tuple["Samples", Path]:
     """Build affinity ODD from dataset or load existing ODD JSON.
 
@@ -50,7 +51,8 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-bran
         normalizer (RangeNormalizer | None): Optional external
             normalizer (e.g. fitted on YAML bounds). When provided it
             is applied to the raw dataset instead of the built-in IQR
-            normalization path.
+            normalization path. Ignored when ``preloaded_anchor_array``
+            is given.
         subsample_anchors (int | None): If set, randomly subsample the
             anchor set to this many rows before building the ODD. Useful
             for fast evaluation runs. Subsampled runs get separate cache
@@ -62,13 +64,23 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-bran
             keep the anchor and OOD sets disjoint, a precondition of the
             OOD consistency loop's termination: an anchor that is also
             an OOD point holds affinity 1.0 for every covariance, so the
-            loop can never converge (docs/ood-consistency.md).
-        extra_filename_tag (str): Appended to ``filename_tag``. MUST be
-            set whenever ``exclude_points`` is, because ``filename_tag``
+            loop can never converge (docs/ood-consistency.md). Ignored
+            when ``preloaded_anchor_array`` is given, since exclusion is
+            then assumed to already have been applied by the caller.
+        extra_filename_tag (str): Appended to ``filename_tag``. MUST
+            be set whenever ``exclude_points`` or
+            ``preloaded_anchor_array`` is, because ``filename_tag``
             keys both the ODD JSON and the nearest-neighbor ``.npz``
             cache, and neither validates the anchor set it was built
             from---an untagged run would silently reuse caches built
-            from the unfiltered pool.
+            from a different anchor set.
+        preloaded_anchor_array (npt.NDArray[np.float64] | None): When
+            given, used directly as the (already normalized, already
+            de-duplicated, already OOD-excluded) anchor array on a cache
+            miss, instead of loading and normalizing ``dataset_path``
+            internally. Set by the de-duplication pipeline (see
+            ``dedup_integration.py``); subsampling still applies
+            afterward, per the de-duplication pipeline order.
 
     Returns:
         tuple[Samples, Path]: odd_object, odd_json_path.
@@ -116,7 +128,13 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-bran
             autosafe.to_json(odd, export_path)
         return odd, export_path
 
-    if normalizer is not None:
+    if preloaded_anchor_array is not None:
+        # De-duplication pipeline: normalization, OOD exclusion and
+        # de-duplication already happened in the caller
+        # (dedup_integration.py), in the order Algorithm 1 fixes.
+        # Do not repeat or re-derive any of that here.
+        base_array = np.asarray(preloaded_anchor_array, dtype=float)
+    elif normalizer is not None:
         # External normalizer (e.g. YAML-bounds): load raw data, then
         # apply it.
         df, _ = load_dataset(
@@ -144,7 +162,11 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-bran
         elif base_array.ndim == 1:
             base_array = base_array.reshape(1, -1)
 
-    if exclude_points is not None and np.asarray(exclude_points).size:
+    if (
+        preloaded_anchor_array is None
+        and exclude_points is not None
+        and np.asarray(exclude_points).size
+    ):
         keep = ~rows_in(base_array, np.asarray(exclude_points, dtype=float))
         base_array = base_array[keep]
         if base_array.shape[0] == 0:
