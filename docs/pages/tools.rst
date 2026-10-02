@@ -52,11 +52,25 @@ Supported baseline references:
 - ``density_single``: single KDE superlevel-set boundary
 - ``density_clustered``: clustered KDE superlevel-set union
 - ``dbscan_cluster``: DBSCAN-core density cluster boundary
+- ``gmm``: Gaussian-mixture superlevel-set boundary, component count selected by BIC over a configurable range
+- ``oneclass_svm``: one-class SVM boundary (RBF kernel)
+- ``svdd``: Support Vector Data Description boundary (Tax & Duin, 2004); under an RBF kernel it is mathematically equivalent to ``oneclass_svm`` with matched hyperparameters (do not report both as independent evidence in that case -- use ``kernel="poly"`` for a genuinely distinct comparison)
+
+``DEFAULT_DATASET_BASELINES`` -- used whenever a dataset spec item does not set ``references:`` -- is ``hull_single``, ``hull_clustered``, ``knn``, ``kmeans``, ``density_single``, ``density_clustered``, ``dbscan_cluster``, and ``gmm``.
+``oneclass_svm`` and ``svdd`` are deliberately **not** in the default and must be requested explicitly via ``references:``: every comparison monitor here is fit on the *full* anchor set (chunking only affects evaluation), and at aviation scale (622k anchors) OC-SVM is :math:`O(n^2)`--:math:`O(n^3)` via libsvm while SVDD builds a dense :math:`n \times n` kernel matrix for its QP -- about 3 TB at that size.
+Since spec items such as ``eval-vcas-rbf`` / ``eval-hcas-rbf`` do not override ``references:``, putting either in the default would make those runs unrunnable.
+GMM is cheap enough to include by default (EM is :math:`O(n \cdot k \cdot d^2)` per iteration).
+Adding a reference only adds *rows* to the dataset CSV (one row per ``source, reference, affinity_space, threshold``); it never alters existing rows, so previously reported baseline numbers are unaffected.
 
 Alias compatibility:
 
 - ``hull`` -> ``hull_single``
 - ``density`` -> ``density_single``
+
+``baselines_only``:
+
+- When ``true`` on a spec item, the affinity ODD is loaded from ``odd_json`` instead of being rebuilt, and requires that cached ODD to match the requested kernel settings exactly -- it never silently refreshes or rebuilds one.
+  Use this to add new baseline-reference rows to an existing evaluation without re-incurring the (potentially expensive) ODD build, and with the autoSAFE affinity column guaranteed byte-identical to the run that produced ``odd_json``.
 
 sampling-results
 ^^^^^^^^^^^^^^^^
@@ -116,7 +130,8 @@ autosafe montecarlo
 sample
 ^^^^^^
 
-Generates Monte Carlo sampling data. Supports standard box settings and custom ODD YAML constraints.
+Generates Monte Carlo sampling data.
+Supports standard box settings and custom ODD YAML constraints.
 Config files can be provided as JSON or YAML via ``--config-file``.
 Folders passed with ``--config-file-folder`` may contain ``.json``, ``.yaml``, and ``.yml`` files.
 
@@ -131,8 +146,8 @@ Examples:
 evaluate
 ^^^^^^^^
 
-Legacy compatibility command for MC-result evaluation. Prefer
-``autosafe evaluate sampling-results`` for full parameter control.
+Legacy compatibility command for MC-result evaluation.
+Prefer ``autosafe evaluate sampling-results`` for full parameter control.
 
 
 autosafe experiments

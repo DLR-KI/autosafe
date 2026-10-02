@@ -28,7 +28,9 @@ General Information
     pages/high_level_api
     pages/openodd_derivation
     pages/tools
+    pages/monte_carlo
     pages/comparison_methods
+    pages/deduplication
     pages/developing
 
 .. toctree::

@@ -5,8 +5,8 @@
 Installation
 ============
 
-We recommend using `uv <https://astral.sh/uv/>`_ to manage the virtual
-environment and dependencies. From the project root:
+We recommend using `uv <https://astral.sh/uv/>`_ to manage the virtual environment and dependencies.
+From the project root:
 
 .. code-block:: console
 

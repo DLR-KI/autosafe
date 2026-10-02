@@ -5,16 +5,13 @@
 OpenODD derivation
 ==================
 
-This page describes how a fitted :class:`autosafe.AutoSafeODD` is converted
-into a validated ASAM OpenODD 1.0.0 YAML document. The exporter constructs a
-conservative inner approximation of the fitted autoSAFE membership region:
-every condition emitted to the OpenODD is accepted by the fitted model, but
-the OpenODD may omit some accepted points.
+This page describes how a fitted :class:`autosafe.AutoSafeODD` is converted into a validated ASAM OpenODD 1.0.0 YAML document.
+The exporter constructs a conservative inner approximation of the fitted autoSAFE membership region: every condition emitted to the OpenODD is accepted by the fitted model, but the OpenODD may omit some accepted points.
 
-The construction is deterministic. There is no Monte Carlo, grid, or boundary
-sampling during export. In this page, a *sample* is an observed
-in-distribution (ID) anchor used to fit one kernel. Each fitted anchor produces
-at most one candidate OpenODD region.
+The construction is deterministic.
+There is no Monte Carlo, grid, or boundary sampling during export.
+In this page, a *sample* is an observed in-distribution (ID) anchor used to fit one kernel.
+Each fitted anchor produces at most one candidate OpenODD region.
 
 Notation
 --------
@@ -28,16 +25,14 @@ Let:
 * :math:`\zeta \in (0,1)` be the resolved membership threshold; and
 * :math:`R \leq n` be the number of distinct exported regions.
 
-The exporter always uses
-``odd.resolved_config.membership.affinity_threshold``. Thus, :math:`\zeta`
-can either be the fixed value requested by the caller or the value resolved
-from held-out calibration data in conformal membership mode.
+The exporter always uses ``odd.resolved_config.membership.affinity_threshold``.
+Thus, :math:`\zeta` can either be the fixed value requested by the caller or the value resolved from held-out calibration data in conformal membership mode.
 
 From data to fitted kernels
 ---------------------------
 
-Fitting first normalizes the ID anchors. Each normalized anchor becomes the
-center of one RBF kernel:
+Fitting first normalizes the ID anchors.
+Each normalized anchor becomes the center of one RBF kernel:
 
 .. math::
 
@@ -51,8 +46,7 @@ center of one RBF kernel:
     \right).
 
 The default calibrated mode finds the exact nearest neighbour of every anchor.
-It uses the median positive full-space nearest-neighbour distance
-:math:`\widetilde d` to resolve:
+It uses the median positive full-space nearest-neighbour distance :math:`\widetilde d` to resolve:
 
 .. math::
 
@@ -62,11 +56,10 @@ It uses the median positive full-space nearest-neighbour distance
     \qquad
     \lambda = \lambda_{\mathrm{rel}}\kappa.
 
-Manual mode instead accepts :math:`\kappa`, :math:`\eta`, and :math:`\lambda`
-directly. Scalars or one value per encoded dimension are supported.
+Manual mode instead accepts :math:`\kappa`, :math:`\eta`, and :math:`\lambda` directly.
+Scalars or one value per encoded dimension are supported.
 
-For anchor :math:`i` and encoded dimension :math:`j`, the fitted diagonal
-variance is:
+For anchor :math:`i` and encoded dimension :math:`j`, the fitted diagonal variance is:
 
 .. math::
 
@@ -79,10 +72,9 @@ variance is:
     \right)
     +\lambda_j.
 
-If optional OOD consistency was applied during fitting, it may subsequently
-shrink some fitted covariances. Export uses the final covariances, so the
-generated OpenODD reflects those adjustments. OOD points are not otherwise
-read or embedded by the exporter.
+If optional OOD consistency was applied during fitting, it may subsequently shrink some fitted covariances.
+Export uses the final covariances, so the generated OpenODD reflects those adjustments.
+OOD points are not otherwise read or embedded by the exporter.
 
 Combined affinity and membership
 --------------------------------
@@ -99,8 +91,7 @@ The fitted ODD accepts :math:`x` when:
 
     A(x) \geq \zeta.
 
-The implementation evaluates this decision through the equivalent
-log-survival threshold for numerical stability near affinity one.
+The implementation evaluates this decision through the equivalent log-survival threshold for numerical stability near affinity one.
 
 Kernel ellipsoids
 -----------------
@@ -111,8 +102,7 @@ Define:
 
     r^2 = -2\log(\zeta).
 
-The individual :math:`\zeta`-superlevel set of kernel :math:`i` is the
-ellipsoid:
+The individual :math:`\zeta`-superlevel set of kernel :math:`i` is the ellipsoid:
 
 .. math::
 
@@ -126,16 +116,13 @@ ellipsoid:
         \leq r^2
     \right\}.
 
-OpenODD range expressions are axis-aligned, so the exporter does not attempt
-to encode :math:`E_i` directly. Instead, it constructs an axis-aligned box
-:math:`B_i` contained in :math:`E_i`.
+OpenODD range expressions are axis-aligned, so the exporter does not attempt to encode :math:`E_i` directly.
+Instead, it constructs an axis-aligned box :math:`B_i` contained in :math:`E_i`.
 
 Diagonal covariance
 ~~~~~~~~~~~~~~~~~~~
 
-For diagonal
-:math:`\Sigma_i=\operatorname{diag}(\sigma_{i1},\ldots,\sigma_{id})`, the
-half-width in dimension :math:`j` is:
+For diagonal :math:`\Sigma_i=\operatorname{diag}(\sigma_{i1},\ldots,\sigma_{id})`, the half-width in dimension :math:`j` is:
 
 .. math::
 
@@ -171,9 +158,8 @@ Therefore :math:`B_i\subseteq E_i`.
 Full covariance
 ~~~~~~~~~~~~~~~
 
-For a non-diagonal covariance, let
-:math:`\lambda_{\min}(\Sigma_i)` be its smallest eigenvalue. The exporter
-uses the same half-width in every dimension:
+For a non-diagonal covariance, let :math:`\lambda_{\min}(\Sigma_i)` be its smallest eigenvalue.
+The exporter uses the same half-width in every dimension:
 
 .. math::
 
@@ -202,9 +188,7 @@ and consequently:
     \frac{\|\delta\|_2^2}{\lambda_{\min}(\Sigma_i)}
     \leq r^2.
 
-This isotropic box is conservative for arbitrary positive-definite
-covariances, although it can be smaller than a box optimized for the
-ellipsoid's orientation.
+This isotropic box is conservative for arbitrary positive-definite covariances, although it can be smaller than a box optimized for the ellipsoid's orientation.
 
 Conservativeness of the union
 -----------------------------
@@ -236,46 +220,38 @@ It follows that:
     \subseteq
     \{x:A(x)\geq\zeta\}.
 
-This proves that the generated OpenODD is an inner approximation. It can omit
-points for two reasons:
+This proves that the generated OpenODD is an inner approximation.
+It can omit points for two reasons:
 
 * an axis-aligned box covers only part of its kernel ellipsoid; and
 * several kernels can jointly make :math:`A(x)\geq\zeta` even when every
-  individual kernel has :math:`k_i(x)<\zeta`.
+    individual kernel has :math:`k_i(x)<\zeta`.
 
 The first effect becomes more pronounced as the encoded dimension grows.
 
 Mapping boxes to OpenODD
 ------------------------
 
-The fitted normalizer is inverted on every lower and upper bound so OpenODD
-conditions use the original feature coordinates. The caller maps all encoded
-dimensions exactly once using
-:class:`autosafe.OpenODDNumericFeature` and
-:class:`autosafe.OpenODDCategoricalFeature`.
+The fitted normalizer is inverted on every lower and upper bound so OpenODD conditions use the original feature coordinates.
+The caller maps all encoded dimensions exactly once using :class:`autosafe.OpenODDNumericFeature` and :class:`autosafe.OpenODDCategoricalFeature`.
 
 For each candidate box:
 
 * a floating-point numeric feature becomes an inclusive OpenODD range;
 * an integer feature uses the ceiling of the lower bound and floor of the
-  upper bound, and the region is discarded if no integer remains; and
+    upper bound, and the region is discarded if no integer remains; and
 * a categorical literal is included only when its complete encoded prototype
-  lies inside the box. The region is discarded if a categorical feature has
-  no representable literal.
+    lies inside the box.
+    The region is discarded if a categorical feature has no representable literal.
 
-Exact duplicate condition mappings are removed. Every remaining box becomes
-one standard module whose feature conditions are combined with
-``INCLUDE_AND``. The root ``ODD`` module references all region modules through
-``INCLUDE_OR``, producing their union.
+Exact duplicate condition mappings are removed.
+Every remaining box becomes one standard module whose feature conditions are combined with ``INCLUDE_AND``.
+The root ``ODD`` module references all region modules through ``INCLUDE_OR``, producing their union.
 
-The ODD body contains only standard OpenODD taxonomy concepts, expressions,
-and module references. Requested and resolved autoSAFE parameters and
-derivation statistics are flattened into the root module's standard
-``METADATA`` field for reproducibility; they do not become ODD conditions.
+The ODD body contains only standard OpenODD taxonomy concepts, expressions, and module references.
+Requested and resolved autoSAFE parameters and derivation statistics are flattened into the root module's standard ``METADATA`` field for reproducibility; they do not become ODD conditions.
 
-Finally, the generated mapping is checked against the derived structural
-schema and semantic validation rules before it is serialized as ASAM OpenODD
-1.0.0 YAML.
+Finally, the generated mapping is checked against the derived structural schema and semantic validation rules before it is serialized as ASAM OpenODD 1.0.0 YAML.
 
 Time complexity
 ---------------
@@ -284,23 +260,22 @@ In addition to :math:`n`, :math:`d`, and :math:`R`, define:
 
 * :math:`F` as the number of non-diagonal fitted covariances;
 * :math:`L_g` as the number of literals for categorical feature group
-  :math:`g`;
+    :math:`g`;
 * :math:`d_g` as the encoded width of that categorical group;
 * :math:`P=\sum_g L_gd_g` as the categorical prototype checking work per
-  candidate region; and
+    candidate region; and
 * :math:`S` as the size of the generated YAML-decoded document.
 
 Exporting an already fitted model has the following costs:
 
 * Box construction is
-  :math:`O((n-F)d^2+Fd^3)` in the current implementation. Diagonal detection
-  compares dense :math:`d\times d` matrices, while a full covariance requires
-  an eigendecomposition.
+    :math:`O((n-F)d^2+Fd^3)` in the current implementation.
+    Diagonal detection compares dense :math:`d\times d` matrices, while a full covariance requires an eigendecomposition.
 * Restoring original coordinates is :math:`O(nd)`.
 * Building numeric and categorical conditions is
-  :math:`O(nd+nP)`.
+    :math:`O(nd+nP)`.
 * Duplicate removal, validation, and serialization are expected
-  :math:`O(S)` for generated documents.
+    :math:`O(S)` for generated documents.
 
 The total export time is therefore:
 
@@ -313,23 +288,17 @@ The total export time is therefore:
         +S
     \right).
 
-For the normal all-diagonal case this becomes
-:math:`O(nd^2+nP+S)`. The mathematical box construction itself needs only
-:math:`O(nd)` work for diagonal covariances. Reusing the kernel's diagonal
-flag and storing its variance diagonal directly would remove the current
-:math:`d^2` implementation overhead.
+For the normal all-diagonal case this becomes :math:`O(nd^2+nP+S)`.
+The mathematical box construction itself needs only :math:`O(nd)` work for diagonal covariances.
+Reusing the kernel's diagonal flag and storing its variance diagonal directly would remove the current :math:`d^2` implementation overhead.
 
-For numeric-only feature mappings, :math:`P=0`. If most anchors produce
-distinct regions, :math:`R` is close to :math:`n` and
-:math:`S=\Theta(Rd)`. In that common case, YAML generation and validation can
-be practically output-bound.
+For numeric-only feature mappings, :math:`P=0`.
+If most anchors produce distinct regions, :math:`R` is close to :math:`n` and :math:`S=\Theta(Rd)`.
+In that common case, YAML generation and validation can be practically output-bound.
 
-If the cost of fitting from ID data is also included, exact flat
-nearest-neighbour search costs :math:`O(n^2d)`. The current kernel
-implementation stores and inverts each covariance as a dense matrix, giving
-an :math:`O(nd^3)` upper bound for covariance inversion even though fitted
-covariances are normally diagonal. Without optional OOD consistency, the
-current end-to-end upper bound is consequently:
+If the cost of fitting from ID data is also included, exact flat nearest-neighbour search costs :math:`O(n^2d)`.
+The current kernel implementation stores and inverts each covariance as a dense matrix, giving an :math:`O(nd^3)` upper bound for covariance inversion even though fitted covariances are normally diagonal.
+Without optional OOD consistency, the current end-to-end upper bound is consequently:
 
 .. math::
 
@@ -340,9 +309,7 @@ current end-to-end upper bound is consequently:
         +S
     \right).
 
-Optional conformal calibration and OOD consistency add costs that depend on
-the number of held-out or observed OOD rows and, for OOD consistency, the
-number of covariance-shrink iterations.
+Optional conformal calibration and OOD consistency add costs that depend on the number of held-out or observed OOD rows and, for OOD consistency, the number of covariance-shrink iterations.
 
 Space complexity
 ----------------
@@ -351,13 +318,13 @@ The fitted model stores:
 
 * :math:`O(nd)` anchor coordinates; and
 * :math:`O(nd^2)` covariance and inverse-covariance matrices in the current
-  dense representation.
+    dense representation.
 
 The exporter additionally stores:
 
 * lower and upper bounds for every candidate box, :math:`O(nd)`;
 * at most one temporary covariance or eigensolver workspace,
-  :math:`O(d^2)`;
+    :math:`O(d^2)`;
 * caller-supplied categorical prototypes, :math:`O(P)`; and
 * the generated document and serialized YAML, :math:`O(S)`.
 
@@ -373,7 +340,5 @@ while peak space including the already fitted model is:
 
     O(nd^2+P+S).
 
-For numeric-only mappings with :math:`R` distinct regions,
-:math:`S=\Theta(Rd)`. The output itself can therefore be the dominant memory
-cost when a large number of anchors produces a large number of OpenODD
-modules.
+For numeric-only mappings with :math:`R` distinct regions, :math:`S=\Theta(Rd)`.
+The output itself can therefore be the dominant memory cost when a large number of anchors produces a large number of OpenODD modules.

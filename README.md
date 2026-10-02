@@ -20,6 +20,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 [![prek](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge-v0.json)](https://github.com/DLR-KI/autosafe)
 [![REUSE status](https://api.reuse.software/badge/github.com/DLR-KI/autosafe)](https://api.reuse.software/info/github.com/DLR-KI/autosafe)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
+[![Benchmark results archive DOI: TBD, not yet published](https://img.shields.io/badge/benchmark_results_DOI-TBD-lightgrey.svg)](./REPRODUCTION.md)
 
 Reference implementation of the autoSAFE specification.
 
@@ -101,8 +102,17 @@ odd = af.from_csv(af.ROOT_FOLDER / "data" / "iris.csv")
 # Query the ODD for a new data point
 affinity_threshold = 0.8
 data_point = np.array([[5.1, 3.5, 1.4, 0.2]])
-is_within_odd = odd.contains(data_point) >= affinity_threshold
+is_within_odd = odd(data_point) >= affinity_threshold
 print(f"The data point is within the ODD: {is_within_odd}")
+```
+
+De-duplication of repeated-visit anchors is OFF by default (enabling it changes the anchor set, so previously computed results are not comparable); see [`docs/pages/deduplication.rst`](docs/pages/deduplication.rst) for the full policy and pipeline details:
+
+```python
+from autosafe.deduplication import exact_equality_policy
+
+policy = exact_equality_policy(n_dims=4)
+odd = af.from_csv(af.ROOT_FOLDER / "data" / "iris.csv", dedup_policy=policy)
 ```
 
 ## Developing
@@ -124,6 +134,10 @@ To run the test suite, execute the following command from the project root:
 ```shell
 uv run pytest
 ```
+
+## Reproducing the paper's results
+
+The result artifacts underlying every figure and table in the paper, the archive record (once published), and the exact commands to regenerate them from scratch are documented in [`REPRODUCTION.md`](./REPRODUCTION.md).
 
 ## License
 

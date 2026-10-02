@@ -27,8 +27,7 @@ Quick start
 
     autosafe evaluate dataset data/vcas_state_variables.csv
 
-If ``data/vcas_state_variables.yml`` exists, it is automatically used as
-ground-truth ODD.
+If ``data/vcas_state_variables.yml`` exists, it is automatically used as ground-truth ODD.
 
 Monte Carlo config-file workflow
 --------------------------------
@@ -41,8 +40,7 @@ Both JSON and YAML files are accepted.
     autosafe montecarlo sample --config-file sample_config.json
     autosafe montecarlo sample --config-file experiments/dim_2d/sampling_config.yaml
 
-This runs sampling with the full JSON configuration and overrides
-command-line shape parameters.
+This runs sampling with the full JSON configuration and overrides command-line shape parameters.
 
 Detailed references
 -------------------
@@ -55,11 +53,11 @@ For complete command options, method definitions, and workflow semantics, see:
 Python API
 ----------
 
-For fitting with calibrated or manual parameters, observed OOD data, and
-fixed or conformal membership thresholds, see :doc:`high_level_api`.
+For fitting with calibrated or manual parameters, observed OOD data, and fixed or conformal membership thresholds, see :doc:`high_level_api`.
 
 A minimal low-level API example:
 
+.. no-execute: measured runtime >20 s on the full ``vcas_state_variables.csv`` anchor set (622k rows); the ``from_polars``/``per_dimension``/``RBF`` path itself is covered on smaller fixtures by ``tests/test_importers.py``
 .. code-block:: python
 
     import autosafe as af
