@@ -6,12 +6,8 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 # Reproduction
 
-This document reproduces every quantitative figure and table in the paper
-from this repository. It covers the environment, the committed data, the
-archive of pre-computed results (the fast path), the two commands that
-regenerate those results from scratch (the slow path), a per-figure/table
-mapping down to the exact artifact and command, seeds/configurations, and a
-pointer to the de-duplication rules.
+This document reproduces every quantitative figure and table in the paper from this repository.
+It covers the environment, the committed data, the archive of pre-computed results (the fast path), the two commands that regenerate those results from scratch (the slow path), a per-figure/table mapping down to the exact artifact and command, seeds/configurations, and a pointer to the de-duplication rules.
 
 ## 1. Environment
 
@@ -19,14 +15,11 @@ pointer to the de-duplication rules.
 uv sync --frozen
 ```
 
-This creates a virtual environment from the committed `uv.lock`, so the
-exact dependency versions the results were produced with are reproduced
-byte-for-byte (`uv.lock` is also included in the archive bundle, see below).
+This creates a virtual environment from the committed `uv.lock`, so the exact dependency versions the results were produced with are reproduced byte-for-byte (`uv.lock` is also included in the archive bundle, see below).
 
 ## 2. Data
 
-Every dataset the paper's experiments read is committed to this repository,
-with its licence recorded in `data/REUSE.toml`:
+Every dataset the paper's experiments read is committed to this repository, with its licence recorded in `data/REUSE.toml`:
 
 | File                                                             | What it is                                                                          | Licence         |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------- |
@@ -38,10 +31,7 @@ with its licence recorded in `data/REUSE.toml`:
 | `data/vcas_ood_hole.csv`                                         | VCAS anchors inside the excluded near-CPA region (the OOD-consistency held-out set) | CC-BY-4.0       |
 | `data/hcas_state_variables.yml`, `data/vcas_state_variables.yml` | Ground-truth ODD limit definitions for HCAS/VCAS                                    | CC-BY-4.0       |
 
-`iris.csv`, `WineQT.csv`, and `breast-cancer-wisconsin.csv` back the
-working-example spec items (`eval-iris`, `eval-WineQT`) that are **not**
-used in the paper -- see the run-spec comment header in
-`experiments/run_all_spec.yaml`.
+`iris.csv`, `WineQT.csv`, and `breast-cancer-wisconsin.csv` back the working-example spec items (`eval-iris`, `eval-WineQT`) that are **not** used in the paper -- see the run-spec comment header in `experiments/run_all_spec.yaml`.
 
 Run `uv run reuse lint` at any time to re-verify every licence annotation.
 
@@ -49,52 +39,38 @@ Run `uv run reuse lint` at any time to re-verify every licence annotation.
 
 The archive record for the benchmark results is:
 
-> **DOI: TBD** -- the Zenodo record does not exist yet; this placeholder
-> will be replaced once the archive is published (upload is a manual,
-> post-review step -- see the project plan).
+> **DOI: TBD** -- the Zenodo record does not exist yet; this placeholder will be replaced once the archive is published (upload is a manual, post-review step -- see the project plan).
 
 Once the DOI exists:
 
-1. Download the archive and unpack it. It contains the results tree (minus
-   debug PNGs), the merged run spec, `uv.lock`, a `LICENSE` (CC-BY-4.0), and
-   a `README` naming the exact repository revision the results came from
-   (`experiments/benchmark/make_archive_bundle.py` builds this bundle).
+1. Download the archive and unpack it. It contains the results tree (minus debug PNGs), the merged run spec, `uv.lock`, a `LICENSE` (CC-BY-4.0), and a `README` naming the exact repository revision the results came from (`experiments/benchmark/make_archive_bundle.py` builds this bundle).
 2. Point the exporter at the unpacked `results/` directory:
 
-   ```shell
-   uv run python -m experiments.benchmark.export_paper_data \
-       --outdir /tmp/paper-data --results-dir /path/to/unpacked/results
-   ```
+    ```shell
+    uv run python -m experiments.benchmark.export_paper_data \
+        --outdir /tmp/paper-data --results-dir /path/to/unpacked/results
+    ```
 
-3. Compare against the camera-ready copies used in the paper (optional,
-   read-only):
+3. Compare against the camera-ready copies used in the paper (optional, read-only):
 
-   ```shell
-   uv run python -m experiments.benchmark.export_paper_data \
-       --outdir /tmp/paper-data --verify paper/graphics/data/benchmark
-   ```
+    ```shell
+    uv run python -m experiments.benchmark.export_paper_data \
+        --outdir /tmp/paper-data --verify paper/graphics/data/benchmark
+    ```
 
-   This reports a numeric, cell-by-cell match count (18/18 as of this
-   writing) and exits non-zero on any real difference; formatting
-   differences (the camera-ready files were partly hand-typed with
-   inconsistent zero-padding) are ignored by design.
+    This reports a numeric, cell-by-cell match count (18/18 as of this writing) and exits non-zero on any real difference; formatting differences (the camera-ready files were partly hand-typed with inconsistent zero-padding) are ignored by design.
 
 ### The slow path, stated honestly
 
 Without the archive, every result must be regenerated locally:
 
-- All twelve synthetic benchmark experiments (`experiments/benchmark/run_all.py`,
-  see command 1 below): **up to ~30 minutes each** at full size.
-- The real-data (HCAS/VCAS) evaluations in `experiments/run_all_spec.yaml`
-  (command 2 below), specifically `eval-vcas-rbf`, `eval-hcas-rbf`, and the
-  OOD/subsample items: **on the order of a day each** (622k anchors, global
-  closest-sample mode). These are not something to run in a dev session or
-  CI; they are Johann's to run.
+- All twelve synthetic benchmark experiments (`experiments/benchmark/run_all.py`, see command 1 below): **up to ~30 minutes each** at full size.
+- The real-data (HCAS/VCAS) evaluations in `experiments/run_all_spec.yaml` (command 2 below), specifically `eval-vcas-rbf`, `eval-hcas-rbf`, and the OOD/subsample items: **on the order of a day each** (622k anchors, global closest-sample mode).
+  These are not something to run in a dev session or CI; they are Johann's to run.
 
 ## 4. The two run commands
 
-**1. The synthetic benchmark suite** (twelve experiments backing every
-figure/table not tied to real aviation data):
+**1. The synthetic benchmark suite** (twelve experiments backing every figure/table not tied to real aviation data):
 
 ```shell
 # Validate the whole path in seconds:
@@ -104,9 +80,7 @@ uv run python -m experiments.benchmark.run_all --quick
 uv run python -m experiments.benchmark.run_all --seed 42
 ```
 
-This writes to `experiments/benchmark/results/` and tracks progress in
-`experiments/benchmark/run_all.state.local.json` (resumable: a rerun skips
-anything already completed, matching the contract in point 2 below).
+This writes to `experiments/benchmark/results/` and tracks progress in `experiments/benchmark/run_all.state.local.json` (resumable: a rerun skips anything already completed, matching the contract in point 2 below).
 
 **2. The real-data (HCAS/VCAS) evaluations**, via the experiment manager:
 
@@ -114,20 +88,13 @@ anything already completed, matching the contract in point 2 below).
 uv run autosafe experiments run-spec experiments/run_all_spec.yaml
 ```
 
-This writes to `experiments/run_all_spec.state.local.json`, tracking
-`completed` ids, `failed` ids with their error message, and an update
-timestamp; a rerun resumes rather than repeating completed work. Both state
-files are local-only (the root `.gitignore` `*.json` rule covers them; the
-`.local` suffix is documentation, not a mechanism) -- do not expect them to
-appear in git status.
+This writes to `experiments/run_all_spec.state.local.json`, tracking `completed` ids, `failed` ids with their error message, and an update timestamp; a rerun resumes rather than repeating completed work.
+Both state files are local-only (the root `.gitignore` `*.json` rule covers them; the `.local` suffix is documentation, not a mechanism) -- do not expect them to appear in git status.
 
 ## 5. Figure / table -> artifact -> command
 
-Every entry below ends at the synthetic-benchmark exporter unless noted
-otherwise (the two real-data aviation tables end at the manager's own
-`results.csv`/`config.json`, since they do not go through
-`experiments/benchmark/`). Purely illustrative figures with no underlying
-data (domain-geometry diagrams, the Monte Carlo setup sketch) are omitted.
+Every entry below ends at the synthetic-benchmark exporter unless noted otherwise (the two real-data aviation tables end at the manager's own `results.csv`/`config.json`, since they do not go through `experiments/benchmark/`).
+Purely illustrative figures with no underlying data (domain-geometry diagrams, the Monte Carlo setup sketch) are omitted.
 
 | Figure / Table                                                      | Paper data artifact                                                                             | Results-tree source                                                                  | Command                                            |
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------- |
@@ -153,19 +120,10 @@ data (domain-geometry diagrams, the Monte Carlo setup sketch) are omitted.
 
 ## 6. Seeds and configurations
 
-Every experiment's exact seed and configuration is recorded next to its
-output: `experiments/benchmark/results/<experiment>/config.json` for the
-twelve synthetic experiments (also included in the archive bundle), and the
-corresponding entry in `experiments/run_all_spec.yaml` plus each run's
-`results.csv`/manager output for the real-data evaluations. `run_all.py`'s
-own `--seed` (default 42) is forwarded to every synthetic experiment; the
-real-data spec items pin their own `seed` field per entry (see
-`eval-vcas-rbf-ood`, `eval-vcas-rbf-sub5000-s1`, `-s2`).
+Every experiment's exact seed and configuration is recorded next to its output: `experiments/benchmark/results/<experiment>/config.json` for the twelve synthetic experiments (also included in the archive bundle), and the corresponding entry in `experiments/run_all_spec.yaml` plus each run's `results.csv`/manager output for the real-data evaluations.
+`run_all.py`'s own `--seed` (default 42) is forwarded to every synthetic experiment; the real-data spec items pin their own `seed` field per entry (see `eval-vcas-rbf-ood`, `eval-vcas-rbf-sub5000-s1`, `-s2`).
 
 ## 7. De-duplication and canonical ordering
 
-Anchor de-duplication ships disabled by default, so every cache key, anchor
-set, and published number above reproduces byte-identically regardless of
-whether de-duplication is available. Once implemented, its policy type,
-result type, and pure function live in `src/autosafe/deduplication.py` --
-see that module directly for its API; this document does not duplicate it.
+Anchor de-duplication ships disabled by default, so every cache key, anchor set, and published number above reproduces byte-identically regardless of whether de-duplication is available.
+Once implemented, its policy type, result type, and pure function live in `src/autosafe/deduplication.py` -- see that module directly for its API; this document does not duplicate it.
