@@ -30,8 +30,8 @@ script takes up to ~30 minutes at full size (see
 
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import typer
 
@@ -50,10 +50,7 @@ from experiments.benchmark import (
     run_permutation_stability,
 )
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    MainFn = Callable[..., None]
+MainFn = Callable[..., None]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTDIR = REPO_ROOT / "experiments" / "benchmark" / "results"
