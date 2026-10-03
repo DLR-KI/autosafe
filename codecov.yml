@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
+#
+# SPDX-License-Identifier: CC0-1.0
+
+# One upload per Python version of the pytest matrix; Codecov merges them.
+# Wait for all of them so the status and the badge never show a partial merge.
+codecov:
+  notify:
+    after_n_builds: 5
+
+comment:
+  after_n_builds: 5
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+    patch:
+      default:
+        target: auto

@@ -13,6 +13,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 [![The latest version of autosafe can be found on PyPI.](https://img.shields.io/pypi/v/autosafe.svg)](https://pypi.python.org/pypi/autosafe)
 [![Information on what versions of Python autosafe supports can be found on PyPI.](https://img.shields.io/pypi/pyversions/autosafe.svg)](https://pypi.python.org/pypi/autosafe)
 [![Python tests (pytest)](https://github.com/DLR-KI/autosafe/actions/workflows/pytest.yaml/badge.svg)](https://github.com/DLR-KI/autosafe/actions/workflows/pytest.yaml)
+[![Coverage](https://codecov.io/gh/DLR-KI/autosafe/graph/badge.svg)](https://codecov.io/gh/DLR-KI/autosafe)
 [![Docs status](https://readthedocs.org/projects/autosafe/badge/)](https://autosafe.readthedocs.io/)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)

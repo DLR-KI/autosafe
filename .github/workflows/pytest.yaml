@@ -32,3 +32,11 @@ jobs:
           enable-cache: true
       - name: Test with python ${{ matrix.python-version }}
         run: uv run --frozen pytest
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          disable_search: true
+          flags: py${{ matrix.python-version }}
+          name: py${{ matrix.python-version }}

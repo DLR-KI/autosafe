@@ -173,7 +173,7 @@ min-similarity-lines = 10
 # paper's figures and tables. The path is the top-level package, not the
 # subpackage, so it survives the benchmark rename. `plots/` is not reported: it
 # has no `__init__.py`, and those scripts are standalone debugging aids.
-addopts = "--cov=src/autosafe/ --cov=experiments/ --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml"
+addopts = "--cov=src/autosafe/ --cov=experiments/ --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=report.xml"
 filterwarnings = [
   "ignore::tqdm.TqdmExperimentalWarning",
   "ignore:builtin type SwigPyPacked has no __module__ attribute:DeprecationWarning",
