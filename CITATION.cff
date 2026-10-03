@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-cff-version: 1.2.0
+cff-version: 1.2.1
 
 message: "If you use this software, please cite it as below."
 authors:
@@ -13,7 +13,7 @@ authors:
     orcid: https://orcid.org/0000-0001-9871-122X
 title: "autoSAFE: Autonomous Safety for Operational Design Domains with
   Inexhaustive Data"
-version: 1.2.0
+version: 1.2.1
 date-released: 2026-10-03
 type: software
 license: MIT
