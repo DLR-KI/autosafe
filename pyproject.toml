@@ -106,7 +106,7 @@ pre_bump_hooks = [
 tag_format = "$version"
 version = "1.2.1"
 version_files = [
-  "CITATION.cff:version",
+  "CITATION.cff:^version",
   "docs/conf.py:release",
   "pyproject.toml:version"
 ]
