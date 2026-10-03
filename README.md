@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 <!-- markdownlint-disable MD033 -->
 <h1 align="center">
-<img src="./docs/_static/autoSAFE.svg" alt="autoSAFE logo" width="300">
+<img src="https://raw.githubusercontent.com/DLR-KI/autosafe/main/docs/_static/autoSAFE.svg" alt="autoSAFE logo" width="300">
 </h1><br>
 <!-- markdownlint-enable MD033 -->
 
