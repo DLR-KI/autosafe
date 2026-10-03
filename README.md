@@ -20,7 +20,6 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 [![prek](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge-v0.json)](https://github.com/DLR-KI/autosafe)
 [![REUSE status](https://api.reuse.software/badge/github.com/DLR-KI/autosafe)](https://api.reuse.software/info/github.com/DLR-KI/autosafe)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
-[![Benchmark results archive DOI: TBD, not yet published](https://img.shields.io/badge/benchmark_results_DOI-TBD-lightgrey.svg)](./REPRODUCTION.md)
 
 Reference implementation of the autoSAFE specification.
 
