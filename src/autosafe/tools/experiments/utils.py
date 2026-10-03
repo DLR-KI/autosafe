@@ -376,7 +376,7 @@ def construct_experiment_id(
         str: Standardized experiment identifier.
     """
     if timestamp is None:
-        timestamp = datetime.datetime.now(datetime.timezone.utc)
+        timestamp = datetime.datetime.now(datetime.UTC)
 
     timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
     dataset_stem = dataset_path.stem.replace("-", "_")

@@ -7,13 +7,12 @@ Includes superlevel set analysis using kernel density estimation for
 probability density function (PDF) analysis.
 """
 
-from typing import Any, cast
+from typing import Any, Self, cast
 
 import numpy as np
 import numpy.typing as npt
 from sklearn.cluster import KMeans
 from sklearn.neighbors import KernelDensity
-from typing_extensions import Self
 
 from autosafe.odd.comparison.base import (
     DecisionBoundary,

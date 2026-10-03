@@ -17,13 +17,12 @@ implies.
 """
 
 import warnings
-from typing import Literal, TypedDict, cast
+from typing import Literal, Self, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
 import scipy.optimize
 from sklearn.svm import OneClassSVM
-from typing_extensions import Self
 
 from autosafe.odd.comparison.base import (
     DecisionBoundary,
@@ -341,9 +340,9 @@ def _pairwise_kernel(  # ruff:ignore[too-many-arguments]
         ValueError: If ``kernel`` is not one of the supported names.
     """
     if kernel == "linear":
-        return cast("npt.NDArray[np.float64]", x @ y.T)
+        return x @ y.T
     if kernel == "poly":
-        return cast("npt.NDArray[np.float64]", (gamma * (x @ y.T) + coef0) ** degree)
+        return (gamma * (x @ y.T) + coef0) ** degree
     if kernel == "rbf":
         sq_x = np.sum(x**2, axis=1)[:, np.newaxis]
         sq_y = np.sum(y**2, axis=1)[np.newaxis, :]

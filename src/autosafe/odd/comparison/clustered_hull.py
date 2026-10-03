@@ -3,14 +3,13 @@
 # SPDX-License-Identifier: MIT
 """Per-cluster convex hull ODD boundaries."""
 
-from typing import Any
+from typing import Any, Self
 
 import numpy as np
 import numpy.typing as npt
 import scipy.spatial
 from scipy.spatial import ConvexHull
 from sklearn.cluster import KMeans
-from typing_extensions import Self
 
 from autosafe.odd.comparison.base import (
     DecisionBoundary,

@@ -3,10 +3,11 @@
 # SPDX-License-Identifier: MIT
 """K-nearest-neighbor ODD boundary monitor."""
 
+from typing import Self
+
 import numpy as np
 import numpy.typing as npt
 from scipy.spatial import KDTree
-from typing_extensions import Self
 
 from autosafe.odd.comparison.base import (
     DecisionBoundary,

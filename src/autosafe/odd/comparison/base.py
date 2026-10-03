@@ -4,11 +4,11 @@
 """Base classes and interfaces for ODD comparison methods."""
 
 from abc import ABC, abstractmethod
-from typing import Any, cast
+from typing import Any, Self, cast
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import Self, TypedDict
+from typing_extensions import TypedDict
 
 from autosafe.typing import FloatType, Matrix, NPMatrix, NPVector, Vector
 

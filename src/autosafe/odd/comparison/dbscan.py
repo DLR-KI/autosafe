@@ -3,11 +3,12 @@
 # SPDX-License-Identifier: MIT
 """DBSCAN-based ODD boundary clustering."""
 
+from typing import Self
+
 import numpy as np
 import numpy.typing as npt
 from scipy.spatial import KDTree
 from sklearn.cluster import DBSCAN
-from typing_extensions import Self
 
 from autosafe.odd.comparison.base import (
     DecisionBoundary,

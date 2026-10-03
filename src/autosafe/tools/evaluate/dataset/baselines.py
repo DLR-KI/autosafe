@@ -68,22 +68,22 @@ DEFAULT_DATASET_BASELINES = [
 class _ComparisonMonitor(Protocol):
     """Protocol for comparison monitors used in evaluation."""
 
-    def fit(self, points: Matrix, /) -> object:
+    def fit(self, points: Matrix | NPMatrix, /) -> object:
         """Fit monitor to reference points.
 
         Args:
-            points (Matrix): Reference points to fit on.
+            points (Matrix | NPMatrix): Reference points to fit on.
         """
 
     def evaluate_batch(
         self,
-        test_points: Matrix,
+        test_points: Matrix | NPMatrix,
         /,
     ) -> npt.NDArray[np.bool_]:
         """Return membership predictions for a batch.
 
         Args:
-            test_points (Matrix): Test points to evaluate.
+            test_points (Matrix | NPMatrix): Test points to evaluate.
         """
 
 
@@ -95,10 +95,10 @@ class _BaselineEvaluationData(NamedTuple):
             boundary estimation.
         test_points (Matrix | NPMatrix): Test points to evaluate
             against the ODD boundary.
-        ref_points_t (Matrix): Transposed reference points for monitor
-            fitting.
-        test_points_t (Matrix): Transposed test points for monitor
-            evaluation.
+        ref_points_t (Matrix | NPMatrix): Transposed reference points
+            for monitor fitting.
+        test_points_t (Matrix | NPMatrix): Transposed test points for
+            monitor evaluation.
         n_test_points (int): Number of test points, used for evaluation
             management.
         method_params (dict[str, dict[str, object]]): Per-method
@@ -107,8 +107,8 @@ class _BaselineEvaluationData(NamedTuple):
 
     reference_points: Matrix | NPMatrix
     test_points: Matrix | NPMatrix
-    ref_points_t: Matrix
-    test_points_t: Matrix
+    ref_points_t: Matrix | NPMatrix
+    test_points_t: Matrix | NPMatrix
     n_test_points: int
     method_params: dict[str, dict[str, object]] | None = None
 
@@ -207,7 +207,7 @@ def _compute_method_membership(
             recoverable method-specific failure.
     """
 
-    def _fit_monitor(monitor: _ComparisonMonitor, points: Matrix) -> object:
+    def _fit_monitor(monitor: _ComparisonMonitor, points: Matrix | NPMatrix) -> object:
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",

@@ -74,9 +74,7 @@ class ExperimentManager:
             str: generated experiment identifier.
         """
         self.experiment_count += 1
-        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
-            "%Y%m%d_%H%M%S"
-        )
+        timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
         return f"exp_{timestamp}_{self.experiment_count:03d}"
 
     def run_evaluation_experiment(
@@ -221,7 +219,7 @@ class ExperimentManager:
         """
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state["updated_at"] = datetime.datetime.now(
-            datetime.timezone.utc,
+            datetime.UTC,
         ).isoformat()
         state_path.write_bytes(orjson.dumps(state, option=orjson.OPT_INDENT_2))
 

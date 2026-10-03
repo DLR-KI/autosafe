@@ -4,13 +4,12 @@
 """K-means cluster ODD boundary method."""
 
 import warnings
-from typing import Any
+from typing import Any, Self
 
 import numpy as np
 import numpy.typing as npt
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from typing_extensions import Self
 
 from autosafe.odd.comparison.base import (
     DecisionBoundary,
