@@ -70,7 +70,7 @@ def test_lemma_2_1_extremal_directional_bound(trial: int) -> None:
     closed_form = delta**2 / (u @ sigma @ u)
     assert res.fun == pytest.approx(closed_form, rel=1e-6)
 
-    # The minimiser is v* = (delta / w^2) Sigma u.
+    # The minimizer is v* = (delta / w^2) Sigma u.
     v_star = (delta / (u @ sigma @ u)) * (sigma @ u)
     assert v_star @ sigma_inv @ v_star == pytest.approx(closed_form, rel=1e-12)
     assert u @ v_star == pytest.approx(delta, rel=1e-12)

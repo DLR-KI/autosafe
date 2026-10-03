@@ -10,8 +10,8 @@ r"""Diagonal vs full covariance under coupling.
 Backs the paper's covariance-structure claim (the diagonal-covariance
 appendix). The deployed kernel is **diagonal and anisotropic**, NOT
 isotropic: the sigma-law Eq. 8/9 evaluates ``d_i^*`` per dimension
-(globally-nearest-neighbour *component* in the default
-``closest_sample_mode="global"``, or the 1-D nearest neighbour per
+(globally-nearest-neighbor *component* in the default
+``closest_sample_mode="global"``, or the 1-D nearest neighbor per
 dimension in ``"per_dimension"``), so the diagonal entries of Sigma_i
 differ from each other (verified: 400/400 anchors on corr2d, per-anchor
 ratio 5-95pct [0.35, 3.33]). Axis-aligned anisotropy is therefore

@@ -3,9 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Unit tests for benchmark helpers not reached by the ``--quick`` runs."""
 
-import functools
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +27,6 @@ from experiments.benchmark import (
     run_kernel_truncation,
     synthetic_odds,
 )
-from experiments.benchmark import make_archive_bundle as mab
 
 
 def _blob_and_probes() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -133,19 +130,12 @@ def test_curve_r2_with_a_constant_target() -> None:
     assert np.isnan(common.curve_r2(flat, flat + 1.0))
 
 
-@pytest.mark.parametrize(
-    "git_rev",
-    [common._git_hash, functools.partial(mab._git_rev, Path.cwd())],
-    ids=["common", "make_archive_bundle"],
-)
-def test_git_revision_falls_back_to_unknown(
-    git_rev: Callable[[], str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_git_hash_falls_back_to_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     def _fail(*_args: object, **_kwargs: object) -> None:
         raise OSError
 
     monkeypatch.setattr("subprocess.run", _fail)
-    assert git_rev() == "unknown"
+    assert common._git_hash() == "unknown"
 
 
 def test_alpha_equivalent_of_non_finite_scores() -> None:
@@ -211,72 +201,25 @@ def test_read_dat_rejects_an_empty_file(tmp_path: Path) -> None:
         export_paper_data._read_dat(_write(tmp_path / "empty.dat", "\n"))
 
 
-def test_verify_reports_header_and_row_count_differences(tmp_path: Path) -> None:
-    gen, ref = tmp_path / "gen", tmp_path / "ref"
-    _write(gen / "hole.dat", "method fp_rate\nautosafe nan\n")
-    _write(ref / "hole.dat", "method fp_rate\nautosafe nan\n")
-    _write(gen / "dedup.dat", "tol a\n0 1\n")
-    _write(ref / "dedup.dat", "tol b\n0 1\n")
-    _write(gen / "density.dat", "n a\n1 1\n2 2\n")
-    _write(ref / "density.dat", "n a\n1 1\n")
-
-    report = export_paper_data.verify_against(gen, ref)
-    assert "hole.dat" in report.matches  # NaN cells compare equal
-    assert report.differs["dedup.dat"].startswith("columns differ")
-    assert report.differs["density.dat"].startswith("row count differs")
-
-
-def test_main_writes_and_verifies(tmp_path: Path) -> None:
+def test_main_reports_written_and_skipped_files(tmp_path: Path) -> None:
     results = tmp_path / "results"
     _write(results / "halo_vs_anchor_count" / "halo.dat", "n halo\n10 0.5\n")
     out = tmp_path / "out"
 
-    runner = CliRunner()
     app = export_paper_data.typer.Typer()
     app.command()(export_paper_data.main)
-    ok = runner.invoke(
-        app, ["--outdir", str(out), "--results-dir", str(results), "--verify", str(out)]
+    result = CliRunner().invoke(
+        app, ["--outdir", str(out), "--results-dir", str(results)]
     )
-    assert "halo.dat: written" in ok.output
+    assert result.exit_code == 0
+    assert "halo.dat: written (1 rows)" in result.output
     # Everything but halo.dat is missing from the partial results tree.
-    assert "MISSING" in ok.output
-    assert ok.exit_code == 1
-
-
-# --- make_archive_bundle ------------------------------------------------------
-
-
-def test_stage_bundle_requires_support_files(tmp_path: Path) -> None:
-    results = tmp_path / "results"
-    _write(results / "e" / "config.json", "{}")
-    with pytest.raises(FileNotFoundError, match=r"missing\.yaml"):
-        mab.stage_bundle(
-            results_dir=results,
-            run_spec_path=tmp_path / "missing.yaml",
-            uv_lock_path=tmp_path / "uv.lock",
-            license_src=tmp_path / "LICENSE",
-            staging_dir=tmp_path / "bundle",
-        )
-
-
-def test_archive_main_builds_a_named_zip(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(mab, "EXPECTED_NUMERIC_ARTIFACT_COUNT", 1)
-    results = tmp_path / "results"
-    _write(results / "e" / "config.json", "{}")
-    support = {
-        name: _write(tmp_path / name, "x\n") for name in ("spec.yaml", "uv.lock", "LIC")
-    }
-    mab.main(
-        outdir=tmp_path / "out",
-        results_dir=results,
-        run_spec_path=support["spec.yaml"],
-        uv_lock_path=support["uv.lock"],
-        license_src=support["LIC"],
-        archive_name="bundle.zip",
+    assert "per_n.dat: skipped" in result.output
+    assert (
+        f"1/{len(export_paper_data.EXPECTED_FILENAMES)} paper data files"
+        in result.output
     )
-    assert (tmp_path / "out" / "bundle.zip").exists()
+    assert (out / "halo.dat").exists()
 
 
 def test_dat_written_by_main_round_trips(tmp_path: Path) -> None:

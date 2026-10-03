@@ -23,14 +23,6 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.22045146
     description: "Concept DOI of the software archive (resolves to the latest version)"
-  # TBD: this DOI must be filled in before release. It will point at the
-  # Zenodo archive record for the benchmark result artifacts underlying the
-  # paper (experiments/benchmark/results/, packaged by
-  # experiments/benchmark/make_archive_bundle.py); the record does not exist
-  # yet. See REPRODUCTION.md.
-  # - type: doi
-  #   value: "TBD"
-  #   description: "Archive of the benchmark result artifacts underlying the paper"
 preferred-citation:
   type: conference-paper
   title: "Defining Operational Conditions for Safety-Critical AI-Based Systems

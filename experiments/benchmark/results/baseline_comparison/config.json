@@ -1,0 +1,29 @@
+{
+  "experiment": "baseline_comparison",
+  "quick": false,
+  "seed": 42,
+  "datasets": [
+    "linear2d",
+    "annulus2d",
+    "twoblobs2d",
+    "banana2d",
+    "poly5d"
+  ],
+  "n_anchor": [
+    10,
+    100,
+    1000
+  ],
+  "methods": [
+    "autosafe",
+    "kde",
+    "ocsvm",
+    "knn_dist",
+    "iforest",
+    "gmm",
+    "convex_hull"
+  ],
+  "n_val": 100000,
+  "git_hash": "89d350d45fcd0bd318bd3c58691bcf21f89080bc",
+  "wall_time_seconds": 61.03222766704857
+}

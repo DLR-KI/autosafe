@@ -1,0 +1,13 @@
+dataset arm tol n_after iou_vs_base
+annulus2d calibrated 0 6000 0.66469029
+annulus2d calibrated 0.01 4960 0.80627615
+annulus2d calibrated 0.05 1085 0.93814569
+annulus2d fixed 0 6000 0.81987183
+annulus2d fixed 0.01 5429 0.82693788
+annulus2d fixed 0.05 2284 0.89629959
+linear2d calibrated 0 6000 0.69525678
+linear2d calibrated 0.01 5018 0.8016761
+linear2d calibrated 0.05 1095 0.94142875
+linear2d fixed 0 6000 0.82170725
+linear2d fixed 0.01 5445 0.83184432
+linear2d fixed 0.05 2371 0.90042861

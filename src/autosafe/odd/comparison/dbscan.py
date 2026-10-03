@@ -138,7 +138,7 @@ class DBSCANCluster(ODDBoundaryMethod):
             return np.zeros(test_points.shape[1], dtype=bool)
         dists, _ = self._core_tree.query(test_points.T, k=1)
         # scipy KDTree returns shape (n,) for k=1,
-        # normalise before indexing.
+        # normalize before indexing.
         return np.asarray(dists).ravel() <= self.eps
 
 

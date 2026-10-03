@@ -7,13 +7,11 @@
 # ruff: file-ignore[docstring-missing-returns]
 r"""Rebuild the paper's benchmark ``.dat`` files from the results tree.
 
-The manuscript's data files under ``paper/graphics/data/benchmark/``
-were originally typed by hand from the results tree (see
-``PLAN_CAMERA_READY_RELEASE.md`` Sec. 2 for the recovered provenance).
-This script reproduces every one of those eighteen files
-programmatically from ``experiments/benchmark/results/`` so that future
-runs of the benchmark suite can regenerate the paper's data without hand
-transcription.
+The eighteen data files behind the paper's benchmark figures and tables
+were originally transcribed by hand from the results tree. This script
+reproduces every one of them programmatically from
+``experiments/benchmark/results/``, so that future runs of the benchmark
+suite can regenerate the paper's data without hand transcription.
 
 Each of the eighteen files is a deterministic transform (verbatim copy,
 column pivot, join, filter, or a documented row-drop / label-shortening)
@@ -24,41 +22,26 @@ Usage::
 
     uv run python -m experiments.benchmark.export_paper_data \
         --outdir /tmp/out
-    uv run python -m experiments.benchmark.export_paper_data \
-        --outdir /tmp/out --verify paper/graphics/data/benchmark
-
-The script refuses to write anywhere under ``paper/`` (see
-:func:`_assert_not_under_paper`) -- that directory is the manuscript's
-own copy and is compared against, never overwritten. ``--verify``
-compares numerically, cell by cell, ignoring formatting differences such
-as the inconsistent zero-padding of the hand-typed originals.
 """
 
-from __future__ import annotations
-
 import dataclasses
-import math
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import typer
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 Row = dict[str, str]
 Table = tuple[list[str], list[Row]]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-_PAPER_ROOT = (REPO_ROOT / "paper").resolve()
 DEFAULT_RESULTS_DIR = REPO_ROOT / "experiments" / "benchmark" / "results"
 DEFAULT_OUTDIR = Path(tempfile.gettempdir()) / "autosafe-paper-data-export"
 
 #: Label shortenings applied when carrying a dataset/method/arm name
-#: from the results tree into a paper data file (Plan Sec. 2.2, "Label
-#: shortening"). Anything not listed here is carried through unchanged
-#: (e.g. ``poly5d``).
+#: from the results tree into a paper data file, matching the labels in
+#: the paper's figures. Anything not listed here is carried through
+#: unchanged (e.g. ``poly5d``).
 LABEL_MAP = {
     "linear2d": "linear",
     "annulus2d": "annulus",
@@ -69,8 +52,8 @@ LABEL_MAP = {
     "convex_hull": "hull",
 }
 
-#: The eighteen canonical paper data files, in the order they appear in
-#: PLAN_CAMERA_READY_RELEASE.md Sec. 2.3.
+#: The eighteen data files behind the paper's benchmark figures and
+#: tables.
 EXPECTED_FILENAMES = [
     "halo.dat",
     "truncation_error.dat",
@@ -96,20 +79,6 @@ EXPECTED_FILENAMES = [
 def _shorten(label: str) -> str:
     """Apply the paper's label shortening, or pass through unchanged."""
     return LABEL_MAP.get(label, label)
-
-
-def _assert_not_under_paper(path: Path) -> None:
-    """Refuse to write anywhere under ``paper/`` -- it is read-only.
-
-    Args:
-        path (Path): Candidate output directory.
-
-    Raises:
-        ValueError: If ``path`` is ``paper/`` or lives underneath it.
-    """
-    resolved = Path(path).resolve()
-    if resolved == _PAPER_ROOT or _PAPER_ROOT in resolved.parents:
-        raise ValueError(f"refusing to write under paper/ (read-only): {resolved}")
 
 
 def _read_dat(path: Path) -> Table:
@@ -221,7 +190,7 @@ def _sensitivity(results_dir: Path, output_filename: str) -> Table:
 
 
 #: dataset row order and label for baselines.dat; poly5d is dropped
-#: (Plan Sec. 2.2: it lives in the appendix table instead).
+#: because the paper reports it in the appendix table instead.
 _BASELINE_DATASETS = ["linear2d", "annulus2d", "twoblobs2d", "banana2d"]
 _BASELINE_METHODS = ["autosafe", "kde", "gmm", "convex_hull"]
 _BASELINE_N = ["10", "1000"]
@@ -312,7 +281,7 @@ def _mcm_anchor_count_mean(results_dir: Path) -> Table:
 
     The only genuinely *computed* (not merely rearranged) value among
     the eighteen; formatted at 9 significant figures, matching the
-    recovered ``awk`` recipe (Plan Sec. 2.1, 2026-08-26T09:42:26Z).
+    published values.
     """
     _, mcm_rows = _mcm_per_n(results_dir)
     order_zeta = _first_seen_order(mcm_rows, "zeta")
@@ -438,7 +407,7 @@ def _deployed_covariance(results_dir: Path) -> Table:
     return header, out_rows
 
 
-#: the two truncation levels the paper reports (Plan Sec. 2.3).
+#: the two truncation levels the paper reports.
 _TRUNCATION_K_COLS = ("128", "512")
 
 
@@ -540,9 +509,9 @@ _EXPORTS: list[_Export] = [
 ]
 
 if [e.filename for e in _EXPORTS] != EXPECTED_FILENAMES:
-    # Module-load invariant: keeps EXPECTED_FILENAMES (used by
-    # verify_against, independent of _EXPORTS) in lockstep with the
-    # builder list above.
+    # Module-load invariant: keeps EXPECTED_FILENAMES (used by main and
+    # the tests, independent of _EXPORTS) in lockstep with the builder
+    # list above.
     raise AssertionError("_EXPORTS and EXPECTED_FILENAMES have drifted apart")
 
 
@@ -552,8 +521,7 @@ def run(*, results_dir: Path, outdir: Path) -> dict[str, str]:
     Args:
         results_dir (Path): Root of the per-experiment results tree
             (``experiments/benchmark/results`` by default).
-        outdir (Path): Destination directory; refused if under
-            ``paper/``.
+        outdir (Path): Destination directory (created if needed).
 
     Returns:
         dict[str, str]: ``{filename: status}``, status either
@@ -563,7 +531,6 @@ def run(*, results_dir: Path, outdir: Path) -> dict[str, str]:
             may not cover every combination a recipe needs; it is not an
             error).
     """
-    _assert_not_under_paper(outdir)
     results_dir = Path(results_dir)
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -579,123 +546,21 @@ def run(*, results_dir: Path, outdir: Path) -> dict[str, str]:
     return status
 
 
-def _numeric_cell_equal(
-    a: str, b: str, *, rel_tol: float = 1e-6, abs_tol: float = 1e-9
-) -> bool:
-    """Compare two table cells as numbers if possible, else as text."""
-    try:
-        fa, fb = float(a), float(b)
-    except ValueError:
-        return a == b
-    if math.isnan(fa) and math.isnan(fb):
-        return True
-    return math.isclose(fa, fb, rel_tol=rel_tol, abs_tol=abs_tol)
-
-
-@dataclasses.dataclass
-class VerifyReport:
-    """Result of comparing generated files against a reference dir.
-
-    Attributes:
-        matches (list[str]): Filenames that compared equal, numerically.
-        differs (dict[str, str]): Filenames that differ, mapped to a
-            short description of the first difference found.
-        missing (list[str]): Filenames absent from either side.
-        ok (bool): True iff all 18 canonical files matched exactly.
-    """
-
-    matches: list[str]
-    differs: dict[str, str]
-    missing: list[str]
-
-    @property
-    def ok(self) -> bool:
-        """True iff all 18 canonical files matched exactly."""
-        return not self.differs and not self.missing
-
-
-def verify_against(generated_dir: Path, reference_dir: Path) -> VerifyReport:
-    """Numerically compare the 18 canonical files, cell by cell.
-
-    Args:
-        generated_dir (Path): Directory just written by :func:`run`.
-        reference_dir (Path): Reference directory to compare against
-            (read-only; never written).
-
-    Returns:
-        VerifyReport: matches / differs / missing, over
-            :data:`EXPECTED_FILENAMES`.
-    """
-    matches: list[str] = []
-    differs: dict[str, str] = {}
-    missing: list[str] = []
-    for name in EXPECTED_FILENAMES:
-        gen_path = Path(generated_dir) / name
-        ref_path = Path(reference_dir) / name
-        if not gen_path.exists() or not ref_path.exists():
-            missing.append(name)
-            continue
-        gen_header, gen_rows = _read_dat(gen_path)
-        ref_header, ref_rows = _read_dat(ref_path)
-        if gen_header != ref_header:
-            differs[name] = f"columns differ: {gen_header} vs {ref_header}"
-            continue
-        if len(gen_rows) != len(ref_rows):
-            differs[name] = f"row count differs: {len(gen_rows)} vs {len(ref_rows)}"
-            continue
-        mismatch = None
-        for i, (gr, rr) in enumerate(zip(gen_rows, ref_rows, strict=True)):
-            for col in gen_header:
-                if not _numeric_cell_equal(gr[col], rr[col]):
-                    mismatch = f"row {i} column {col!r}: {gr[col]!r} vs {rr[col]!r}"
-                    break
-            if mismatch:
-                break
-        if mismatch:
-            differs[name] = mismatch
-        else:
-            matches.append(name)
-    return VerifyReport(matches=matches, differs=differs, missing=missing)
-
-
 def main(
     outdir: Path = DEFAULT_OUTDIR,
     results_dir: Path = DEFAULT_RESULTS_DIR,
-    verify: str = "",
 ) -> None:
     """Rebuild the paper's benchmark ``.dat`` files from results.
 
     Args:
-        outdir (Path): Destination directory (created if needed);
-            refused if it resolves under ``paper/``.
+        outdir (Path): Destination directory (created if needed).
         results_dir (Path): Root of the per-experiment results tree.
-        verify (str): If non-empty, a directory (normally
-            ``paper/graphics/data/benchmark``) to compare the written
-            files against, numerically. Exits non-zero on any
-            difference.
-
-    Raises:
-        Exit: With a non-zero code if ``--verify`` found any
-            difference or missing file.
     """
     status = run(results_dir=results_dir, outdir=Path(outdir))
     for name in EXPECTED_FILENAMES:
         typer.echo(f"{name}: {status[name]}")
     n_written = sum(1 for s in status.values() if s.startswith("written"))
     typer.echo(f"{n_written}/{len(EXPECTED_FILENAMES)} paper data files -> {outdir}")
-
-    if verify:
-        report = verify_against(outdir, Path(verify))
-        typer.echo(
-            f"verify vs {verify}: {len(report.matches)} match, "
-            f"{len(report.differs)} differ, {len(report.missing)} missing"
-        )
-        for name, reason in report.differs.items():
-            typer.echo(f"  DIFFER {name}: {reason}")
-        for name in report.missing:
-            typer.echo(f"  MISSING {name}")
-        if not report.ok:
-            raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

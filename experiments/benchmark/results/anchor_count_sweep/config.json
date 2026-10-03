@@ -1,0 +1,22 @@
+{
+  "experiment": "anchor_count_sweep",
+  "quick": false,
+  "seed": 42,
+  "config_note": "fixed kappa=eta=1, raw coords (paper Figure 2); curves and AUPR evaluated with stable -log(1-alpha) scores",
+  "n_list": [
+    3,
+    5,
+    10,
+    25,
+    30,
+    50,
+    100,
+    300,
+    1000,
+    3000,
+    10000
+  ],
+  "n_seeds": 5,
+  "git_hash": "8db2a0a4780d3452cc335c63101c7d73816f735d",
+  "wall_time_seconds": 30.192313938998268
+}

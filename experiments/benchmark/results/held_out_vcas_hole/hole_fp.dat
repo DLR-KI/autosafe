@@ -1,0 +1,4 @@
+method fp_rate_in_hole aupr
+autosafe_no_ood 0.037 0.062335121
+autosafe_with_ood 0.0115 0.062335121
+convex_hull 0.547 0.21012304

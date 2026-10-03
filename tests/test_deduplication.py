@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
 #
 # SPDX-License-Identifier: MIT
-"""Unit tests for src/autosafe/deduplication.py (R3)."""
+"""Unit tests for src/autosafe/deduplication.py."""
 
 import numpy as np
 import pytest

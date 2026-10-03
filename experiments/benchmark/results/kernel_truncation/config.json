@@ -1,0 +1,24 @@
+{
+  "experiment": "kernel_truncation",
+  "quick": false,
+  "huge": true,
+  "seed": 42,
+  "dataset": "poly5d",
+  "n_list": [
+    1000,
+    10000,
+    100000,
+    600000
+  ],
+  "k_list": [
+    8,
+    32,
+    128,
+    512
+  ],
+  "m_query": 10000,
+  "zeta": 0.5,
+  "note": "Euclidean-NN truncation is a heuristic (kernels are anisotropic-diagonal); full_py_peak_mb is the Python-tracemalloc peak and EXCLUDES XLA/JAX device memory. Model memory is the shared anchors+inv_diag footprint; per-query working sets are O(M*K*D) truncated vs O(M*N) touched (XLA-tiled) full.",
+  "git_hash": "89d350d45fcd0bd318bd3c58691bcf21f89080bc",
+  "wall_time_seconds": 1805.9227368170395
+}

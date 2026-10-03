@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 This note documents the OOD consistency adjustment (paper Def. "OOD Consistency Constraint" and Algorithm 1) as **implemented** in `Samples.enforce_ood_consistency`.
 It states the hypothesis the termination proof depends on and where the implementation enforces it (§2), the float64 limits of repeated covariance scaling (§3), the incremental update that makes the procedure usable at production scale (§4), the optional closed-form jump and the regime in which it applies (§5), the resulting complexity---which differs from the statement currently in the paper (§6)---the interaction with the $\lambda$ floor (§7), and what the loop reports while it runs (§8).
 
-The behaviour documented here was derived while diagnosing a production run that could not terminate.
+The behavior documented here was derived while diagnosing a production run that could not terminate.
 
 ## 1. Setting and notation
 
@@ -141,7 +141,7 @@ Three numerical caveats govern the implementation:
   $\log(1 - k)$ with $k = e^{-z}$ is computed with the branch $\log(-\operatorname{expm1}(-z))$ for $z \le \log 2$ and $\operatorname{log1p}(-e^{-z})$ above, mirroring the JAX tile in `_affinity._build_tile("diag_dual")` so the incremental path and the exact refresh agree to round-off.
 - **Drift.**
   Errors accumulate over many updates, so $L$ is recomputed exactly every `refresh_interval` iterations (default 1000).
-  This amortises to one full sweep per 1000 iterations.
+  This amortizes to one full sweep per 1000 iterations.
 - **Non-invertibility.**
   $L = -\infty$ (a saturated kernel) cannot be undone by subtraction.
   Whenever the updated $L$ contains a non-finite entry the implementation falls back to a full recomputation for that iteration.

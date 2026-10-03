@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 # Reproduction
 
 This document reproduces every quantitative figure and table in the paper from this repository.
-It covers the environment, the committed data, the archive of pre-computed results (the fast path), the two commands that regenerate those results from scratch (the slow path), a per-figure/table mapping down to the exact artifact and command, seeds/configurations, and a pointer to the de-duplication rules.
+It covers the environment, the committed data, the committed pre-computed results (the fast path), the two commands that regenerate those results from scratch (the slow path), a per-figure/table mapping down to the exact artifact and command, seeds/configurations, and a pointer to the de-duplication rules.
 
 ## 1. Environment
 
@@ -15,13 +15,13 @@ It covers the environment, the committed data, the archive of pre-computed resul
 uv sync --frozen
 ```
 
-This creates a virtual environment from the committed `uv.lock`, so the exact dependency versions the results were produced with are reproduced byte-for-byte (`uv.lock` is also included in the archive bundle, see below).
+This creates a virtual environment from the committed `uv.lock`, so the exact dependency versions the results were produced with are reproduced byte-for-byte.
 
 ## 2. Data
 
-Every dataset the paper's experiments read is committed to this repository, with its licence recorded in `data/REUSE.toml`:
+Every dataset the paper's experiments read is committed to this repository, with its license recorded in `data/REUSE.toml`:
 
-| File                                                             | What it is                                                                          | Licence         |
+| File                                                             | What it is                                                                          | License         |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------- |
 | `data/iris.csv`                                                  | Fisher's Iris dataset                                                               | CC0-1.0         |
 | `data/WineQT.csv`                                                | Wine quality dataset (Kaggle)                                                       | CC0-1.0         |
@@ -33,40 +33,30 @@ Every dataset the paper's experiments read is committed to this repository, with
 
 `iris.csv`, `WineQT.csv`, and `breast-cancer-wisconsin.csv` back the working-example spec items (`eval-iris`, `eval-WineQT`) that are **not** used in the paper -- see the run-spec comment header in `experiments/run_all_spec.yaml`.
 
-Run `uv run reuse lint` at any time to re-verify every licence annotation.
+Run `uv run reuse lint` at any time to re-verify every license annotation.
 
-## 3. Fast path: the results archive (recommended)
+## 3. Fast path: the committed results (recommended)
 
-The archive record for the benchmark results is:
+The results of the twelve synthetic benchmark experiments are committed to this repository under `experiments/benchmark/results/`, licensed CC-BY-4.0 (see `experiments/benchmark/results/REUSE.toml`).
+They are the files the paper's benchmark figures and tables were built from, committed as produced; see the provenance note in `experiments/benchmark/README.md` for the code revisions they came from.
 
-> **DOI: TBD** -- the Zenodo record does not exist yet; this placeholder will be replaced once the archive is published (upload is a manual, post-review step -- see the project plan).
+Rebuild the paper's benchmark data files from the committed results:
 
-Once the DOI exists:
+```shell
+uv run python -m experiments.benchmark.export_paper_data \
+    --outdir /tmp/paper-data
+```
 
-1. Download the archive and unpack it. It contains the results tree (minus debug PNGs), the merged run spec, `uv.lock`, a `LICENSE` (CC-BY-4.0), and a `README` naming the exact repository revision the results came from (`experiments/benchmark/make_archive_bundle.py` builds this bundle).
-2. Point the exporter at the unpacked `results/` directory:
-
-    ```shell
-    uv run python -m experiments.benchmark.export_paper_data \
-        --outdir /tmp/paper-data --results-dir /path/to/unpacked/results
-    ```
-
-3. Compare against the camera-ready copies used in the paper (optional, read-only):
-
-    ```shell
-    uv run python -m experiments.benchmark.export_paper_data \
-        --outdir /tmp/paper-data --verify paper/graphics/data/benchmark
-    ```
-
-    This reports a numeric, cell-by-cell match count (18/18 as of this writing) and exits non-zero on any real difference; formatting differences (the camera-ready files were partly hand-typed with inconsistent zero-padding) are ignored by design.
+The output was checked cell by cell against the data files used in the paper: all 18 match.
+`tests/benchmark/test_results_tree.py` checks on every test run that all 18 files still rebuild from the committed results.
 
 ### The slow path, stated honestly
 
-Without the archive, every result must be regenerated locally:
+To regenerate every result from scratch:
 
 - All twelve synthetic benchmark experiments (`experiments/benchmark/run_all.py`, see command 1 below): **up to ~30 minutes each** at full size.
 - The real-data (HCAS/VCAS) evaluations in `experiments/run_all_spec.yaml` (command 2 below), specifically `eval-vcas-rbf`, `eval-hcas-rbf`, and the OOD/subsample items: **on the order of a day each** (622k anchors, global closest-sample mode).
-  These are not something to run in a dev session or CI; they are Johann's to run.
+  These are not something to run in a dev session or CI; they need a dedicated machine.
 
 ## 4. The two run commands
 
@@ -120,7 +110,7 @@ Purely illustrative figures with no underlying data (domain-geometry diagrams, t
 
 ## 6. Seeds and configurations
 
-Every experiment's exact seed and configuration is recorded next to its output: `experiments/benchmark/results/<experiment>/config.json` for the twelve synthetic experiments (also included in the archive bundle), and the corresponding entry in `experiments/run_all_spec.yaml` plus each run's `results.csv`/manager output for the real-data evaluations.
+Every experiment's exact seed and configuration is recorded next to its output: `experiments/benchmark/results/<experiment>/config.json` for the twelve synthetic experiments, and the corresponding entry in `experiments/run_all_spec.yaml` plus each run's `results.csv`/manager output for the real-data evaluations.
 `run_all.py`'s own `--seed` (default 42) is forwarded to every synthetic experiment; the real-data spec items pin their own `seed` field per entry (see `eval-vcas-rbf-ood`, `eval-vcas-rbf-sub5000-s1`, `-s2`).
 
 ## 7. De-duplication and canonical ordering

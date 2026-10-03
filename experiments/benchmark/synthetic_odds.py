@@ -67,7 +67,7 @@ class SyntheticODD:
         taxonomy ``X = [lower, upper]`` (paper Def. 3.1). Enforcing the
         box matters for validation points drawn on the enlarged box: a
         point outside ``X`` that happens to satisfy ``R`` is *not* in
-        the ODD, and labelling it otherwise corrupts every metric.
+        the ODD, and labeling it otherwise corrupts every metric.
 
         Args:
             x (NPArray): Points, shape (M, dim) or (dim,).
@@ -165,8 +165,9 @@ def make_corr2d(rho: float, w: float = 0.6) -> "SyntheticODD":
     Coupling strength grows with ``rho``: ``rho=0`` is an axis-aligned
     band (a diagonal kernel suffices), ``rho>0`` rotates it so the local
     data covariance acquires off-diagonal structure that only a
-    full-covariance kernel can align to. Used by E12
-    (diagonal/isotropic-vs-full ablation).
+    full-covariance kernel can align to. Used by the
+    covariance-structure experiment (diagonal/isotropic-vs-full
+    ablation).
 
     Args:
         rho (float): band slope (coupling strength).

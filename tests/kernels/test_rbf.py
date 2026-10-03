@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from autosafe.exceptions import SigmaNotInvertibleError
+from autosafe.kernels import rbf
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
     GaussianKernel,
@@ -723,19 +724,51 @@ def test_fix_sigma_matrix_in_constructor():
     assert np.isfinite(kernel.sigma_inv).all()
 
 
-def test_unrepairable_sigma_update_raises_and_keeps_sigma():
-    # An all-subnormal sigma has no finite eigendecomposition, so the
-    # eigenvalue repair cannot help.
+def _failing_repair(sigma: np.ndarray) -> np.ndarray:
+    """Stand-in for ``_fix_sigma_matrix`` whose result is still singular.
+
+    Whether the real eigenvalue repair succeeds on an all-subnormal sigma
+    depends on the CPU (``jnp.linalg.eigh`` returns NaN on some machines
+    and finite values on others), so the failure path is forced here.
+
+    Returns:
+        np.ndarray: A zero matrix of the same shape.
+    """
+    return np.zeros_like(sigma)
+
+
+_SINGULAR_SIGMA = np.diag([1e-320, 1.0]).astype(FloatType)
+
+
+def test_unrepairable_sigma_update_raises_and_keeps_sigma(
+    monkeypatch: pytest.MonkeyPatch,
+):
     kernel = RBFKernel(x_i=np.zeros(2, dtype=FloatType), sigma="eye")
+    monkeypatch.setattr(rbf, "_fix_sigma_matrix", _failing_repair)
     with pytest.raises(SigmaNotInvertibleError, match="could not be repaired"):
-        kernel.update(sigma=1e-320)
+        kernel.update(sigma=_SINGULAR_SIGMA)
     np.testing.assert_array_equal(kernel.sigma, np.eye(2))
     np.testing.assert_array_equal(kernel.sigma_inv, np.eye(2))
 
 
-def test_unrepairable_sigma_in_constructor_raises():
+def test_unrepairable_sigma_in_constructor_raises(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(rbf, "_fix_sigma_matrix", _failing_repair)
     with pytest.raises(SigmaNotInvertibleError, match="could not be repaired"):
-        RBFKernel(x_i=np.zeros(2, dtype=FloatType), sigma=1e-320)
+        RBFKernel(x_i=np.zeros(2, dtype=FloatType), sigma=_SINGULAR_SIGMA)
+
+
+@pytest.mark.filterwarnings("ignore:sigma matrix was not invertible")
+def test_subnormal_scalar_sigma_never_yields_a_nan_kernel():
+    """Repaired to a finite kernel or rejected, depending on the CPU."""
+    kernel = RBFKernel(x_i=np.zeros(2, dtype=FloatType), sigma="eye")
+    try:
+        kernel.update(sigma=1e-320)
+    except SigmaNotInvertibleError:
+        np.testing.assert_array_equal(kernel.sigma, np.eye(2))
+    assert kernel.sigma is not None
+    assert kernel.sigma_inv is not None
+    assert np.isfinite(kernel.sigma).all()
+    assert np.isfinite(kernel.sigma_inv).all()
 
 
 _SIGMA_NON_DIAG = np.array(

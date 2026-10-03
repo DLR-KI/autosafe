@@ -1,0 +1,21 @@
+{
+  "experiment": "duplicate_sensitivity",
+  "quick": false,
+  "seed": 42,
+  "datasets": [
+    "annulus2d",
+    "linear2d"
+  ],
+  "density_n": [
+    100,
+    300,
+    1000,
+    3000
+  ],
+  "n_base": 1000,
+  "n_grid": 100000,
+  "zeta": 0.5,
+  "note": "Arms use distinct frames: calibrated normalizes to [-1,1]; fixed (kappa=eta=1) stays raw (normalized fixed saturates). IoU/dalpha are within-arm (dup vs no-dup base). formula_check.dat demonstrates the 1-(1-a)^(m+1) noisy-OR inflation on a controlled single anchor.",
+  "git_hash": "89d350d45fcd0bd318bd3c58691bcf21f89080bc",
+  "wall_time_seconds": 98.86201569112018
+}

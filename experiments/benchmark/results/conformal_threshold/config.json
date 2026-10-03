@@ -1,0 +1,27 @@
+{
+  "experiment": "conformal_threshold",
+  "quick": false,
+  "seed": 42,
+  "datasets": [
+    "linear2d",
+    "annulus2d",
+    "poly5d"
+  ],
+  "n_list": [
+    500,
+    1000,
+    5000
+  ],
+  "eps_list": [
+    0.01,
+    0.05,
+    0.1
+  ],
+  "n_repeats": 20,
+  "n_test": 5000,
+  "n_out": 5000,
+  "score": "log-space survival, -log(1-alpha) (saturation-free)",
+  "note": "Split-conformal on the LOG-SPACE score -log(1-alpha): threshold = k-th smallest calibration score, k=floor(eps*(n_cal+1)), which guarantees P(score(X_test) < threshold) <= eps. Because -log(1-alpha) is strictly increasing in alpha, quantiles are equivariant and the guarantee transfers to the alpha scale (zeta_hat = 1-exp(-threshold)). The linear affinity was tried first and is DEGENERATE in 5D: it saturates at exactly 1.0, so every calibration score tied at 1.0 and the threshold excluded nothing (poly5d, all eps). emp_false_excl is the measured ID exclusion on a disjoint test set; specificity_out is the fraction of true-outside points excluded.",
+  "git_hash": "89d350d45fcd0bd318bd3c58691bcf21f89080bc",
+  "wall_time_seconds": 99.72139731491916
+}

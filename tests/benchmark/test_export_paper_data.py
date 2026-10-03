@@ -31,23 +31,6 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def test_refuses_to_write_under_paper(tmp_path: Path) -> None:
-    """The exporter refuses paper/ itself and anything nested under it."""
-    with pytest.raises(ValueError, match="paper/"):
-        export_paper_data._assert_not_under_paper(export_paper_data._PAPER_ROOT)
-    with pytest.raises(ValueError, match="paper/"):
-        export_paper_data._assert_not_under_paper(
-            export_paper_data._PAPER_ROOT / "graphics" / "data" / "benchmark"
-        )
-    # A sibling directory is fine.
-    export_paper_data._assert_not_under_paper(tmp_path)
-
-
-def test_default_outdir_is_not_under_paper() -> None:
-    """The shipped default destination is a scratch path, never paper/."""
-    export_paper_data._assert_not_under_paper(export_paper_data.DEFAULT_OUTDIR)
-
-
 def test_exports_list_matches_expected_filenames() -> None:
     """The builder table and the canonical filename list never drift apart."""
     assert [e.filename for e in export_paper_data._EXPORTS] == (
@@ -289,27 +272,6 @@ def test_conformal_n1000_filters_and_pivots(tmp_path: Path) -> None:
     assert header == ["eps", "annulus", "linear"]
     assert len(rows) == 1  # only the n=1000 eps=0.01 row survives the filter
     assert rows[0] == {"eps": "0.01", "annulus": "0.01", "linear": "0.02"}
-
-
-def test_verify_against_ignores_padding_and_catches_real_differences(
-    tmp_path: Path,
-) -> None:
-    """Numeric comparison passes zero-padding but fails on an actual difference."""
-    generated = tmp_path / "generated"
-    reference = tmp_path / "reference"
-    _write(generated / "hole.dat", "method fp_rate\nautosafe 0.037\n")
-    _write(reference / "hole.dat", "method fp_rate\nautosafe 0.0370000\n")  # padded
-
-    report = export_paper_data.verify_against(generated, reference)
-    assert "hole.dat" in report.matches  # padding-only difference is ignored
-    assert "hole.dat" not in report.differs
-    # every other canonical filename is absent from both directories
-    assert len(report.missing) == len(export_paper_data.EXPECTED_FILENAMES) - 1
-
-    _write(reference / "hole.dat", "method fp_rate\nautosafe 0.05\n")  # now differs
-    report = export_paper_data.verify_against(generated, reference)
-    assert "hole.dat" in report.differs
-    assert not report.ok
 
 
 def test_run_against_quick_experiment_outputs(tmp_path: Path) -> None:

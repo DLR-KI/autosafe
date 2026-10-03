@@ -15,8 +15,7 @@ completed/failed/updated_at contract as
 :class:`autosafe.tools.experiments.core.ExperimentManager` (the manager
 used for the real-data/mc-sample spec in
 ``experiments/run_all_spec.yaml``) -- that manager does not cover these
-twelve scripts (Plan Decision 2: one manager spec, the benchmark suite
-keeps its own documented runner).
+twelve scripts, which keep their own documented runner.
 
 Usage::
 
@@ -28,8 +27,6 @@ script takes up to ~30 minutes at full size (see
 ``experiments/benchmark/README.md`` for per-experiment runtimes); use
 ``--quick`` to exercise the whole path in seconds.
 """
-
-from __future__ import annotations
 
 import json
 import time

@@ -5,6 +5,8 @@
 ### Project files ###
 *.json
 *.png
+# The committed benchmark results include their JSON reports.
+!experiments/benchmark/results/**/*.json
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

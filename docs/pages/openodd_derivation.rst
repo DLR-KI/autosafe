@@ -45,8 +45,8 @@ Each normalized anchor becomes the center of one RBF kernel:
         (x-x_i)
     \right).
 
-The default calibrated mode finds the exact nearest neighbour of every anchor.
-It uses the median positive full-space nearest-neighbour distance :math:`\widetilde d` to resolve:
+The default calibrated mode finds the exact nearest neighbor of every anchor.
+It uses the median positive full-space nearest-neighbor distance :math:`\widetilde d` to resolve:
 
 .. math::
 
@@ -296,7 +296,7 @@ For numeric-only feature mappings, :math:`P=0`.
 If most anchors produce distinct regions, :math:`R` is close to :math:`n` and :math:`S=\Theta(Rd)`.
 In that common case, YAML generation and validation can be practically output-bound.
 
-If the cost of fitting from ID data is also included, exact flat nearest-neighbour search costs :math:`O(n^2d)`.
+If the cost of fitting from ID data is also included, exact flat nearest-neighbor search costs :math:`O(n^2d)`.
 The current kernel implementation stores and inverts each covariance as a dense matrix, giving an :math:`O(nd^3)` upper bound for covariance inversion even though fitted covariances are normally diagonal.
 Without optional OOD consistency, the current end-to-end upper bound is consequently:
 

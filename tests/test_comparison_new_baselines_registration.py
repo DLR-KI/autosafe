@@ -4,7 +4,7 @@
 """Registration tests for the gmm/oneclass_svm/svdd comparison methods.
 
 Mirrors tests/test_evaluate_comparison.py's create_comparison_monitor
-coverage, scoped to the three new R2 baseline methods.
+coverage, scoped to these three baseline methods.
 """
 
 import warnings

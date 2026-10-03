@@ -783,9 +783,9 @@ def test_clustered_hulls_evaluate_batch_and_ball_fallback(
     )
     ch_ball = ClusteredConvexHulls(n_clusters=1).fit(ref)
     assert ch_ball.hulls == [None]
-    # Point clearly inside the bounding ball (centre of ref data).
-    centre = ref.T.mean(axis=0)
-    assert ch_ball(centre) is True
+    # Point clearly inside the bounding ball (center of ref data).
+    center = ref.T.mean(axis=0)
+    assert ch_ball(center) is True
 
     # Exception path in both __call__ and evaluate_batch when hull.equations raises.
     monkeypatch.undo()

@@ -15,15 +15,15 @@ def test_calibration_scale_equivariance():
     rng = np.random.default_rng(0)
     d_nn = rng.exponential(scale=0.01, size=(200, 3))
     a = np.array([2.0, 0.5, 10.0])
-    kappa1, eta1 = calibrate_rbf_scale_median(d_nn)
-    kappa2, eta2 = calibrate_rbf_scale_median(d_nn * a)
-    np.testing.assert_allclose(kappa2, kappa1 * a**2, rtol=1e-12)
-    np.testing.assert_allclose(eta2, eta1 / a, rtol=1e-12)
+    kappa_1, eta_1 = calibrate_rbf_scale_median(d_nn)
+    kappa_2, eta_2 = calibrate_rbf_scale_median(d_nn * a)
+    np.testing.assert_allclose(kappa_2, kappa_1 * a**2, rtol=1e-12)
+    np.testing.assert_allclose(eta_2, eta_1 / a, rtol=1e-12)
     # The sigma law is then equivariant: sigma'(a*d) == a^2 * sigma(d).
     d = d_nn[0]
-    sigma1 = kappa1 * np.exp(-eta1 * d)
-    sigma2 = kappa2 * np.exp(-eta2 * (d * a))
-    np.testing.assert_allclose(sigma2, a**2 * sigma1, rtol=1e-12)
+    sigma_1 = kappa_1 * np.exp(-eta_1 * d)
+    sigma_2 = kappa_2 * np.exp(-eta_2 * (d * a))
+    np.testing.assert_allclose(sigma_2, a**2 * sigma_1, rtol=1e-12)
 
 
 def test_calibration_degenerate_dimension_floor():
@@ -37,26 +37,28 @@ def test_calibration_degenerate_dimension_floor():
 
 
 def test_calibration_all_zero_raises():
-    with pytest.raises(ValueError):  # ruff:ignore[pytest-raises-too-broad]
+    with pytest.raises(
+        ValueError, match="all per-dimension nn-distance medians are zero"
+    ):
         calibrate_rbf_scale_median(np.zeros((10, 2)))
 
 
 def test_isotropic_calibration_scale_equivariance():
     rng = np.random.default_rng(2)
     d = rng.exponential(scale=0.02, size=500)
-    k1, e1 = calibrate_rbf_scale_d_tilde(d)
-    k2, e2 = calibrate_rbf_scale_d_tilde(d * 2.0)
-    assert np.isclose(k2, 4.0 * k1)
-    assert np.isclose(e2, e1 / 2.0)
+    kappa_1, eta_1 = calibrate_rbf_scale_d_tilde(d)
+    kappa_2, eta_2 = calibrate_rbf_scale_d_tilde(d * 2.0)
+    assert np.isclose(kappa_2, 4.0 * kappa_1)
+    assert np.isclose(eta_2, eta_1 / 2.0)
 
 
 def test_isotropic_calibration_ignores_duplicates_and_raises_on_all_zero():
     d = np.array([0.0, 0.0, 1.0, 3.0])
     with pytest.warns(DeprecationWarning, match="use 'gamma'"):
-        k, e = calibrate_rbf_scale_d_tilde(d, c=1.0, s=1.0)
-    assert np.isclose(k, 4.0)
-    assert np.isclose(e, 0.5)
-    with pytest.raises(ValueError):  # ruff:ignore[pytest-raises-too-broad]
+        kappa, eta = calibrate_rbf_scale_d_tilde(d, c=1.0, s=1.0)
+    assert np.isclose(kappa, 4.0)
+    assert np.isclose(eta, 0.5)
+    with pytest.raises(ValueError, match="all full-space nn distances are zero"):
         calibrate_rbf_scale_d_tilde(np.zeros(5))
 
 

@@ -132,7 +132,7 @@ experiments:
   # See docs/ood-consistency.md for the underlying mathematics. In short:
   # `dataset_path` is the FULL VCAS CSV while `ood_path` is the in-hole
   # subset of that same file, so a naive anchor pool would include points
-  # that are also OOD points. A Gaussian at its own centre is exp(0)=1 for
+  # that are also OOD points. A Gaussian at its own center is exp(0)=1 for
   # ANY Sigma, so `max alpha <= xi` would be unreachable if any anchor
   # coincided with an OOD point -- the termination proof requires
   # D_ID cap D_OOD = empty. `evaluate_dataset_mode` therefore SUBTRACTS the

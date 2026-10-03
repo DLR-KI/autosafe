@@ -22,7 +22,7 @@ Disabled by default
 --------------------
 
 **De-duplication ships disabled by default.** ``evaluate_dataset_mode``, ``from_csv``/``from_polars``/``from_numpy``, and the ``dataset`` spec mode all take an optional policy argument that defaults to ``None`` (no policy / ``dedup_resolution`` absent).
-With no policy, none of ``src/autosafe/deduplication.py`` or ``src/autosafe/tools/evaluate/dataset/dedup_integration.py`` is even imported, and the existing pipeline runs byte-identically to before R3.
+With no policy, none of ``src/autosafe/deduplication.py`` or ``src/autosafe/tools/evaluate/dataset/dedup_integration.py`` is even imported, and the existing pipeline runs byte-identically to a version without de-duplication support.
 
 This matters because **enabling de-duplication changes the anchor set**, and therefore any previously computed result: fewer anchors, different kernel placements, a different fitted ODD, different cache files.
 Turning it on for a dataset that has already been evaluated is not a metadata-only change -- it invalidates the comparison to prior numbers for that dataset unless both are re-run under the same (disabled or enabled) setting.

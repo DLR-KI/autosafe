@@ -1,0 +1,22 @@
+{
+  "experiment": "held_out_vcas_hole",
+  "quick": false,
+  "seed": 42,
+  "source": "vcas_hole",
+  "zeta": 0.5,
+  "n_id": 20000,
+  "m_ood": 500,
+  "vcas_available": true,
+  "vcas_hole": {
+    "h": [
+      -300.0,
+      300.0
+    ],
+    "tau": [
+      0.0,
+      8.0
+    ]
+  },
+  "git_hash": "89d350d45fcd0bd318bd3c58691bcf21f89080bc",
+  "wall_time_seconds": 109.56485609500669
+}

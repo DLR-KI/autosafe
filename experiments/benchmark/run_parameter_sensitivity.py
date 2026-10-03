@@ -44,7 +44,7 @@ DEFAULT_OUTDIR = Path("experiments/benchmark/results/parameter_sensitivity")
 
 
 def _aupr(odd: Samples, val_n: NPArray, labels: npt.NDArray[np.bool_]) -> float:
-    """Return the AUPR of the ODD's affinity on labelled points."""
+    """Return the AUPR of the ODD's affinity on labeled points."""
     return classification_metrics(score_autosafe(odd, val_n), labels)["aupr"]
 
 

@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
 #
 # SPDX-License-Identifier: MIT
-"""Integration and regression tests for R3 dataset-mode de-duplication.
+"""Integration and regression tests for dataset-mode de-duplication.
 
-Do NOT import anything from experiments/ here (see PLAN_CAMERA_READY_RELEASE.md
-and the R3 task brief); the regression probe below is an independently
-reconstructed synthetic scenario, not a re-run of the paper's experiment.
+Do NOT import anything from experiments/ here: the library tests must not
+depend on the benchmark scripts. The regression probe below is an
+independently reconstructed synthetic scenario, not a re-run of the
+paper's experiment.
 """
 
 import json
@@ -62,8 +63,8 @@ def test_disabled_dedup_reproduces_current_behavior_exactly(tmp_path: Path) -> N
     """The most important test: dedup_policy=None changes nothing.
 
     Duplicate rows are NOT collapsed, the ODD path carries no
-    ``-dedup`` tag, and repeated runs are byte-identical, exactly the
-    pre-R3 behavior.
+    ``-dedup`` tag, and repeated runs are byte-identical, exactly as
+    without de-duplication support.
     """
     ds, n_total = _write_dataset_with_duplicates(tmp_path)
 
@@ -433,7 +434,7 @@ class TestDuplicateSensitivityRegression:
         #
         # Primary regression target: this probe's OWN deterministic output.
         # Pinning the measured values rather than the paper's is what makes
-        # this a regression test -- a band centred on 0.938 would let the
+        # this a regression test -- a band centered on 0.938 would let the
         # recovery drift *upward* toward it unnoticed, and upward is
         # precisely where the known failure mode goes.
         assert iou_with_duplicates == pytest.approx(0.6623, abs=0.01)

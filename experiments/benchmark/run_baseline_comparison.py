@@ -125,7 +125,7 @@ def main(
     seed: int = 42,
     outdir: Path = DEFAULT_OUTDIR,
 ) -> None:
-    """Run E1; write results.csv, per-dataset .dat, summary, config.
+    """Run the baseline comparison; write results, dats and config.
 
     Args:
         quick (bool): Run the small ``--quick`` smoke configuration

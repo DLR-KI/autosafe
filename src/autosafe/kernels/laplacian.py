@@ -164,7 +164,8 @@ class LaplacianKernel(Kernel):
             dist = jnp.sum(jnp.abs(alpha_j * diff))
             return jnp.exp(-dist)
 
-        # 2D input: normalise to (n_points, D) using the same R2 rule
+        # 2D input: normalize to (n_points, D) with the same orientation
+        # rule as RBFKernel.__call__.
         x2 = x_j if x_j.shape[1] == dim else x_j.T  # (n_points, D)
         diff = x2 - x_i_j[None, :]
         dist = jnp.sum(jnp.abs(alpha_j[None, :] * diff), axis=1)

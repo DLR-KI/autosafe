@@ -1,0 +1,13 @@
+{
+  "experiment": "ood_adjustment",
+  "quick": false,
+  "seed": 42,
+  "zeta": 0.6,
+  "datasets": [
+    "linear2d",
+    "annulus2d"
+  ],
+  "n_id": 1000,
+  "git_hash": "c5442046f1b0cc266ef8c040276d34eaae128d6a",
+  "wall_time_seconds": 374.22099689301103
+}

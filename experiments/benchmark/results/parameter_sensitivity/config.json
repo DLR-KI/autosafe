@@ -1,0 +1,13 @@
+{
+  "experiment": "parameter_sensitivity",
+  "quick": false,
+  "seed": 42,
+  "calibrated_aupr_spread": 0.9783068406287253,
+  "datasets": [
+    "linear2d",
+    "annulus2d",
+    "poly5d"
+  ],
+  "git_hash": "c5442046f1b0cc266ef8c040276d34eaae128d6a",
+  "wall_time_seconds": 64.00644197600195
+}

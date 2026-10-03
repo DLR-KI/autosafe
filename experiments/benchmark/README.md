@@ -8,8 +8,17 @@ Standalone experiments backing the paper's empirical claims.
 They use the autoSAFE public API directly; the only autoSAFE-internal call is `Samples._find_closest_samples` (to assign each kernel's nearest neighbor), mirroring the production construction path.
 
 Results (long-format `results.csv`, pgfplots-ready `.dat`, `config.json` with git hash and wall time) live in `experiments/benchmark/results/<exp>/`.
+They are committed to this repository as produced, licensed CC-BY-4.0 (see `results/REUSE.toml`), and must not be regenerated in place.
 Numbers quoted below are from those files.
-`results/` and `plots/` are not tracked in git (see `.gitignore` in this directory); plotting is TikZ/PGFPlots in the paper, so the matplotlib scripts under `plots/` are local debugging aids only.
+`plots/` is not tracked in git (see `.gitignore` in this directory); plotting is TikZ/PGFPlots in the paper, so the matplotlib scripts under `plots/` are local debugging aids only.
+
+## Provenance of the committed results
+
+Each experiment's `config.json` (for permutation stability, `permutation_report.json`) records the `git_hash` of the code that produced it.
+The anchor-count sweep was produced at `8db2a0a4`, the halo-vs-anchor-count, OOD-adjustment, and parameter-sensitivity experiments at `c5442046`, and all others at `89d350d4`.
+Those commits belong to the pre-publication history and are not part of this repository.
+On 2026-10-02 the committed tree was verified to rebuild all 18 paper data files exactly (see [Exporting the paper's data files](#exporting-the-papers-data-files)).
+Code changes since then that can affect a re-run: the scripts now use `scipy.spatial.KDTree` (default `leafsize=10`) instead of `cKDTree` (`leafsize=16`), which can shift the kernel-truncation latencies.
 
 ## Running
 
@@ -41,7 +50,7 @@ Each section states what the experiment does, the paper artifact it backs, and i
   Order-independence: max score deviation over 5 anchor permutations — measured for autoSAFE only; the baselines carry NaN, so no non-determinism numbers may be quoted for them.
 - **Headline (N=1000):** autoSAFE matches the strongest baselines on 2D (0.973–0.993 AUPR; best method within 0.014) and beats the hull decisively on non-convex cases (annulus 0.991 vs 0.901, twoblobs 0.987 vs 0.482).
   **Honest caveat:** on sparse 5D (`poly5d`) the default s=3 collapses to **0.079** while GMM/k-NN reach 0.85–0.88 — the same s-sensitivity the parameter-sensitivity experiment measures (s=1 recovers ≈0.91). autoSAFE permutation deviation ≤ 5.6e-15.
-- **Outputs:** `baseline_summary.tex`, `aupr_vs_n_<dataset>.dat`, `fixed_zeta.dat`.
+- **Outputs:** `aupr_vs_n_<dataset>.dat`, `fixed_zeta.dat`.
 
 ### OOD adjustment (`run_ood_adjustment.py`)
 
@@ -142,7 +151,7 @@ Each section states what the experiment does, the paper artifact it backs, and i
   `build_odd("fixed")` uses `λ = λ_rel·κ = e⁻¹⁰` (with κ=1) — not an absolute floor.
   Regenerated Figure-2 numbers therefore reflect this relative floor.
 - **Ground-truth membership is `R ∩ X`** (ontology AND taxonomy box), enforced in `synthetic_odds.SyntheticODD.contains`.
-  Validation points on the 2× box that satisfy `R` but fall outside `X` are correctly labelled *not* in the ODD.
+  Validation points on the 2× box that satisfy `R` but fall outside `X` are correctly labeled *not* in the ODD.
 - **The anchor-count-sweep curve-R²** is between the ODD-referenced and convex-hull-referenced precision (resp. recall) curves as ζ sweeps.
   The stable-score evaluation avoids saturated linear-affinity ties: precision R² is 0.971 at `N=1000` and 0.99965 at `N=10⁴`; recall R² is numerically 1.0 at `N≥1000` but degenerate because both recall curves are nearly constant.
 - **Halo-vs-anchor-count acceptance:** `config.json` reports `halo_trend_fixed` (should be `> 0`) and `halo_trend_calibrated*` (should be `≤ 0`).
@@ -151,32 +160,19 @@ Each section states what the experiment does, the paper artifact it backs, and i
 
 ## Exporting the paper's data files
 
-`export_paper_data.py` reconstructs the eighteen `.dat` files under `paper/graphics/data/benchmark/` from `results/` (pivots, joins, and the documented row-filters/label-shortenings in `PLAN_CAMERA_READY_RELEASE.md` Sec. 2).
-It refuses to write under `paper/`; `--verify <dir>` compares numerically, cell by cell, ignoring the camera-ready files' inconsistent hand-typed zero-padding.
+`export_paper_data.py` reconstructs the eighteen `.dat` files behind the paper's benchmark figures and tables from `results/` (pivots, joins, and the row filters and label shortenings documented next to each recipe in the script).
 
 ```bash
 uv run python -m experiments.benchmark.export_paper_data --outdir /tmp/paper-data
-uv run python -m experiments.benchmark.export_paper_data \
-    --outdir /tmp/paper-data --verify paper/graphics/data/benchmark
 ```
 
-**Verified 2026-09-02, read-only, against the camera-ready copies: 18/18 numeric matches, 0 differ, 0 missing.**
-
-## Archive bundle
-
-`make_archive_bundle.py` packages `results/` (minus `*.png`), the merged `experiments/run_all_spec.yaml`, `uv.lock`, a `LICENSE` (CC-BY-4.0), and a `README` naming the exact repository revision into a single `.zip` for the Zenodo/HuggingFace archive record (results are not committed to git; see `REPRODUCTION.md`).
-It reads the filesystem directly, never `git ls-files` (the results tree is untracked), and asserts the expected 75 numeric artifacts (`.dat`/`.csv`/`.json`/`.tex`) are present before writing anything.
-
-```bash
-uv run python -m experiments.benchmark.make_archive_bundle --outdir /tmp/bundle
-```
-
-Uploading the resulting archive is a separate, manual step -- see `REPRODUCTION.md`.
+On 2026-09-02 and again on 2026-10-02 (from the committed results) the output was checked cell by cell against the data files used in the paper: 18/18 match.
+`tests/benchmark/test_results_tree.py` checks on every test run that all 18 files rebuild from the committed results.
 
 ## Plotting (`plots/`, PEP 723)
 
 Self-contained matplotlib scripts (inline `# /// script` deps), one per experiment that produces a figure (permutation stability and anchor-subset-stability do not have plotting scripts — the former is a scalar report, the latter is table-only).
-Run e.g. `uv run experiments/benchmark/plots/plot_kernel_truncation.py`; each reads `results/<exp>/*.dat` and writes PNGs alongside them.
+Run e.g. `uv run experiments/benchmark/plots/plot_kernel_truncation.py`; each reads `results/<exp>/*.dat` and writes PNGs alongside them, which git ignores.
 Re-run after the full experiment runs.
 These are local debugging aids, not published artifacts — all paper figures are TikZ/PGFPlots.
 

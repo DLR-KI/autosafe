@@ -184,7 +184,7 @@ class RBFKernel(Kernel):
         self.eta = eta
         self.lam = lam
 
-        # Initialise JAX cache fields before any sigma branch.
+        # Initialize JAX cache fields before any sigma branch.
         self._sigma_is_diagonal: bool = False
         self._x_i_jax: jax.Array | None = None
         self._sigma_inv_diag_jax: jax.Array | None = None

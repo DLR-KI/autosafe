@@ -1,0 +1,21 @@
+{
+  "experiment": "halo_vs_anchor_count",
+  "quick": false,
+  "seed": 42,
+  "zeta": 0.5,
+  "n_list": [
+    30,
+    100,
+    300,
+    1000,
+    3000,
+    10000,
+    30000
+  ],
+  "halo_trend_fixed": 2.3993033865925084,
+  "halo_trend_calibrated": -3.387013123940804,
+  "halo_trend_calibrated_sN": -1.7907550161698518,
+  "note": "Expect halo_trend_fixed > 0 (grows) and calibrated trends <= 0 (shrink). If calibrated does not shrink, STOP and report.",
+  "git_hash": "c5442046f1b0cc266ef8c040276d34eaae128d6a",
+  "wall_time_seconds": 88.6262075889972
+}

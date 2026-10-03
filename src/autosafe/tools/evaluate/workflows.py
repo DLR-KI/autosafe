@@ -418,7 +418,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
                 normalize_data=normalize_data,
             )
 
-    # De-duplication (R3): OFF BY DEFAULT. Reached only when the caller
+    # De-duplication: OFF BY DEFAULT. Reached only when the caller
     # passes an explicit dedup_policy; with dedup_policy=None (the
     # default) nothing below runs and the pipeline is exactly the one
     # above, unchanged. See dedup_integration.py for the pipeline
@@ -659,7 +659,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         "median_nn_distance": median_nn,
         "median_nn_distance_note": (
             "calibration uses the FAISS float32 neighbor cache; "
-            "this value is the float64 cKDTree median (sub-percent difference)"
+            "this value is the float64 KDTree median (sub-percent difference)"
         ),
         "local_noise_mode": local_noise_mode,
         "local_noise_multiplier": local_noise_multiplier,

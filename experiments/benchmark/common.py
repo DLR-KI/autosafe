@@ -57,8 +57,8 @@ def build_odd(
         points (NPArray): (N, D) ID anchor points (already in the
             desired coordinate system).
         mode (str): ``"fixed"`` -> kappa=eta=1,
-            lam=SIGMA_FLOOR_RATIO*kappa (= e^-10, the camera-ready MCM
-            parameters; cf. OVERLEAF_CHANGES item 2.1); ``"calibrated"``
+            lam=SIGMA_FLOOR_RATIO*kappa (= e^-10, the paper's Monte
+            Carlo parameters); ``"calibrated"``
             -> kappa=(s*d_tilde)**2, eta=gamma/d_tilde,
             lam=SIGMA_FLOOR_RATIO*kappa; ``"manual"`` -> the explicit
             ``kappa``/``eta``/``lam`` given.
@@ -248,7 +248,7 @@ def pr_curves(
 def curve_r2(curve_target: NPArray, curve_pred: NPArray) -> float:
     """Curve R^2 with ``curve_target`` as the reference.
 
-    Matches the paper / OVERLEAF_CHANGES G3 footnote:
+    Matches the paper's definition:
     ``R^2 = 1 - SS_res/SS_tot`` with the underlying-ODD curve as the
     regression target.
 

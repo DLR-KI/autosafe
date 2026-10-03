@@ -165,7 +165,7 @@ def main(
         k_list = [8, 32, 128, 512]
         m_query = 10000
         if huge:
-            n_list.append(600000)  # Johann-only; ~VCAS scale
+            n_list.append(600000)  # ~VCAS scale; needs a dedicated machine
 
     odd_obj = get_odd("poly5d")
     rows: list[dict] = []

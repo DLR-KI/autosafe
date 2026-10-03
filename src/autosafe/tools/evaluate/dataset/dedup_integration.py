@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
 #
 # SPDX-License-Identifier: MIT
-"""Dataset-mode wiring for resolution-cell de-duplication (R3).
+"""Dataset-mode wiring for resolution-cell de-duplication.
 
 Ships disabled by default: every function here is reached only when
 the caller passes an explicit

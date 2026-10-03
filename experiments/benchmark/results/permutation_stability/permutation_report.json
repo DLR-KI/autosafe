@@ -1,0 +1,133 @@
+{
+  "experiment": "permutation_stability",
+  "quick": false,
+  "seed": 42,
+  "n_permutations": 20,
+  "max_sigma_dev": 0.0,
+  "max_alpha_dev": 1.6653345369377348e-15,
+  "all_pass": true,
+  "per_permutation": [
+    {
+      "permutation": 0,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 9.992007221626409e-16,
+      "pass": true
+    },
+    {
+      "permutation": 1,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 2,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 3,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 4,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 9.992007221626409e-16,
+      "pass": true
+    },
+    {
+      "permutation": 5,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 8.881784197001252e-16,
+      "pass": true
+    },
+    {
+      "permutation": 6,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 7,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 8,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 9,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 10,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.2212453270876722e-15,
+      "pass": true
+    },
+    {
+      "permutation": 11,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 12,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.3322676295501878e-15,
+      "pass": true
+    },
+    {
+      "permutation": 13,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.1102230246251565e-15,
+      "pass": true
+    },
+    {
+      "permutation": 14,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.2212453270876722e-15,
+      "pass": true
+    },
+    {
+      "permutation": 15,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.2212453270876722e-15,
+      "pass": true
+    },
+    {
+      "permutation": 16,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 9.992007221626409e-16,
+      "pass": true
+    },
+    {
+      "permutation": 17,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.2212453270876722e-15,
+      "pass": true
+    },
+    {
+      "permutation": 18,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.2212453270876722e-15,
+      "pass": true
+    },
+    {
+      "permutation": 19,
+      "max_sigma_dev": 0.0,
+      "max_alpha_dev": 1.6653345369377348e-15,
+      "pass": true
+    }
+  ],
+  "note": "Comparison is coordinate-keyed (index-invariant). If a value deviation > 1e-12 is caused only by JAX summation order, add the opt-in canonical_order sort and re-run.",
+  "wall_time_seconds": 40.48466366599314
+}
