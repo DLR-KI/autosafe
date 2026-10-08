@@ -1,7 +1,7 @@
 {
   "exact_deterministic": true,
   "ivf_flip_rate": {
-    "nprobe1": 0.0227,
-    "nprobe8": 0.0004
+    "nprobe1": 0.0379,
+    "nprobe8": 0.0009
   }
 }

@@ -41,8 +41,10 @@ from experiments.benchmark.common import (
     build_odd,
     classification_metrics,
     confusion_at,
+    in_region,
+    log_threshold,
     normalize_fit_apply,
-    score_autosafe,
+    score_autosafe_log,
     write_config,
     write_dat,
 )
@@ -202,14 +204,14 @@ def main(
     rows: list[dict] = []
     fixed_rows: list[dict] = []
 
-    def _fixed(method: str, val_scores: NPArray) -> None:
+    def _fixed(method: str, val_scores: NPArray, threshold: float) -> None:
         """Fixed-zeta operating point and raw-frame boundary error."""
-        pred = val_scores >= zeta
+        pred = val_scores >= threshold
         fixed_rows.append({
             "method": method,
             **{
                 k: v
-                for k, v in confusion_at(val_scores, labels, zeta).items()
+                for k, v in confusion_at(val_scores, labels, threshold).items()
                 if k not in {"tp", "fp", "tn", "fn"}
             },
             **boundary_error(val_raw, labels, pred),
@@ -217,25 +219,25 @@ def main(
 
     # (i) autoSAFE without OOD.
     odd_plain = build_odd(id_n, mode="calibrated")
-    plain_val_scores = score_autosafe(odd_plain, val_n)
+    plain_val_scores = score_autosafe_log(odd_plain, val_n)
     rows.append({
         "method": "autosafe_no_ood",
-        "fp_rate_in_hole": float(np.mean(score_autosafe(odd_plain, probe_n) >= zeta)),
+        "fp_rate_in_hole": float(np.mean(in_region(odd_plain, probe_n, zeta))),
         "aupr": classification_metrics(plain_val_scores, labels)["aupr"],
     })
-    _fixed("autosafe_no_ood", plain_val_scores)
+    _fixed("autosafe_no_ood", plain_val_scores, log_threshold(zeta))
 
     # (ii) autoSAFE with the hole points as OOD samples.
     odd_ood = build_odd(id_n, mode="calibrated")
     if len(hole_n) >= 1:
-        odd_ood.enforce_ood_consistency(hole_n, xi=0.1, shrink_factor=0.9)
-    ood_val_scores = score_autosafe(odd_ood, val_n)
+        odd_ood.enforce_ood_consistency(hole_n, xi=0.01, shrink_factor=0.9)
+    ood_val_scores = score_autosafe_log(odd_ood, val_n)
     rows.append({
         "method": "autosafe_with_ood",
-        "fp_rate_in_hole": float(np.mean(score_autosafe(odd_ood, probe_n) >= zeta)),
+        "fp_rate_in_hole": float(np.mean(in_region(odd_ood, probe_n, zeta))),
         "aupr": classification_metrics(ood_val_scores, labels)["aupr"],
     })
-    _fixed("autosafe_with_ood", ood_val_scores)
+    _fixed("autosafe_with_ood", ood_val_scores, log_threshold(zeta))
 
     # (iii) convex hull.
     try:
@@ -250,7 +252,7 @@ def main(
         "fp_rate_in_hole": float(np.mean(pred_hull_probe)),
         "aupr": classification_metrics(pred_hull_val.astype(float), labels)["aupr"],
     })
-    _fixed("convex_hull", pred_hull_val.astype(float))
+    _fixed("convex_hull", pred_hull_val.astype(float), zeta)
 
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)

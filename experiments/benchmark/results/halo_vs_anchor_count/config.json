@@ -16,6 +16,6 @@
   "halo_trend_calibrated": -3.387013123940804,
   "halo_trend_calibrated_sN": -1.7907550161698518,
   "note": "Expect halo_trend_fixed > 0 (grows) and calibrated trends <= 0 (shrink). If calibrated does not shrink, STOP and report.",
-  "git_hash": "c5442046f1b0cc266ef8c040276d34eaae128d6a",
-  "wall_time_seconds": 88.6262075889972
+  "git_hash": "484df52e82423fbe4a12803f638cfcb9e7aa17dd",
+  "wall_time_seconds": 49.38331865193322
 }

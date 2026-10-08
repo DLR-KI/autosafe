@@ -31,8 +31,10 @@ from sklearn.metrics import (
 
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
+    WIDTH_SCHEDULE_SQRT_LOG_N,
     RBFKernel,
     calibrate_rbf_scale_d_tilde,
+    resolve_width_multiple,
 )
 from autosafe.preprocessing import RangeNormalizer
 from autosafe.sample import Sample
@@ -46,7 +48,7 @@ def build_odd(
     *,
     mode: str,
     gamma: float = 1.0,
-    s: float = 3.0,
+    s: float | str = WIDTH_SCHEDULE_SQRT_LOG_N,
     kappa: float = 1.0,
     eta: float = 1.0,
     lam: float | None = None,
@@ -64,7 +66,9 @@ def build_odd(
             ``kappa``/``eta``/``lam`` given.
         gamma (float): Calibrated-mode decay constant (ignored
             otherwise).
-        s (float): Calibrated-mode width multiple (ignored otherwise).
+        s (float | str): Calibrated-mode width multiple, a number or
+            the schedule ``"sqrt_log_n"`` (s_N = sqrt(ln N), the
+            default); ignored otherwise.
         kappa (float): Manual-mode scale (ignored otherwise).
         eta (float): Manual-mode decay (ignored otherwise).
         lam (float | None): Manual-mode floor; defaults to
@@ -100,7 +104,9 @@ def build_odd(
         # Distance from each anchor to its nearest OTHER anchor (k=2 ->
         # col 1), exactly the d_l2 the production calibrator consumes.
         d_l2 = KDTree(pts).query(pts, k=2)[0][:, 1]
-        kappa_c, eta_c = calibrate_rbf_scale_d_tilde(d_l2, gamma=gamma, s=s)
+        kappa_c, eta_c = calibrate_rbf_scale_d_tilde(
+            d_l2, gamma=gamma, s=resolve_width_multiple(s, pts.shape[0])
+        )
         override = {
             "kappa": kappa_c,
             "eta": eta_c,
@@ -137,7 +143,10 @@ def kernel_sigma(sample: Sample) -> NPArray:
 
 
 def score_autosafe(odd: Samples, x: NPArray) -> NPArray:
-    """Continuous membership score: linear-space affinity in [0, 1].
+    """Linear-space affinity in [0, 1], for reporting affinity VALUES.
+
+    Do not threshold or rank it: it saturates at 1.0. Decisions use
+    :func:`in_region` and rankings :func:`score_autosafe_log`.
 
     Args:
         odd (Samples): The constructed ODD.
@@ -148,6 +157,65 @@ def score_autosafe(odd: Samples, x: NPArray) -> NPArray:
     """
     alpha, _ = odd.affinity_dual(np.asarray(x, dtype=float))
     return np.asarray(alpha, dtype=float)
+
+
+def score_autosafe_log(odd: Samples, x: NPArray) -> NPArray:
+    """Saturation-free membership score ``-S(x) = -log(1 - alpha(x))``.
+
+    ``-S`` is a strictly increasing function of ``alpha``, so it ranks
+    query points exactly as the affinity does in exact arithmetic, and
+    it is the quantity the paper's log-space decision rule thresholds.
+    Unlike the linear affinity, it does not round to the tie value 1.0
+    once the accumulated kernel mass is large (sparse, high-dimensional
+    data), so threshold-free metrics such as AUPR measure the ODD rather
+    than float64 rounding. Exact anchor hits (``+inf``) are mapped to
+    the largest finite float so ranking metrics stay defined.
+
+    Args:
+        odd (Samples): The constructed ODD.
+        x (NPArray): (M, D) query points.
+
+    Returns:
+        NPArray: (M,) scores ``-log(1 - alpha)``, finite and
+            non-negative.
+    """
+    _, survival = odd.affinity_dual(np.asarray(x, dtype=float))
+    score = -np.asarray(survival, dtype=float)
+    return np.where(np.isposinf(score), np.finfo(np.float64).max, score)
+
+
+def log_threshold(zeta: float) -> float:
+    """Affinity threshold ``zeta`` on the ``-log(1 - alpha)`` scale.
+
+    ``alpha >= zeta`` is equivalent to
+    ``score_autosafe_log >= log_threshold(zeta)``.
+
+    Args:
+        zeta (float): Affinity threshold in [0, 1).
+
+    Returns:
+        float: ``-log(1 - zeta)``.
+    """
+    return float(-np.log1p(-zeta))
+
+
+def in_region(odd: Samples, x: NPArray, zeta: float) -> npt.NDArray[np.bool_]:
+    """Membership ``alpha >= zeta`` decided by the log-space rule.
+
+    Evaluates ``log(1 - alpha) <= log(1 - zeta)`` on the stable
+    log-survival, so the decision never depends on the linear affinity
+    (which saturates at 1.0).
+
+    Args:
+        odd (Samples): The constructed ODD.
+        x (NPArray): (M, D) query points.
+        zeta (float): Affinity threshold in [0, 1).
+
+    Returns:
+        npt.NDArray[np.bool_]: (M,) membership mask.
+    """
+    _, survival = odd.affinity_dual(np.asarray(x, dtype=float))
+    return np.asarray(survival, dtype=float) <= np.log1p(-zeta)
 
 
 def normalize_fit_apply(
@@ -322,7 +390,9 @@ def write_config(outdir: Path, config: dict, *, start_time: float) -> None:
         "git_hash": _git_hash(),
         "wall_time_seconds": time.perf_counter() - start_time,
     }
-    (outdir / "config.json").write_text(json.dumps(payload, default=str, indent=2))
+    (outdir / "config.json").write_text(
+        json.dumps(payload, default=str, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def default_thresholds(count: int = 256) -> NPArray:
@@ -349,7 +419,7 @@ def level_set_mask(odd: Samples, x: NPArray, zeta: float) -> npt.NDArray[np.bool
     Returns:
         npt.NDArray[np.bool_]: (M,) membership mask.
     """
-    return np.asarray(score_autosafe(odd, x) >= zeta, dtype=bool)
+    return in_region(odd, x, zeta)
 
 
 def iou(mask_a: npt.NDArray[np.bool_], mask_b: npt.NDArray[np.bool_]) -> float:

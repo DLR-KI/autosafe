@@ -11,7 +11,14 @@ Backs the paper's parameter-sensitivity claim. Primary grid: the
 dimensionless calibrated constants gamma x s (matching the revised
 Limitations text), plus a validation-noise multiple m sweep. Secondary
 grid: the fixed-parameter kappa x eta on linear2d (for the MCM section).
-Metric: AUPR (threshold-free, so the zeta sweep does not confound).
+The width multiple s also takes the default schedule s_N = sqrt(ln N),
+reported in separate rows (``width == "sqrt_log_n"``) and in
+``sensitivity_schedule.dat`` so the gamma x s heatmap keeps its regular
+grid. Metric: AUPR of the log-survival score ``-log(1 - alpha)``
+(threshold-free, so the zeta sweep does not confound, and free of the
+alpha == 1.0 ties that collapse a linear-score AUPR in sparse 5D), plus
+the IoU of the zeta = 0.5 level set with the true region, which shows
+whether a parameter choice yields a usable region at a fixed threshold.
 
 Run::
 
@@ -28,12 +35,15 @@ import polars as pl
 import typer
 from scipy.spatial import KDTree
 
+from autosafe.kernels.rbf import WIDTH_SCHEDULE_SQRT_LOG_N, resolve_width_multiple
 from autosafe.samples import Samples
 from experiments.benchmark.common import (
     build_odd,
     classification_metrics,
+    iou,
+    log_threshold,
     normalize_fit_apply,
-    score_autosafe,
+    score_autosafe_log,
     write_config,
     write_dat,
 )
@@ -41,11 +51,23 @@ from experiments.benchmark.synthetic_odds import SyntheticODD, get_odd
 
 NPArray = npt.NDArray[np.float64]
 DEFAULT_OUTDIR = Path("experiments/benchmark/results/parameter_sensitivity")
+#: Fixed threshold for the level-set IoU column.
+_ZETA = 0.5
 
 
-def _aupr(odd: Samples, val_n: NPArray, labels: npt.NDArray[np.bool_]) -> float:
-    """Return the AUPR of the ODD's affinity on labeled points."""
-    return classification_metrics(score_autosafe(odd, val_n), labels)["aupr"]
+def _metrics(
+    odd: Samples, val_n: NPArray, labels: npt.NDArray[np.bool_]
+) -> dict[str, float]:
+    """Return the AUPR and the IoU at zeta = 0.5 on labeled points.
+
+    AUPR only measures the ranking; the IoU of the level set at a fixed
+    threshold measures whether the parameters yield a usable region.
+    """
+    scores = score_autosafe_log(odd, val_n)
+    return {
+        "aupr": classification_metrics(scores, labels)["aupr"],
+        "iou_zeta05": iou(scores >= log_threshold(_ZETA), labels),
+    }
 
 
 def main(
@@ -90,23 +112,24 @@ def main(
             val_raw, labels = odd_gt.sample_validation(n_val, rng)
             _, (id_n, val_n) = normalize_fit_apply(id_raw, val_raw)
             for gamma in gamma_grid:
-                for s in s_grid:
+                for s in [*s_grid, WIDTH_SCHEDULE_SQRT_LOG_N]:
                     odd = build_odd(id_n, mode="calibrated", gamma=gamma, s=s)
                     rows.append({
                         "dataset": ds,
                         "n": n,
                         "kind": "calibrated",
+                        "width": s if isinstance(s, str) else f"{s:g}",
                         "gamma": gamma,
-                        "s": s,
+                        "s": resolve_width_multiple(s, n),
                         "m": float("nan"),
                         "kappa": float("nan"),
                         "eta": float("nan"),
-                        "aupr": _aupr(odd, val_n, labels),
+                        **_metrics(odd, val_n, labels),
                     })
             # m sweep at the default calibration: perturb anchors by
             # m*d_tilde.
             d_tilde = float(np.median(_nn_dists(id_n)))
-            odd_def = build_odd(id_n, mode="calibrated", gamma=1.0, s=3.0)
+            odd_def = build_odd(id_n, mode="calibrated", gamma=1.0)
             for m in m_grid:
                 val_probe, lab_probe = _perturbed_validation(
                     odd_gt, id_raw, m * d_tilde, n_val, rng
@@ -115,12 +138,14 @@ def main(
                     "dataset": ds,
                     "n": n,
                     "kind": "m_sweep",
+                    "width": WIDTH_SCHEDULE_SQRT_LOG_N,
                     "gamma": 1.0,
-                    "s": 3.0,
+                    "s": resolve_width_multiple(WIDTH_SCHEDULE_SQRT_LOG_N, n),
                     "m": m,
                     "kappa": float("nan"),
                     "eta": float("nan"),
-                    "aupr": _aupr(odd_def, val_probe, lab_probe),
+                    "aupr": _metrics(odd_def, val_probe, lab_probe)["aupr"],
+                    "iou_zeta05": float("nan"),
                 })
 
     # Secondary fixed-parameter grid on linear2d at the largest N.
@@ -136,12 +161,13 @@ def main(
                 "dataset": "linear2d",
                 "n": n_fixed,
                 "kind": "fixed",
+                "width": "",
                 "gamma": float("nan"),
                 "s": float("nan"),
                 "m": float("nan"),
                 "kappa": kappa,
                 "eta": eta,
-                "aupr": _aupr(odd, val_n, labels),
+                **_metrics(odd, val_n, labels),
             })
 
     outdir = Path(outdir)
@@ -155,6 +181,7 @@ def main(
                 (pl.col("dataset") == ds)
                 & (pl.col("n") == n)
                 & (pl.col("kind") == "calibrated")
+                & (pl.col("width") != WIDTH_SCHEDULE_SQRT_LOG_N)
             )
             if len(sub):
                 write_dat(
@@ -165,6 +192,21 @@ def main(
                         "aupr": sub["aupr"].to_list(),
                     },
                 )
+    schedule = df.filter(
+        (pl.col("kind") == "calibrated")
+        & (pl.col("width") == WIDTH_SCHEDULE_SQRT_LOG_N)
+    )
+    write_dat(
+        outdir / "sensitivity_schedule.dat",
+        {
+            "dataset": schedule["dataset"].to_list(),
+            "n": schedule["n"].to_list(),
+            "gamma": schedule["gamma"].to_list(),
+            "s": schedule["s"].to_list(),
+            "aupr": schedule["aupr"].to_list(),
+            "iou_zeta05": schedule["iou_zeta05"].to_list(),
+        },
+    )
     fixed = df.filter(pl.col("kind") == "fixed")
     write_dat(
         outdir / "sensitivity_fixed_linear2d.dat",
@@ -172,6 +214,7 @@ def main(
             "kappa": fixed["kappa"].to_list(),
             "eta": fixed["eta"].to_list(),
             "aupr": fixed["aupr"].to_list(),
+            "iou_zeta05": fixed["iou_zeta05"].to_list(),
         },
     )
     cal = df.filter(pl.col("kind") == "calibrated")

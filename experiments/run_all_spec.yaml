@@ -77,6 +77,12 @@ experiments:
   # from it) if it still marks these ids completed from a stale
   # configuration -- the manager's resume logic will otherwise skip them.
   #
+  # NOTE (width multiple): calibration_s: sqrt_log_n is the schedule
+  # s_N = sqrt(ln N) of the paper's calibrated convergence theorem,
+  # evaluated at the number of anchors that instantiate kernels (after
+  # subsampling). Output CSVs carry a -width-<s> tag so runs with another
+  # width multiple never overwrite each other.
+  #
   # NOTE (threshold sweep fix): threshold_mode is intentionally unset on
   # eval-vcas-rbf, eval-hcas-rbf, and eval-minimal-hcas-rbf below. Dataset
   # mode always sweeps the adaptive two-sided "edges" grid
@@ -91,8 +97,8 @@ experiments:
     kernel_type: RBF
     kernel_kwargs:
       calibration: auto
-      calibration_c: 1.0
-      calibration_s: 3.0
+      calibration_gamma: 1.0
+      calibration_s: sqrt_log_n
     baseline_params:
       auto_scale: true
     local_noise_mode: nn
@@ -107,8 +113,8 @@ experiments:
     kernel_type: RBF
     kernel_kwargs:
       calibration: auto
-      calibration_c: 1.0
-      calibration_s: 3.0
+      calibration_gamma: 1.0
+      calibration_s: sqrt_log_n
     baseline_params:
       auto_scale: true
     local_noise_mode: nn
@@ -157,15 +163,15 @@ experiments:
     kernel_type: RBF
     kernel_kwargs:
       calibration: auto
-      calibration_c: 1.0
-      calibration_s: 3.0
+      calibration_gamma: 1.0
+      calibration_s: sqrt_log_n
     baseline_params:
       auto_scale: true
     local_noise_mode: nn
     local_noise_multiplier: 3.0
     threshold_count: 100
     ood_path: data/vcas_ood_hole.csv
-    ood_xi: 0.3
+    ood_xi: 0.01
     ood_shrink_factor: 0.9
     ood_max_iterations: 2000000
 
@@ -184,8 +190,8 @@ experiments:
     kernel_type: RBF
     kernel_kwargs:
       calibration: auto
-      calibration_c: 1.0
-      calibration_s: 3.0
+      calibration_gamma: 1.0
+      calibration_s: sqrt_log_n
     baseline_params:
       auto_scale: true
     local_noise_mode: nn
@@ -202,12 +208,12 @@ experiments:
     kernel_type: RBF
     kernel_kwargs:
       calibration: auto
-      calibration_c: 1.0
-      calibration_s: 3.0
+      calibration_gamma: 1.0
+      calibration_s: sqrt_log_n
     baseline_params:
       auto_scale: true
     local_noise_mode: nn
-    local_noise_multiplier: 3.00
+    local_noise_multiplier: 3.0
     threshold_count: 100
 
   # ===========================================================================

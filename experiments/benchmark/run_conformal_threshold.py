@@ -157,7 +157,7 @@ def main(
                 _, (train_n, cal_n, test_n, out_n) = normalize_fit_apply(
                     train_raw, cal_raw, test_id_raw, out_raw
                 )
-                odd = build_odd(train_n, mode="calibrated", gamma=1.0, s=3.0)
+                odd = build_odd(train_n, mode="calibrated", gamma=1.0)
                 # Log-space (survival) score: saturation-free, see
                 # conformal_score.
                 cal_scores = conformal_score(odd, cal_n)

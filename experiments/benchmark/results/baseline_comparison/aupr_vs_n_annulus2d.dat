@@ -1,7 +1,7 @@
 n method aupr
-10 autosafe 0.86776833
-100 autosafe 0.94135484
-1000 autosafe 0.99102239
+10 autosafe 0.89577308
+100 autosafe 0.94560468
+1000 autosafe 0.98950298
 10 convex_hull 0.49693595
 100 convex_hull 0.7426569
 1000 convex_hull 0.90069278

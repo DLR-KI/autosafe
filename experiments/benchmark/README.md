@@ -20,6 +20,15 @@ Those commits belong to the pre-publication history and are not part of this rep
 On 2026-10-02 the committed tree was verified to rebuild all 18 paper data files exactly (see [Exporting the paper's data files](#exporting-the-papers-data-files)).
 Code changes since then that can affect a re-run: the scripts now use `scipy.spatial.KDTree` (default `leafsize=10`) instead of `cKDTree` (`leafsize=16`), which can shift the kernel-truncation latencies.
 
+On 2026-10-03 the calibrated experiments were regenerated in place for two changes, which the paper's camera-ready numbers reflect:
+
+- the calibrated width multiple defaults to the schedule s_N = √(ln N) of the paper's calibrated convergence theorem instead of the fixed s = 3;
+- autoSAFE's AUPR (and every level set in the scripts that use it) is computed from the log-survival score −ln(1−α) rather than from the linear affinity.
+  The linear affinity rounds to exactly 1.0 once the accumulated kernel mass is large, and in the sparse five-dimensional case every in-region validation point did, so the linear-score AUPR measured float64 rounding rather than the ODD.
+
+The regenerated experiments are the baseline comparison, parameter sensitivity, OOD adjustment, conformal threshold, held-out VCAS hole, duplicate sensitivity, anchor-subset stability, covariance structure, permutation stability, and kernel truncation; their `config.json` records `git_hash` `484df52`, the parent of the commit that introduces these changes.
+The anchor-count sweep (fixed parameters) and the halo-vs-anchor-count experiment (explicit s = 3 and s_N arms) do not depend on either change and were kept as produced.
+
 ## Running
 
 Every script takes `--seed` (default 42), `--quick` (a tiny config that finishes in seconds, used by the smoke tests), and `--outdir`.
@@ -46,28 +55,32 @@ Each section states what the experiment does, the paper artifact it backs, and i
 ### Baseline comparison (`run_baseline_comparison.py`)
 
 - **Backs:** the baseline AUPR and fixed-threshold tables.
-- **What it does:** scores the full synthetic suite (`linear2d`, `annulus2d`, `twoblobs2d`, `banana2d`, `poly5d`; N ∈ {10, 100, 1000}; 10⁵ validation points on the 2× bbox) with autoSAFE (calibrated, γ=1, s=3) against KDE (best bandwidth by AUPR), OC-SVM, k-NN distance, Isolation Forest, GMM (BIC), and the convex hull.
+- **What it does:** scores the full synthetic suite (`linear2d`, `annulus2d`, `twoblobs2d`, `banana2d`, `poly5d`; N ∈ {10, 100, 1000}; 10⁵ validation points on the 2× bbox) with autoSAFE (calibrated, γ=1, s_N=√(ln N), ranked by −ln(1−α)) against KDE (best bandwidth by AUPR), OC-SVM, k-NN distance, Isolation Forest, GMM (BIC), and the convex hull.
   Order-independence: max score deviation over 5 anchor permutations — measured for autoSAFE only; the baselines carry NaN, so no non-determinism numbers may be quoted for them.
-- **Headline (N=1000):** autoSAFE matches the strongest baselines on 2D (0.973–0.993 AUPR; best method within 0.014) and beats the hull decisively on non-convex cases (annulus 0.991 vs 0.901, twoblobs 0.987 vs 0.482).
-  **Honest caveat:** on sparse 5D (`poly5d`) the default s=3 collapses to **0.079** while GMM/k-NN reach 0.85–0.88 — the same s-sensitivity the parameter-sensitivity experiment measures (s=1 recovers ≈0.91). autoSAFE permutation deviation ≤ 5.6e-15.
+- **Headline (N=1000):** autoSAFE matches the strongest baselines on 2D (0.970–0.992 AUPR; best method within 0.0155) and beats the hull decisively on non-convex cases (annulus 0.990 vs 0.901, twoblobs 0.985 vs 0.482).
+  On sparse 5D (`poly5d`) autoSAFE reaches 0.856, third of seven behind GMM (0.882) and OC-SVM (0.868).
+  At the fixed threshold ζ=0.5 the 5D region is strongly over-inflated (FPR 0.864): its informative thresholds lie far closer to 1 than float64 can represent in linear space, which the log-space conformal threshold handles.
+  autoSAFE permutation deviation ≤ 5.8e-15.
 - **Outputs:** `aupr_vs_n_<dataset>.dat`, `fixed_zeta.dat`.
 
 ### OOD adjustment (`run_ood_adjustment.py`)
 
 - **Backs:** the OOD handling section and its termination proposition (text only — no figure or table).
-- **What it does:** first empirical exercise of `enforce_ood_consistency`: `linear2d`/`annulus2d`, N_ID=1000 (calibrated), M ∈ {10, 100, 1000} uniform OOD points on the 2× bbox, grid ξ ∈ {0.1, 0.3, 0.5} × c ∈ {0.5, 0.8, 0.9, 0.99}, ζ=0.6; records iterations, post-adjustment max OOD affinity, and collateral damage on ID precision/recall.
-- **Headline:** the bound α ≤ ξ held in **all 72 configs** (max post-adjustment OOD affinity 0.49990 at ξ=0.5), empirically confirming the termination proposition.
-  Iterations T ∈ [0, 28037]; worst case ξ=0.1, c=0.99 with M=1000 (295 kernels touched); across the grid a single kernel was rescaled at most 541×; per-c maxima of T: 462 / 1291 / 2697 / 28037 for c = 0.5 / 0.8 / 0.9 / 0.99. Collateral: ≤ 2.2 % of ID points dropped below ζ, recall −≤0.018, precision +≤0.102.
+- **What it does:** first empirical exercise of `enforce_ood_consistency`: `linear2d`/`annulus2d`, N_ID=1000 (calibrated), M ∈ {10, 100, 1000} uniform OOD points on the 2× bbox, grid ξ ∈ {0.01, 0.1, 0.3} × c ∈ {0.5, 0.8, 0.9, 0.99}, ζ=0.6; records iterations, post-adjustment max OOD affinity, and collateral damage on ID precision/recall.
+- **Headline:** the bound α ≤ ξ held in **all 72 configs** (max post-adjustment OOD affinity 0.0099997 / 0.099957 / 0.299997 for ξ = 0.01 / 0.1 / 0.3), empirically confirming the termination proposition.
+  Iterations T ∈ [0, 32551]; worst case ξ=0.01, c=0.99 with M=1000 (329 kernels touched); across the grid a single kernel was rescaled at most 553×.
+  Collateral: ≤ 5.0 % of ID points dropped below ζ (1.4 / 2.6 / 5.0 % at ξ = 0.3 / 0.1 / 0.01 — the uniform OOD points hug the boundary, so this is the stress case), recall −≤0.047, precision +≤0.090.
 - **Outputs:** `ood_iterations.dat`, `ood_collateral.dat`.
 
 ### Parameter sensitivity (`run_parameter_sensitivity.py`)
 
 - **Backs:** the parameter sensitivity figure.
-- **What it does:** calibrated grid γ ∈ {0.5, 1, 2} × s ∈ {1, 2, 3, 5} plus m ∈ {1, 3, 5} on `linear2d`/`annulus2d`/`poly5d`, N ∈ {100, 1000}; secondary fixed-parameter grid κ × η ∈ {0.1, 0.5, 1, 2, 5}² on normalized `linear2d`.
-  Metric: AUPR.
-- **Headline:** 2D is robust (AUPR spread ≤ 2.5 % across the γ×s grid at N=1000); sparse 5D is s-dominated (s=1 → 0.87–0.91, s=3 → 0.05–0.16, s=5 → ≈0.02 ≈ prevalence — boundary over-inflation, the two-regime halo mechanism).
-  The fixed grid never exceeds AUPR 0.60 on normalized data — no fixed (κ, η) is robust under normalization, supporting the calibration argument.
-- **Outputs:** `sensitivity_<dataset>_n<N>.dat`, `sensitivity_fixed_linear2d.dat`.
+- **What it does:** calibrated grid γ ∈ {0.5, 1, 2} × s ∈ {1, 2, 3, 5, s_N} plus m ∈ {1, 3, 5} on `linear2d`/`annulus2d`/`poly5d`, N ∈ {100, 1000}; secondary fixed-parameter grid κ × η ∈ {0.1, 0.5, 1, 2, 5}² on normalized `linear2d`.
+  Metrics: AUPR of −ln(1−α), and the IoU of the ζ=0.5 level set with the true region.
+- **Headline:** 2D is robust (AUPR spread ≤ 2.5 % across the γ×s grid at N=1000; s_N gives 0.984–0.995).
+  Sparse 5D ranks well for every s (AUPR 0.825–0.909, s_N 0.846–0.860), but its ζ=0.5 level set is only usable at s=1 (IoU 0.28–0.59 vs ≤ 0.06 for s ≥ 2): the informative thresholds move toward 1 as s grows.
+  The fixed grid also ranks well on normalized data (AUPR 0.966–0.995) but its ζ=0.5 region is unusable (IoU 0.19–0.29, vs 0.84–0.90 for s_N): fixed (κ, η) select an arbitrary length unit, which the calibration removes.
+- **Outputs:** `sensitivity_<dataset>_n<N>.dat` (fixed γ×s grid), `sensitivity_schedule.dat` (s_N rows), `sensitivity_fixed_linear2d.dat`.
 
 ### Halo vs. anchor count (`run_halo_vs_anchor_count.py`) — the headline experiment
 
@@ -92,14 +105,15 @@ Each section states what the experiment does, the paper artifact it backs, and i
 
 - **Backs:** the truncation scalability figure and table (Appendix H).
 - **What it does:** full `affinity_dual` vs. K-nearest-anchor truncation (reuses the SAME per-anchor diagonal covariance) on `poly5d`, N ∈ {1e3, 1e4, 1e5} (+`--huge` for 6e5), K ∈ {8, 32, 128, 512}; error max/mean/p99, ζ-flip rate, query latency + memory, and exact-vs-approximate (FAISS-IVF) nearest-neighbor determinism.
-- **Headline:** error/flip decrease monotonically with K; the truncated affinity is bit-exact vs. full at K=N; exact nearest-neighbor search is bit-reproducible; the approximate index flips 4 % of memberships at nprobe=1, 0 % at nprobe=8 — the reason certification mode uses exact search.
+- **Headline:** error/flip decrease monotonically with K; the truncated affinity is bit-exact vs. full at K=N; flips are counted with the log-space rule on the truncated and exact log-survival; exact nearest-neighbor search is bit-reproducible; the approximate index flips 3.8 % of memberships at nprobe=1, 0.09 % at nprobe=8 — the reason certification mode uses exact search.
+  Under the s_N default the kernel width grows slowly with N, so a fixed K captures less of each kernel's mass: at N=6·10⁵ the ζ=0.5 flip rate is 17.5 / 11.9 / 7.1 / 3.2 % for K = 8 / 32 / 128 / 512, and for K=512 it increases monotonically with N.
 - **Outputs:** `truncation_error.dat`, `truncation_latency.dat`, `truncation_determinism.json`.
 
 ### Permutation stability (`run_permutation_stability.py`)
 
 - **Backs:** the determinism / order-independence claim (text only — no figure or table).
 - **What it does:** full pipeline including `enforce_ood_consistency` on `annulus2d` (N_ID=1000, M_OOD=200), 20 simultaneous ID/OOD permutations; σ diagonals compared keyed by anchor coordinate (indices change under permutation), α compared on a fixed 10⁴-point grid.
-- **Headline:** all 20 permutations pass without any canonical anchor sort: σ parameters bit-identical (max deviation 0.0), affinities within a few ulps (max deviation 1.67e-15, ~7 ulp — the residual is non-associative floating-point summation in the batched path).
+- **Headline:** all 20 permutations pass without any canonical anchor sort: σ parameters bit-identical (max deviation 0.0), affinities within a few ulps (max deviation 1.22e-15 — the residual is non-associative floating-point summation in the batched path).
   No library default was changed.
 - **Outputs:** `permutation_report.json`.
 
@@ -109,15 +123,15 @@ Each section states what the experiment does, the paper artifact it backs, and i
 - **What it does:** `--source auto` picks the real VCAS anchor set when `data/vcas_state_variables.csv` exists (default `n_id=20000` anchor subsample, hole = `h∈[−300,300] ∧ τ∈[0,8]` as an excluded near-CPA regime, constant `hdot_int` dropped → 4 effective dims), else a `poly5d` synthetic fallback; `--quick` always forces synthetic so the smoke tests stay hermetic.
   Compares (i) autoSAFE without OOD, (ii) autoSAFE with the removed in-hole points as OOD samples, (iii) convex hull.
   The false-positive-in-hole metric is computed on a held-out set of real in-hole points (disjoint from the OOD set): uniform corner points would understate the hull's leakage because the VCAS mass is concentrated and its min/max box has empty corners.
-- **Headline (VCAS-with-hole):** false-positive rate inside the hole: convex hull **0.547**, autoSAFE without OOD **0.037**, with OOD **0.0115**.
-  The AUPR column is low for *all* methods (box ground truth, ~6 % prevalence) — the headline metric is `fp_rate_in_hole`, not AUPR.
+- **Headline (VCAS-with-hole):** false-positive rate inside the hole: convex hull **0.547**, autoSAFE without OOD **0.042**, with OOD (ξ=0.01) **0.0055**.
+  The AUPR column is low for *all* methods (box ground truth, ~6 % prevalence; autoSAFE 0.20, hull 0.21) — the headline metric is `fp_rate_in_hole`, not AUPR.
 - **Outputs:** `hole_fp.dat`, `hole_fixed_zeta.dat`.
 
 ### Conformal threshold (`run_conformal_threshold.py`)
 
 - **Backs:** the threshold calibration subsection.
 - **What it does:** `ζ̂ = ε(n+1)-th smallest ID calibration affinity`, guaranteeing `P(α(X_test) < ζ̂) ≤ ε`; measures empirical ID false-exclusion on a disjoint test set and specificity on true-outside points, over datasets/N/ε, 20 repeats.
-- **Headline:** `linear2d` at ε=0.1 gives ζ̂≈0.985, specificity_out 0.993 (non-trivial).
+- **Headline:** `linear2d` at ε=0.1 gives ζ̂ ≈ 0.88 / 0.93 / 0.99 for N_pool = 500 / 1000 / 5000 with specificity_out 0.986 / 0.991 / 0.997; on `poly5d` ζ̂ rounds to 1.0 in linear space while the log-space threshold stays finite and ID false exclusion still tracks ε.
 - **Outputs:** `conformal_coverage.dat`, `zeta_vs_eps_<dataset>_n<N>.dat`.
 
 ### Duplicate sensitivity (`run_duplicate_sensitivity.py`)
@@ -146,7 +160,7 @@ Each section states what the experiment does, the paper artifact it backs, and i
 - **Coordinate frames differ by experiment, on purpose.**
   - The anchor-count-sweep and halo-vs-anchor-count experiments use raw `[−5,5]²` coordinates with the fixed `κ=η=1` parameters to match the paper's Monte Carlo Figure 2 and show the `√(ln N)` halo growth.
     `κ=η=1` on *normalized* data is the degenerate saturating case, so those two experiments deliberately skip normalization.
-  - The baseline-comparison, OOD-adjustment, parameter-sensitivity, permutation-stability, and held-out-VCAS-hole experiments normalize per-dimension to `[−1, 1]` (min–max on ID points) and use the calibrated parameters.
+  - The baseline-comparison, OOD-adjustment, parameter-sensitivity, permutation-stability, and held-out-VCAS-hole experiments normalize per-dimension to `[−1, 1]` (min–max on ID points) and use the calibrated parameters with the default width schedule s_N = √(ln N).
 - **λ floor is the camera-ready relative one everywhere.**
   `build_odd("fixed")` uses `λ = λ_rel·κ = e⁻¹⁰` (with κ=1) — not an absolute floor.
   Regenerated Figure-2 numbers therefore reflect this relative floor.
@@ -156,7 +170,7 @@ Each section states what the experiment does, the paper artifact it backs, and i
   The stable-score evaluation avoids saturated linear-affinity ties: precision R² is 0.971 at `N=1000` and 0.99965 at `N=10⁴`; recall R² is numerically 1.0 at `N≥1000` but degenerate because both recall curves are nearly constant.
 - **Halo-vs-anchor-count acceptance:** `config.json` reports `halo_trend_fixed` (should be `> 0`) and `halo_trend_calibrated*` (should be `≤ 0`).
   At N = 30 → 3·10⁴: fixed halo (max) 1.03 → 3.43, calibrated 3.49 → 0.10.
-- **Permutation stability** passes without the optional `canonical_order` sort, so no library default was changed. σ parameters are bit-identical under input permutations; affinities are identical to within a few units in the last place (`max_alpha_dev ≈ 1.7e-15`).
+- **Permutation stability** passes without the optional `canonical_order` sort, so no library default was changed. σ parameters are bit-identical under input permutations; affinities are identical to within a few units in the last place (`max_alpha_dev ≈ 1.2e-15`).
 
 ## Exporting the paper's data files
 
@@ -166,7 +180,8 @@ Each section states what the experiment does, the paper artifact it backs, and i
 uv run python -m experiments.benchmark.export_paper_data --outdir /tmp/paper-data
 ```
 
-On 2026-09-02 and again on 2026-10-02 (from the committed results) the output was checked cell by cell against the data files used in the paper: 18/18 match.
+On 2026-09-02, 2026-10-02 and 2026-10-03 the output from the s = 3 results was checked cell by cell against the data files used in the submitted paper: 18/18 match.
+The regenerated results of 2026-10-03 change 13 of the 18 files; `halo.dat`, `halo_wide.dat`, `per_n.dat`, `mcm_per_n.dat`, and `mcm_anchor_count_mean.dat` are unchanged.
 `tests/benchmark/test_results_tree.py` checks on every test run that all 18 files rebuild from the committed results.
 
 ## Plotting (`plots/`, PEP 723)

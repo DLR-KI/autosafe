@@ -27,6 +27,7 @@ import typer
 
 from experiments.benchmark.common import (
     build_odd,
+    in_region,
     normalize_fit_apply,
     score_autosafe,
     write_config,
@@ -79,7 +80,7 @@ def main(
         datasets = ["linear2d", "annulus2d"]
         n_id = 1000
         m_grid = [10, 100, 1000]
-        xi_grid = [0.1, 0.3, 0.5]
+        xi_grid = [0.01, 0.1, 0.3]
         c_grid = [0.5, 0.8, 0.9, 0.99]
         n_val = 100_000
 
@@ -98,15 +99,15 @@ def main(
             for xi in xi_grid:
                 for c in c_grid:
                     odd = build_odd(id_n, mode="calibrated")
-                    pred_pre = score_autosafe(odd, val_n) >= zeta
-                    id_alpha_pre = score_autosafe(odd, id_eval_n)
+                    pred_pre = in_region(odd, val_n, zeta)
+                    id_in_pre = in_region(odd, id_eval_n, zeta)
                     summary = odd.enforce_ood_consistency(ood_n, xi=xi, shrink_factor=c)
                     post_max = float(np.max(score_autosafe(odd, ood_n)))
                     assert post_max <= xi + 1e-9, (
                         f"Prop B.1 violated: max OOD alpha {post_max} > xi {xi}"
                     )
-                    pred_post = score_autosafe(odd, val_n) >= zeta
-                    id_alpha_post = score_autosafe(odd, id_eval_n)
+                    pred_post = in_region(odd, val_n, zeta)
+                    id_in_post = in_region(odd, id_eval_n, zeta)
                     iterations = summary["iterations"]
                     adj = summary["adjusted_kernels"]
                     assert isinstance(iterations, int)
@@ -122,9 +123,7 @@ def main(
                         "precision_post": _precision(pred_post, labels),
                         "recall_pre": _recall(pred_pre, labels),
                         "recall_post": _recall(pred_post, labels),
-                        "id_drop_frac": float(
-                            np.mean((id_alpha_pre >= zeta) & (id_alpha_post < zeta))
-                        ),
+                        "id_drop_frac": float(np.mean(id_in_pre & ~id_in_post)),
                         "kernels_touched": len(adj),
                         "max_kernel_scalings": max(adj.values(), default=0),
                     })

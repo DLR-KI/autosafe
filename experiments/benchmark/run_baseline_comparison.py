@@ -10,8 +10,11 @@ r"""Baseline comparison against one-class classifiers.
 Backs the paper's baseline-comparison claim: compares the autoSAFE
 affinity against KDE, One-Class SVM, k-NN distance, Isolation Forest, a
 GMM, and the convex hull on the synthetic suite, with an
-order-independence check. Continuous-score wrappers live here, not in
-``src/autosafe`` (the repo baselines stay binary).
+order-independence check. autoSAFE is ranked by the log-survival score
+``-log(1 - alpha)`` with the default width schedule s_N = sqrt(ln N);
+the order-independence check compares linear affinities.
+Continuous-score wrappers live here, not in ``src/autosafe`` (the repo
+baselines stay binary).
 
 Run::
 
@@ -37,8 +40,10 @@ from experiments.benchmark.common import (
     build_odd,
     classification_metrics,
     confusion_at,
+    log_threshold,
     normalize_fit_apply,
     score_autosafe,
+    score_autosafe_log,
     write_config,
     write_dat,
 )
@@ -53,7 +58,10 @@ def _score(
 ) -> NPArray:
     """Return continuous membership scores (higher = more inside)."""
     if method == "autosafe":
-        return score_autosafe(build_odd(id_pts, mode="calibrated"), val)
+        # Log-survival score: rank-equivalent to alpha in exact
+        # arithmetic, but free of the alpha == 1.0 ties that collapse
+        # AUPR in sparse high dimension.
+        return score_autosafe_log(build_odd(id_pts, mode="calibrated"), val)
     if method == "kde":
         best: NPArray | None = None
         best_ll = -np.inf
@@ -183,14 +191,17 @@ def main(
                 # zeta=0.5 vs the hull's binary membership. Boundary
                 # distances are measured in the RAW ground-truth frame.
                 if method in {"autosafe", "convex_hull"}:
-                    pred = scores >= zeta
+                    # autoSAFE scores are -S, so alpha >= zeta becomes
+                    # -S >= -log(1 - zeta) (the paper's log-space rule).
+                    thr = log_threshold(zeta) if method == "autosafe" else zeta
+                    pred = scores >= thr
                     fixed_rows.append({
                         "dataset": ds,
                         "n_anchor": n,
                         "method": method,
                         **{
                             k: v
-                            for k, v in confusion_at(scores, labels, zeta).items()
+                            for k, v in confusion_at(scores, labels, thr).items()
                             if k not in {"tp", "fp", "tn", "fn"}
                         },
                         **boundary_error(val_raw, labels, pred),

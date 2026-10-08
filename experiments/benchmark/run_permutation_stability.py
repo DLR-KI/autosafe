@@ -70,7 +70,7 @@ def main(
     """
     start = time.perf_counter()
     rng = np.random.default_rng(seed)
-    xi, c = 0.3, 0.9
+    xi, c = 0.01, 0.9
     if quick:
         n_id, n_perm = 100, 4
     else:
@@ -128,7 +128,9 @@ def main(
         ),
         "wall_time_seconds": time.perf_counter() - start,
     }
-    (outdir / "permutation_report.json").write_text(json.dumps(report, indent=2))
+    (outdir / "permutation_report.json").write_text(
+        json.dumps(report, indent=2) + "\n", encoding="utf-8"
+    )
     typer.echo(
         f"permutation stability done: all_pass={report['all_pass']} "
         f"max_sigma_dev={max_sigma_dev:.2e} max_alpha_dev={max_alpha_dev:.2e} "

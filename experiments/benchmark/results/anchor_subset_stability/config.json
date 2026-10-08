@@ -16,7 +16,7 @@
   "n_draws": 10,
   "n_grid": 50000,
   "zeta": 0.5,
-  "note": "Fixed-pool anchor-subsampling stability (c44z-CQ4): K independent subsets per size from ONE master ID pool; per-draw calibrated ODD with its own normalizer (deployed pipeline). iou_pairwise_* compares the zeta=0.5 level sets of different draws at the same size on a shared raw-frame grid.",
-  "git_hash": "89d350d45fcd0bd318bd3c58691bcf21f89080bc",
-  "wall_time_seconds": 28.939394230023026
+  "note": "Fixed-pool anchor-subsampling stability: K independent subsets per size from ONE master ID pool; per-draw calibrated ODD with its own normalizer (deployed pipeline). iou_pairwise_* compares the zeta=0.5 level sets of different draws at the same size on a shared raw-frame grid.",
+  "git_hash": "484df52e82423fbe4a12803f638cfcb9e7aa17dd",
+  "wall_time_seconds": 32.04805581923574
 }

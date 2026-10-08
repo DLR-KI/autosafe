@@ -16,6 +16,6 @@
   "n_grid": 100000,
   "zeta": 0.5,
   "note": "Arms use distinct frames: calibrated normalizes to [-1,1]; fixed (kappa=eta=1) stays raw (normalized fixed saturates). IoU/dalpha are within-arm (dup vs no-dup base). formula_check.dat demonstrates the 1-(1-a)^(m+1) noisy-OR inflation on a controlled single anchor.",
-  "git_hash": "89d350d45fcd0bd318bd3c58691bcf21f89080bc",
-  "wall_time_seconds": 98.86201569112018
+  "git_hash": "484df52e82423fbe4a12803f638cfcb9e7aa17dd",
+  "wall_time_seconds": 74.79665981186554
 }

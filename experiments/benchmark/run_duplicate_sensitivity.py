@@ -36,6 +36,7 @@ import typer
 
 from experiments.benchmark.common import (
     build_odd,
+    in_region,
     iou,
     level_set_mask,
     normalize_fit_apply,
@@ -183,13 +184,13 @@ def main(
             base_f, grid_f = _frame(arm, base_raw, grid_raw)
             odd_base = build_odd(base_f, mode=arm)
             base_scores = score_autosafe(odd_base, grid_f)
-            base_mask = base_scores >= zeta
+            base_mask = in_region(odd_base, grid_f, zeta)
             for repeats, frac, jitter in dup_grid:
                 dup_f = inject_duplicates(base_f, frac, repeats, jitter, rng)
                 odd_dup = build_odd(dup_f, mode=arm)
                 dup_scores = score_autosafe(odd_dup, grid_f)
                 dalpha = np.abs(dup_scores - base_scores)
-                iou_vs_base = iou(dup_scores >= zeta, base_mask)
+                iou_vs_base = iou(in_region(odd_dup, grid_f, zeta), base_mask)
                 dup_rows.append({
                     "dataset": ds,
                     "arm": arm,
@@ -214,12 +215,12 @@ def main(
         for arm in arms:
             base_f, grid_f = _frame(arm, base_raw, grid_raw)
             odd_base = build_odd(base_f, mode=arm)
-            base_mask = score_autosafe(odd_base, grid_f) >= zeta
+            base_mask = in_region(odd_base, grid_f, zeta)
             worst = inject_duplicates(base_f, 0.5, 10, 0.02, rng)
             for tol in dedup_tols:
                 dd = dedup(worst, tol)
                 odd_dd = build_odd(dd, mode=arm)
-                iou_vs_base = iou(score_autosafe(odd_dd, grid_f) >= zeta, base_mask)
+                iou_vs_base = iou(in_region(odd_dd, grid_f, zeta), base_mask)
                 dedup_rows.append({
                     "dataset": ds,
                     "arm": arm,

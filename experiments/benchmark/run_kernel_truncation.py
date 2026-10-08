@@ -33,7 +33,6 @@ from scipy.spatial import KDTree
 from experiments.benchmark.common import (
     build_odd,
     normalize_fit_apply,
-    score_autosafe,
     write_config,
     write_dat,
 )
@@ -43,7 +42,7 @@ NPArray = npt.NDArray[np.float64]
 DEFAULT_OUTDIR = Path("experiments/benchmark/results/kernel_truncation")
 
 
-def truncated_affinity(
+def truncated_log_survival(
     anchors: NPArray,
     inv_diag: NPArray,
     x: NPArray,
@@ -52,11 +51,12 @@ def truncated_affinity(
     tree: KDTree | None = None,
     chunk: int = 20_000,
 ) -> tuple[NPArray, float, float]:
-    """K-nearest-anchor approximation of the global affinity.
+    """K-nearest-anchor approximation of the log-survival.
 
     Uses the SAME per-anchor diagonal covariance as the exact ODD,
     summing the log-space noisy-OR over only the ``k`` Euclidean-nearest
-    anchors of each query (the Appendix-H heuristic).
+    anchors of each query (the Appendix-H heuristic). Membership
+    decisions threshold this value directly (log-space rule).
 
     Args:
         anchors (NPArray): (N, D) anchor coordinates
@@ -70,8 +70,9 @@ def truncated_affinity(
             temporary.
 
     Returns:
-        tuple[NPArray, float, float]: (alpha_k (M,), query_seconds,
-            tree_build_seconds). query_seconds EXCLUDES the tree build.
+        tuple[NPArray, float, float]: (log_survival_k (M,),
+            query_seconds, tree_build_seconds). query_seconds EXCLUDES
+            the tree build.
     """
     anchors = np.ascontiguousarray(anchors, dtype=float)
     inv_diag = np.ascontiguousarray(inv_diag, dtype=float)
@@ -92,8 +93,40 @@ def truncated_affinity(
         mahal = np.einsum("mkd,mkd->mk", diff * diff, inv_diag[idx])
         alpha_i = np.exp(-0.5 * np.maximum(mahal, 0.0))
         log_surv = np.sum(np.log1p(-np.clip(alpha_i, 0.0, 1.0 - 1e-16)), axis=1)
-        out[lo : lo + chunk] = -np.expm1(log_surv)
+        out[lo : lo + chunk] = log_surv
     return out, time.perf_counter() - t0, t_build
+
+
+def truncated_affinity(
+    anchors: NPArray,
+    inv_diag: NPArray,
+    x: NPArray,
+    k: int,
+    *,
+    tree: KDTree | None = None,
+    chunk: int = 20_000,
+) -> tuple[NPArray, float, float]:
+    """Truncated affinity VALUE ``alpha_k = 1 - exp(log_survival_k)``.
+
+    For reporting affinity errors only; decisions use
+    :func:`truncated_log_survival`.
+
+    Args:
+        anchors (NPArray): (N, D) anchor coordinates.
+        inv_diag (NPArray): (N, D) diagonal of each kernel's sigma_inv.
+        x (NPArray): (M, D) query points.
+        k (int): nearest anchors to keep (clipped to N).
+        tree (KDTree | None): prebuilt tree; built here if None.
+        chunk (int): query-batch size.
+
+    Returns:
+        tuple[NPArray, float, float]: (alpha_k (M,), query_seconds,
+            tree_build_seconds).
+    """
+    log_surv, q_secs, t_build = truncated_log_survival(
+        anchors, inv_diag, x, k, tree=tree, chunk=chunk
+    )
+    return -np.expm1(log_surv), q_secs, t_build
 
 
 def _ivf_flip_rate(
@@ -116,8 +149,9 @@ def _ivf_flip_rate(
     k = int(min(k, n))
     a32 = np.ascontiguousarray(anchors, dtype=np.float32)
     x32 = np.ascontiguousarray(x, dtype=np.float32)
-    exact, _, _ = truncated_affinity(anchors, inv_diag, x, k)
-    exact_in = exact >= zeta
+    exact, _, _ = truncated_log_survival(anchors, inv_diag, x, k)
+    log_zeta = np.log1p(-zeta)
+    exact_in = exact <= log_zeta
     out: dict[str, float] = {}
     for nprobe in (1, 8):
         nlist = max(1, int(np.sqrt(n)))
@@ -132,7 +166,7 @@ def _ivf_flip_rate(
         mahal = np.einsum("mkd,mkd->mk", diff * diff, inv_diag[idx])
         alpha_i = np.exp(-0.5 * np.maximum(mahal, 0.0))
         log_surv = np.sum(np.log1p(-np.clip(alpha_i, 0.0, 1.0 - 1e-16)), axis=1)
-        approx_in = (-np.expm1(log_surv)) >= zeta
+        approx_in = log_surv <= log_zeta
         out[f"nprobe{nprobe}"] = float(np.mean(approx_in != exact_in))
     return out
 
@@ -175,17 +209,19 @@ def main(
         id_raw = odd_obj.sample_id(n, rng)
         val_raw, _ = odd_obj.sample_validation(m_query, rng)
         _norm, (id_n, val_n) = normalize_fit_apply(id_raw, val_raw)
-        odd = build_odd(id_n, mode="calibrated", gamma=1.0, s=3.0)
+        odd = build_odd(id_n, mode="calibrated", gamma=1.0)
 
         # Warm up the JAX tile compilation so the timed call excludes
         # it. Must use the SAME query shape as the timed call: a
         # 64-point warmup traces a different point-tile shape, so the
         # first N in the sweep still paid the XLA compile (~0.4 s) and
         # its q_secs_full was not comparable.
-        _ = score_autosafe(odd, val_n)
+        _ = odd.affinity_dual(val_n)
         tracemalloc.start()
         t0 = time.perf_counter()
-        alpha_full = score_autosafe(odd, val_n)
+        alpha_full_j, log_full_j = odd.affinity_dual(val_n)
+        alpha_full = np.asarray(alpha_full_j, dtype=float)
+        log_full = np.asarray(log_full_j, dtype=float)
         full_secs = time.perf_counter() - t0
         full_py_peak_mb = tracemalloc.get_traced_memory()[1] / 1e6
         tracemalloc.stop()
@@ -197,9 +233,10 @@ def main(
 
         for k in k_list:
             tracemalloc.start()
-            alpha_k, q_secs, _ = truncated_affinity(
+            log_k, q_secs, _ = truncated_log_survival(
                 anchors, inv_diag, val_n, k, tree=tree
             )
+            alpha_k = -np.expm1(log_k)
             trunc_py_peak_mb = tracemalloc.get_traced_memory()[1] / 1e6
             tracemalloc.stop()
             tb = time.perf_counter()
@@ -207,7 +244,8 @@ def main(
             tree_build_secs = time.perf_counter() - tb
 
             err = np.abs(alpha_k - alpha_full)
-            flip = float(np.mean((alpha_k >= zeta) != (alpha_full >= zeta)))
+            log_zeta = np.log1p(-zeta)
+            flip = float(np.mean((log_k <= log_zeta) != (log_full <= log_zeta)))
             rows.append({
                 "n": n,
                 "k": k,
@@ -225,8 +263,8 @@ def main(
 
         # Determinism: exact-NN truncation is bit-identical across two
         # runs.
-        a1, _, _ = truncated_affinity(anchors, inv_diag, val_n, k_list[-1])
-        a2, _, _ = truncated_affinity(anchors, inv_diag, val_n, k_list[-1])
+        a1, _, _ = truncated_log_survival(anchors, inv_diag, val_n, k_list[-1])
+        a2, _, _ = truncated_log_survival(anchors, inv_diag, val_n, k_list[-1])
         if not np.array_equal(a1, a2):
             determinism["exact_deterministic"] = False
         # Approximate-NN flip rate (largest N only, to bound runtime).
@@ -267,7 +305,7 @@ def main(
     import json  # ruff: ignore[import-outside-top-level]
 
     (outdir / "truncation_determinism.json").write_text(
-        json.dumps(determinism, indent=2)
+        json.dumps(determinism, indent=2) + "\n", encoding="utf-8"
     )
     write_config(
         outdir,

@@ -15,7 +15,7 @@
   "n_grid": 20000,
   "w": 0.6,
   "k": 10,
-  "s": 3.0,
+  "s": "sqrt_log_n",
   "zeta": 0.5,
   "arms": [
     "iso",
@@ -24,6 +24,6 @@
     "deployed"
   ],
   "note": "iso/diag/full ablate covariance STRUCTURE only (shared k-NN cov + s^2 scaling); 'deployed' is the REAL sigma-law kernel via build_odd(mode='calibrated'). The deployed Sigma_i is DIAGONAL and ANISOTROPIC -- Eq. 8/9 evaluates d_i^* per dimension -- so 'diag', NOT 'iso', is the deployed structure; sigma_aniso_frac/ratio record the measured per-anchor anisotropy. halo_max is the cross-band perpendicular distance in the ORIGINAL coordinate frame. Backs the anisotropy corollary of the diagonal-covariance appendix.",
-  "git_hash": "89d350d45fcd0bd318bd3c58691bcf21f89080bc",
-  "wall_time_seconds": 12.896458003902808
+  "git_hash": "484df52e82423fbe4a12803f638cfcb9e7aa17dd",
+  "wall_time_seconds": 13.26222033565864
 }

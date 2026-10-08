@@ -44,13 +44,15 @@ import polars as pl
 import typer
 from scipy.spatial import KDTree
 
+from autosafe.kernels.rbf import WIDTH_SCHEDULE_SQRT_LOG_N, resolve_width_multiple
 from experiments.benchmark.common import (
     build_odd,
     classification_metrics,
     iou,
     kernel_sigma,
+    log_threshold,
     normalize_fit_apply,
-    score_autosafe,
+    score_autosafe_log,
     write_config,
     write_dat,
 )
@@ -88,7 +90,8 @@ def local_cov_scores(
             (stability).
 
     Returns:
-        NPArray: (M,) global affinity in [0, 1].
+        NPArray: (M,) log-survival score ``-log(1 - alpha)`` of the
+            superposed affinity (higher = more inside).
 
     Raises:
         ValueError: If ``kind`` is not "iso", "diag", or "full".
@@ -120,10 +123,10 @@ def local_cov_scores(
         mahal = np.einsum("md,de,me->m", diff, inv, diff)
         alpha_i = np.exp(-0.5 * np.maximum(mahal, 0.0))
         log_surv += np.log1p(-np.clip(alpha_i, 0.0, 1.0 - 1e-16))
-    return -np.expm1(log_surv)
+    return -log_surv
 
 
-def deployed_scores(id_pts: NPArray, x: NPArray, *, s: float) -> NPArray:
+def deployed_scores(id_pts: NPArray, x: NPArray, *, s: float | str) -> NPArray:
     """Affinity of the REAL deployed sigma-law kernel (no local kernel).
 
     Uses ``build_odd(mode="calibrated")`` exactly as the pipeline does,
@@ -134,13 +137,14 @@ def deployed_scores(id_pts: NPArray, x: NPArray, *, s: float) -> NPArray:
     Args:
         id_pts (NPArray): (N, D) anchor points.
         x (NPArray): (M, D) query points.
-        s (float): calibrated width multiple (matches the other arms).
+        s (float | str): calibrated width multiple or schedule
+            (matches the other arms).
 
     Returns:
-        NPArray: (M,) global affinity in [0, 1].
+        NPArray: (M,) log-survival score ``-log(1 - alpha)``.
     """
     odd = build_odd(id_pts, mode="calibrated", gamma=1.0, s=s)
-    return np.asarray(score_autosafe(odd, x), dtype=float)
+    return score_autosafe_log(odd, x)
 
 
 def sigma_anisotropy(id_pts: NPArray, *, s: float) -> tuple[float, float]:
@@ -164,6 +168,9 @@ def sigma_anisotropy(id_pts: NPArray, *, s: float) -> tuple[float, float]:
 
 def _halo_max(x: NPArray, scores: NPArray, rho: float, w: float, zeta: float) -> float:
     """Max perpendicular distance of a false positive beyond the band.
+
+    ``scores`` and ``zeta`` must be on the same scale (here: the
+    log-survival score and ``log_threshold(zeta)``).
 
     Returns:
         float: Largest cross-band overshoot; 0.0 without false
@@ -194,7 +201,7 @@ def main(
     zeta = 0.5
     w = 0.6
     k = 10
-    s = 3.0
+    thr = log_threshold(zeta)
     if quick:
         rhos = [1.0]
         n_list = [100]
@@ -219,6 +226,8 @@ def main(
             # Perp-distance halo is measured in the ORIGINAL frame for
             # interpretability, so recompute scores' membership on
             # grid_raw geom.
+            # Every arm uses the default width schedule at this N.
+            s = resolve_width_multiple(WIDTH_SCHEDULE_SQRT_LOG_N, n)
             aniso_frac, aniso_ratio = sigma_anisotropy(id_n, s=s)
             for arm in arms:
                 if arm == "deployed":
@@ -226,8 +235,8 @@ def main(
                 else:
                     scores = local_cov_scores(id_n, grid_n, k=k, s=s, kind=arm)
                 m = classification_metrics(scores, grid_lab)
-                iou_val = iou(scores >= zeta, grid_lab)
-                halo = _halo_max(grid_raw, scores, rho, w, zeta)
+                iou_val = iou(scores >= thr, grid_lab)
+                halo = _halo_max(grid_raw, scores, rho, w, thr)
                 rows.append({
                     "arm": arm,
                     "rho": rho,
@@ -300,7 +309,7 @@ def main(
             "n_grid": n_grid,
             "w": w,
             "k": k,
-            "s": s,
+            "s": WIDTH_SCHEDULE_SQRT_LOG_N,
             "zeta": zeta,
             "arms": arms,
             "note": (

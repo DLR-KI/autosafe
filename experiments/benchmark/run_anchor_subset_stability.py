@@ -42,8 +42,9 @@ from experiments.benchmark.common import (
     build_odd,
     classification_metrics,
     iou,
+    log_threshold,
     normalize_fit_apply,
-    score_autosafe,
+    score_autosafe_log,
     write_config,
     write_dat,
 )
@@ -98,8 +99,8 @@ def main(
                 # subsample.
                 _, (id_n, grid_n) = normalize_fit_apply(pool[idx], grid_raw)
                 odd = build_odd(id_n, mode="calibrated")
-                scores = score_autosafe(odd, grid_n)
-                mask = scores >= zeta
+                scores = score_autosafe_log(odd, grid_n)
+                mask = scores >= log_threshold(zeta)
                 masks.append(mask)
                 aupr = classification_metrics(scores, grid_lab)["aupr"]
                 iou_true = iou(mask, grid_lab)

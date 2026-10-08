@@ -9,8 +9,10 @@ r"""Boundary halo vs. N — the paper's headline experiment.
 
 Compares three bandwidth arms on linear2d: ``fixed`` (kappa=eta=1, the
 paper's MCM parameters, expected halo GROWING with N), ``calibrated``
-(gamma=1, s=3, expected halo shrinking), and ``calibrated_sN``
-(s=sqrt(ln N), validating thm:AsympODDSimCalibrated). Halo width is
+(gamma=1 with a fixed width multiple s=3, kept as a comparison arm),
+and ``calibrated_sN`` (the default schedule s=sqrt(ln N) of the
+calibrated convergence theorem). Both calibrated arms are expected to
+shrink. Halo width is
 measured on a near-boundary band (closed-form signed distance to the
 line x2 = x1 - 3), not a full grid, to stay within budget at large N.
 
@@ -31,7 +33,7 @@ from scipy.spatial import KDTree
 
 from experiments.benchmark.common import (
     build_odd,
-    score_autosafe,
+    in_region,
     write_config,
     write_dat,
 )
@@ -123,13 +125,12 @@ def main(
                 odd = build_odd(
                     id_raw, mode="calibrated", gamma=1.0, s=float(np.sqrt(np.log(n)))
                 )
-            band_alpha = score_autosafe(odd, band_raw)
-            inside_band = band_sd[band_alpha >= zeta]
+            inside_band = band_sd[in_region(odd, band_raw, zeta)]
             halo_max = float(np.max(inside_band)) if inside_band.size else 0.0
             halo_p95 = (
                 float(np.percentile(inside_band, 95)) if inside_band.size else 0.0
             )
-            pred = score_autosafe(odd, val_raw) >= zeta
+            pred = in_region(odd, val_raw, zeta)
             tp = int(np.count_nonzero(pred & labels))
             pp = int(np.count_nonzero(pred))
             pos = int(np.count_nonzero(labels))
