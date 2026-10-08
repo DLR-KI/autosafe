@@ -246,11 +246,3 @@ experiments:
     dataset_path: data/vcas_state_variables.csv
     threshold_mode: linear
     threshold_count: 100
-
-  - id: eval-minimal-hcas-rbf
-    mode: dataset
-    dataset_path: data/hcas_state_variables-minimal.csv
-    evaluation_samples: 100000
-    closest_sample_mode: per_dimension
-    kernel_type: RBF
-    threshold_count: 101
