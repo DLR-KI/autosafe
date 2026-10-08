@@ -15,7 +15,7 @@ It accepts either typed configuration objects or a mapping:
     config = autosafe.AutoSafeConfig.from_mapping(
         {
             "gamma": 1.0,
-            "s": 3.0,
+            "s": "sqrt_log_n",
             "lambda_rel": 1e-4,
             "zeta": 0.7,
             "xi": 0.2,
@@ -60,7 +60,7 @@ The mapping API also accepts ASCII and paper-symbol aliases:
     * - ``kernel.width_in_median_gaps``
         - ``s``
         - ``s``
-        - Calibrated maximum width in median gaps.
+        - Calibrated maximum width in median gaps: a positive number or the default schedule ``"sqrt_log_n"`` (:math:`s_N = \sqrt{\ln N}`).
     * - ``kernel.relative_variance_floor``
         - ``λ_rel``
         - ``lambda_rel``

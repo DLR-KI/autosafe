@@ -214,8 +214,9 @@ K \;\ge\; \frac{\log\big(-2\log \xi_N / q\big)}{\log(1/c)}
 $$
 
 scalings, and $T \le \sum_i K_i \le N K$.
-For the VCAS configuration ($N = 20\,000$, $\xi = 0.3$, $c = 0.9$): $\xi_N \approx 1.783\cdot10^{-5}$, $-2\log\xi_N \approx 21.87$, and with $\Sigma_{kk} \approx 4.2\cdot10^{-5}$, $K$ ranges from $\approx 21$ at anchor–OOD separation $10^{-2}$ to $\approx 108$ at $10^{-4}$.
-Taking $K \approx 65$ gives $T \lesssim 1.3\cdot10^{6}$---**above** the former `max_iterations` default of $10^{6}$, which is why the cap is now a spec key (`ood_max_iterations`) and the VCAS item sets it to $2\cdot10^{6}$.
+For the VCAS configuration ($N = 20\,000$, $\xi = 0.01$, $c = 0.9$, width multiple $s_N = \sqrt{\ln N} \approx 3.15$): $\xi_N \approx 5.03\cdot10^{-7}$, $-2\log\xi_N \approx 29.0$, and with $\Sigma_{kk} \approx 4.6\cdot10^{-5}$, $K$ ranges from $\approx 25$ at anchor–OOD separation $10^{-2}$ to $\approx 112$ at $10^{-4}$.
+Taking $K \approx 68$ gives $T \lesssim 1.4\cdot10^{6}$---**above** the former `max_iterations` default of $10^{6}$, which is why the cap is now a spec key (`ood_max_iterations`) and the VCAS item sets it to $2\cdot10^{6}$.
+The bound depends on $\xi$ only through $\log\log(N/\xi)$: lowering $\xi$ from $0.3$ to $0.01$ raises it by about $5\,\%$, and the measured run needed $4\,389$ iterations.
 
 The paper currently states the cost as $O(N^2 n + MNn)$ (`main.tex` L546, L548, L1187).
 The $MNn$ term is a **single** pass over the OOD set; the procedure performs one such pass per adjustment.

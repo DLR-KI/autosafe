@@ -68,7 +68,8 @@ $$
 \tag{3}
 $$
 
-with dimensionless defaults $c = 1$, $s = 3$, and $\lambda = \lambda_{\mathrm{rel}}\, \kappa$.
+with dimensionless defaults $c = 1$, $s = s_N = \sqrt{\ln N}$, and $\lambda = \lambda_{\mathrm{rel}}\, \kappa$, where $N$ is the number of anchors that instantiate kernels (after de-duplication and subsampling).
+The schedule $s_N$ is the one of the paper's calibrated convergence theorem; a fixed numeric $s$ remains available.
 The law (1) becomes
 
 $$
@@ -137,6 +138,7 @@ $$
 $$
 
 default $m = 3$.
+Variables that the ground-truth limits YAML declares as `type: discrete` are never perturbed: uniform test points draw them from the valid codes, perturbed test points keep the code of their source anchor, and ground-truth membership additionally requires a valid code; the sidecar lists these columns as `discrete_columns`.
 A span-proportional noise scale (legacy $0.05 \cdot \text{span}$) probes only the far field once kernels are density-scaled: on HCAS it places every perturbed point dozens of kernel widths off the data manifold, so all affinities vanish and the sweep is again uninformative.
 Matching the sampling scale to the calibrated kernel scale is therefore part of the method, not a tuning trick; both $m$ and the sampling mode are recorded in the run's parameter sidecar.
 
@@ -145,8 +147,11 @@ Empirically (HCAS, 20 000-anchor subsample, $m = 3$): $\approx 19\%$ of test poi
 ## 7. Choice of constants
 
 $c = 1$: one $e$-fold of variance decay per median spacing of isolation.
-$s = 3$: kernels reach $\approx 3$ median gaps ("three-sigma" neighbor coverage); $s \lesssim 1$ fragments the interior, large $s$ re-approaches global saturation.
-$\lambda_{\mathrm{rel}} = e^{-10}$: see Section 5. Recommended ablations: $s \in \{1, 2, 3, 5\}$, $c \in \{0.5, 1, 2\}$, $m \in \{1, 3, 5\}$, $\lambda_{\mathrm{rel}} \in \{e^{-12}, e^{-10}, e^{-7}, e^{-5}\}$.
+$s_N = \sqrt{\ln N}$ (default): kernels reach $s_N$ median gaps, about 2.6 at $N = 10^3$, 3.0 at $N \approx 8\,100$, and 3.7 at $N = 6 \cdot 10^5$.
+It grows without bound, which the interior half of the convergence theorem needs, while $s_N \tilde d_N \sqrt{\ln N}$ still shrinks, which the exterior half needs.
+A constant $s$ satisfies only the exterior condition, so the theorem does not cover it; empirically, at high thresholds the fraction of uncovered interior points then stops shrinking as $N$ grows.
+$s \lesssim 1$ fragments the interior; large $s$ re-approaches global saturation and makes $K$-nearest-anchor truncation less accurate, because each kernel's mass spreads over more neighbors.
+$\lambda_{\mathrm{rel}} = e^{-10}$: see Section 5. Recommended ablations: $s \in \{1, 2, 3, 5, s_N\}$, $c \in \{0.5, 1, 2\}$, $m \in \{1, 3, 5\}$, $\lambda_{\mathrm{rel}} \in \{e^{-12}, e^{-10}, e^{-7}, e^{-5}\}$.
 
 ## 8. Limitations
 
