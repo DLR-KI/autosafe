@@ -13,6 +13,7 @@ from autosafe.tools.evaluate.dataset.normalization import (
     _denormalize_points_to_yaml_space,
 )
 from autosafe.tools.evaluate.dataset.yaml_spec import (
+    _discrete_values_from_yaml,
     _legacy_limits_yaml_to_odd_config,
 )
 from autosafe.tools.monte_carlo.inequality_utils import ODDFactory, load_yaml_odd_config
@@ -20,6 +21,31 @@ from autosafe.typing import (
     Matrix,
     NPMatrix,
 )
+
+# Tolerance for "on a valid code", relative to the smallest code
+# spacing; it absorbs the normalize/denormalize round trip only.
+_DISCRETE_CODE_RTOL = 1e-6
+
+
+def _on_valid_code(
+    values: npt.NDArray[np.float64], codes: npt.NDArray[np.float64]
+) -> npt.NDArray[np.bool_]:
+    """Return whether each value equals one of the valid codes.
+
+    Args:
+        values (npt.NDArray[np.float64]): Coordinate values, YAML space.
+        codes (npt.NDArray[np.float64]): Sorted unique valid codes.
+
+    Returns:
+        npt.NDArray[np.bool_]: Per-value membership in the code set.
+    """
+    spacing = float(np.min(np.diff(codes))) if codes.size > 1 else 1.0
+    tol = _DISCRETE_CODE_RTOL * spacing
+    nearest = np.clip(np.searchsorted(codes, values), 1, max(codes.size - 1, 1))
+    lower = codes[nearest - 1]
+    upper = codes[np.minimum(nearest, codes.size - 1)]
+    distance = np.minimum(np.abs(values - lower), np.abs(values - upper))
+    return np.asarray(distance <= tol, dtype=bool)
 
 
 def _ground_truth_labels_from_yaml(
@@ -41,7 +67,9 @@ def _ground_truth_labels_from_yaml(
             test_points are used as-is.
 
     Returns:
-        npt.NDArray[np.bool_]: Boolean membership labels.
+        npt.NDArray[np.bool_]: Boolean membership labels. Variables a
+            limits YAML declares as `type: discrete` must additionally
+            lie on one of their valid codes.
     """
     config = load_yaml_odd_config(ground_truth_yaml)
     if "type" not in config and "limits" in config:
@@ -52,4 +80,8 @@ def _ground_truth_labels_from_yaml(
     if normalizer is not None:
         test_points = _denormalize_points_to_yaml_space(test_points, normalizer)
 
-    return np.asarray(region.contains(test_points.T), dtype=bool)
+    labels = np.asarray(region.contains(test_points.T), dtype=bool)
+    points = np.asarray(test_points, dtype=float)
+    for index, codes in _discrete_values_from_yaml(ground_truth_yaml).items():
+        labels &= _on_valid_code(points[:, index], codes)
+    return labels

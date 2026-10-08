@@ -11,6 +11,7 @@ import polars as pl
 
 from autosafe.preprocessing import RangeNormalizer, create_robust_normalization_pipeline
 from autosafe.tools.evaluate.dataset.yaml_spec import (
+    _discrete_values_from_yaml,
     _sampling_bounds_from_yaml,
 )
 from autosafe.tools.experiments.utils import DatasetLoadOptions, load_dataset
@@ -145,3 +146,33 @@ def _denormalize_points_to_yaml_space(
         Matrix: Points in YAML (raw) space.
     """
     return normalizer.inverse_transform(points)
+
+
+def _normalized_discrete_values(
+    ground_truth_yaml: Path,
+    lower_bounds: npt.NDArray[np.float64],
+    normalizer: RangeNormalizer | None,
+) -> dict[int, npt.NDArray[np.float64]]:
+    """Map the valid codes of discrete YAML variables to sampling space.
+
+    Args:
+        ground_truth_yaml (Path): Path to the ground-truth limits YAML.
+        lower_bounds (npt.NDArray[np.float64]): YAML-space lower bounds;
+            fill the other columns, since the normalizer transforms
+            whole rows.
+        normalizer (RangeNormalizer | None): The YAML normalizer, or
+            None when sampling happens in YAML space.
+
+    Returns:
+        dict[int, npt.NDArray[np.float64]]: Column index to the valid
+            codes in the space the anchors and test points live in.
+    """
+    discrete = _discrete_values_from_yaml(ground_truth_yaml)
+    if normalizer is None:
+        return discrete
+    mapped: dict[int, npt.NDArray[np.float64]] = {}
+    for index, codes in discrete.items():
+        rows = np.tile(np.asarray(lower_bounds, dtype=float), (codes.size, 1))
+        rows[:, index] = codes
+        mapped[index] = np.asarray(normalizer.transform(rows), dtype=float)[:, index]
+    return mapped

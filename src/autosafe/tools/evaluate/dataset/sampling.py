@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: MIT
 """Test-point sampling around an ODD's anchor set."""
 
+from collections.abc import Mapping
+
 import numpy as np
 import numpy.typing as npt
 
@@ -64,12 +66,19 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
     n_samples: int,
     seed: int = 0,
     local_noise_std: float | None = None,
+    discrete_values: Mapping[int, npt.NDArray[np.float64]] | None = None,
 ) -> npt.NDArray[np.float64]:
     """Sample points using explicit lower/upper bounds from YAML.
 
     Uses the same mixed strategy as `_sample_points_around_odd`: half
     uniform samples in a slightly expanded box and half local samples
     around anchors.
+
+    Discrete coordinates stay on valid codes: the uniform half draws
+    them uniformly from the code set, and the local half keeps the code
+    of its source anchor instead of perturbing it. The continuous
+    coordinates are drawn first, from the same stream as without
+    discrete coordinates, so they do not depend on `discrete_values`.
 
     Args:
         anchor_points (Matrix | NPMatrix): Affinity ODD anchors.
@@ -80,6 +89,9 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
         local_noise_std (float | None): Per-dimension std for the local
             perturbation half. If None, uses 0.05 * per-dim span
             (legacy default).
+        discrete_values (Mapping[int, npt.NDArray[np.float64]] | None):
+            Column index to the valid codes of that discrete variable,
+            in the same (normalized) space as `anchor_points`.
 
     Returns:
         Matrix: Array of sampled points with shape (n_samples, n_dims).
@@ -106,5 +118,11 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
         scale=noise_scale,
         size=(n_local, anchor_points.shape[1]),
     )
+
+    anchors = np.asarray(anchor_points, dtype=float)
+    for index, codes in (discrete_values or {}).items():
+        valid = np.asarray(codes, dtype=float)
+        uniform_points[:, index] = rng.choice(valid, size=n_uniform)
+        local_points[:, index] = anchors[indices, index]
 
     return np.vstack([uniform_points, local_points])

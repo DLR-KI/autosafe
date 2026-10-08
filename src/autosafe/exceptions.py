@@ -314,6 +314,25 @@ class NearAnchorOODWarning(UserWarning):
         )
 
 
+class LinearAffinityDecisionWarning(UserWarning):
+    """Warns that membership decisions threshold the linear affinity.
+
+    The linear affinity rounds to exactly 1.0 in float64 once the
+    accumulated kernel mass is large, so thresholds near one cannot
+    separate those points and rankings collapse into ties. Decisions
+    should use the log-survival rule
+    ``log(1 - alpha) <= log(1 - zeta)``.
+    """
+
+    def __init__(self, context: str) -> None:
+        super().__init__(
+            f"{context}: no log-survival values are available, so thresholds "
+            "are applied to the linear affinity, which saturates at 1.0 in "
+            "float64. Store the survival from Samples.affinity_dual to use the "
+            "log-space decision rule. See docs/log-space-affinity.md."
+        )
+
+
 __all__ = [
     "BaselinesOnlyCacheMismatchError",
     "BaselinesOnlyRequiresCachedODDError",
@@ -323,6 +342,7 @@ __all__ = [
     "EmptyAnchorPoolError",
     "InvalidResolutionVectorError",
     "KernelSaturationError",
+    "LinearAffinityDecisionWarning",
     "MissingRecordIdentifierError",
     "NearAnchorOODWarning",
     "NonFiniteCoordinateError",

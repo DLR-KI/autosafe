@@ -20,7 +20,11 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
-from autosafe.kernels.rbf import SIGMA_FLOOR_RATIO
+from autosafe.kernels.rbf import (
+    SIGMA_FLOOR_RATIO,
+    WIDTH_SCHEDULE_SQRT_LOG_N,
+    WidthMultiple,
+)
 from autosafe.typing import KernelConfig, MembershipConfig, ScaleValue
 
 
@@ -63,6 +67,31 @@ def _positive_float(value: object, name: str) -> float:
     if result <= 0.0:
         raise ValueError(f"{name} must be greater than 0")
     return result
+
+
+def _width_multiple(value: object) -> WidthMultiple:
+    """Return a validated width multiple: a schedule name or a number.
+
+    Args:
+        value (object): Positive number or schedule name.
+
+    Returns:
+        WidthMultiple: The schedule name, or the converted positive
+            float.
+
+    Raises:
+        ValueError: If the value is neither a known schedule nor a
+            positive finite number.
+    """
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized != WIDTH_SCHEDULE_SQRT_LOG_N:
+            raise ValueError(
+                f"width_in_median_gaps must be a positive number or "
+                f"{WIDTH_SCHEDULE_SQRT_LOG_N!r}, got {value!r}"
+            )
+        return WIDTH_SCHEDULE_SQRT_LOG_N
+    return _positive_float(value, "width_in_median_gaps")
 
 
 def _positive_integer(value: object, name: str) -> int:
@@ -154,13 +183,15 @@ class CalibratedRBFConfig:
     Attributes:
         decay_per_median_gap (float): Dimensionless decay constant
             :math:`\\gamma`.
-        width_in_median_gaps (float): Width multiple :math:`s`.
+        width_in_median_gaps (WidthMultiple): Width multiple
+            :math:`s`, either a positive number or the schedule
+            ``"sqrt_log_n"`` (:math:`s_N = \\sqrt{\\ln N}`, default).
         relative_variance_floor (float): Relative floor
             :math:`\\lambda_\\mathrm{rel}`.
     """
 
     decay_per_median_gap: float = 1.0
-    width_in_median_gaps: float = 3.0
+    width_in_median_gaps: WidthMultiple = WIDTH_SCHEDULE_SQRT_LOG_N
     relative_variance_floor: float = SIGMA_FLOOR_RATIO
 
     def __post_init__(self) -> None:
@@ -173,7 +204,7 @@ class CalibratedRBFConfig:
         object.__setattr__(
             self,
             "width_in_median_gaps",
-            _positive_float(self.width_in_median_gaps, "width_in_median_gaps"),
+            _width_multiple(self.width_in_median_gaps),
         )
         object.__setattr__(
             self,
@@ -989,7 +1020,12 @@ class AutoSafeConfig:
 
 @dataclass(frozen=True, slots=True)
 class ResolvedKernelConfig:
-    """Concrete kernel values used to construct an ODD."""
+    """Concrete kernel values used to construct an ODD.
+
+    For a calibrated kernel, ``width_in_median_gaps`` is the numeric
+    width multiple actually used; a schedule requested in the
+    configuration is evaluated at the number of anchors.
+    """
 
     mode: Literal["calibrated", "manual"]
     maximum_variance: ScaleValue

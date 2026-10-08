@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from autosafe.kernels.rbf import calibrate_rbf_scale_d_tilde
+from autosafe.kernels.rbf import calibrate_rbf_scale_d_tilde, resolve_width_multiple
 from autosafe.neighbors import find_closest_vectors_by_index
 from autosafe.odd.config import (
     AutoSafeConfig,
@@ -201,7 +201,9 @@ def _resolve_kernel(
             variance_floor=lam,
             median_nearest_neighbor_distance=median_distance,
             decay_per_median_gap=kernel.decay_per_median_gap,
-            width_in_median_gaps=kernel.width_in_median_gaps,
+            width_in_median_gaps=resolve_width_multiple(
+                kernel.width_in_median_gaps, anchors.shape[0]
+            ),
             relative_variance_floor=kernel.relative_variance_floor,
         )
         return resolved, {"kappa": kappa, "eta": eta, "lam": lam}, "global"
@@ -476,6 +478,10 @@ class AutoSafeODD:
         data: npt.ArrayLike,
     ) -> float | npt.NDArray[np.float64]:
         """Evaluate linear-space affinity for one or more rows.
+
+        The value saturates at exactly 1.0 in float64 deep inside the
+        ODD; ``contains`` and ``log_survival`` use the log-space rule
+        and should be used for decisions and rankings.
 
         Args:
             data (npt.ArrayLike): One row or a matrix of query rows.

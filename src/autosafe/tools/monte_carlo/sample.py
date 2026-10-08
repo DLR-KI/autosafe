@@ -138,6 +138,36 @@ def _find_anchor_points(
     return anchors
 
 
+def _sampling_results(
+    autosafe_odd: Samples,
+    points: Vector,
+    points_in_odd: npt.NDArray[np.bool],
+) -> list[SamplingResult]:
+    """Score sample points with the affinity and its log-survival.
+
+    Args:
+        autosafe_odd (Samples): The data-driven ODD.
+        points (Vector): (M, D) sample points.
+        points_in_odd (npt.NDArray[np.bool]): (M,) ground-truth labels.
+
+    Returns:
+        list[SamplingResult]: One result per point; the survival is
+            None for an exact anchor hit (``-inf``).
+    """
+    alpha, survival = autosafe_odd.affinity_dual(points)
+    affinities = np.asarray(alpha, dtype=float)
+    survivals = np.asarray(survival, dtype=float)
+    return [
+        SamplingResult(
+            coordinates=points[idx, :],
+            in_odd=bool(points_in_odd[idx]),
+            affinity=float(affinities[idx]),
+            survival=float(survivals[idx]) if np.isfinite(survivals[idx]) else None,
+        )
+        for idx in range(points.shape[0])
+    ]
+
+
 def run_single_sampling(config: MonteCarloConfig) -> None:
     """Run a single MC sampling based on the provided configuration.
 
@@ -199,16 +229,9 @@ def run_single_sampling(config: MonteCarloConfig) -> None:
         range(1),
         desc=f"Computing affinity scores for {points.shape[0]} test points",
     ):
-        affinities = autosafe_odd(points)
-        points_in_odd: npt.NDArray[np.bool] = odd.contains(points.T)
-        sampling_results = [
-            SamplingResult(
-                coordinates=points[idx, :],
-                in_odd=bool(points_in_odd[idx]),
-                affinity=float(affinities[idx]),
-            )
-            for idx in range(points.shape[0])
-        ]
+        sampling_results = _sampling_results(
+            autosafe_odd, points, odd.contains(points.T)
+        )
 
     result_stats = ResultStats(
         box=RegionDict(

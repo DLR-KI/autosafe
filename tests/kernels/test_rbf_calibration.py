@@ -134,7 +134,7 @@ def test_deprecated_c_alias_conflicting_gamma_raises(
 def test_non_positive_gamma_or_s_raises(
     calibrate: Callable[..., tuple[object, object]], gamma: float, s: float
 ) -> None:
-    with pytest.raises(ValueError, match="gamma and s must be greater than 0"):
+    with pytest.raises(ValueError, match=r"must be .*greater than 0"):
         calibrate(gamma=gamma, s=s)
 
 

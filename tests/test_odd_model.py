@@ -226,9 +226,12 @@ def test_resolved_conformal_threshold_must_exceed_xi() -> None:
             [[0.0], [1.0]],
             calibration_data=[[20.0], [21.0], [22.0]],
             out_of_distribution_data=[[20.0]],
+            # A fixed width keeps zeta above zero with only two anchors,
+            # so this test exercises the xi < zeta check itself.
             config={
                 "epsilon": 0.5,
                 "xi": 0.99,
+                "s": 3.0,
                 "ood_batch_jump": True,
                 "normalize": False,
             },

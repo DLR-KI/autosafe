@@ -4,6 +4,7 @@
 """Shared threshold/confusion/metric evaluation helpers."""
 
 import operator
+import warnings
 from pathlib import Path
 
 import jax
@@ -12,6 +13,7 @@ import numpy as np
 import polars as pl
 
 from autosafe import _jax_config  # ruff:ignore[unused-import]
+from autosafe.exceptions import LinearAffinityDecisionWarning
 from autosafe.tools.evaluate.core import calculate_performance_metrics
 from autosafe.tools.monte_carlo.dicts import ConfusionMatrixDict
 from autosafe.typing import AffinityVector
@@ -197,8 +199,11 @@ def evaluate_affinity_metrics(  # ruff:ignore[too-many-locals]
     Args:
         samples_df (pl.DataFrame): Table containing an 'affinity' column
             and optionally a 'survival' column (= log(1 - affinity)).
-            When 'survival' is present, rows are emitted for both
-            affinity_space values ("linear" and "log").
+            When 'survival' is present, every decision uses the
+            log-space rule and all rows have affinity_space "log".
+            Without it, the linear affinity is thresholded (rows
+            "linear") and a ``LinearAffinityDecisionWarning`` is
+            emitted, since the linear affinity saturates at 1.0.
         reference_labels (dict[str, np.ndarray]):
             Mapping of reference name to boolean labels.
         thresholds (np.ndarray | jax.Array | list[tuple[float, float]]):
@@ -222,6 +227,11 @@ def evaluate_affinity_metrics(  # ruff:ignore[too-many-locals]
         raise ValueError("samples_df must contain an 'affinity' column")
 
     has_survival = "survival" in samples_df.columns
+    if not has_survival:
+        warnings.warn(
+            LinearAffinityDecisionWarning(f"evaluate_affinity_metrics({source})"),
+            stacklevel=2,
+        )
     threshold_pairs = _as_threshold_pairs(thresholds)
 
     affinity_all = samples_df["affinity"].to_numpy()
@@ -246,7 +256,7 @@ def evaluate_affinity_metrics(  # ruff:ignore[too-many-locals]
             survival_pos = np.sort(survival_all[labels_arr])
             survival_neg = np.sort(survival_all[~labels_arr])
 
-        spaces = ["linear", "log"] if has_survival else ["linear"]
+        spaces = ["log"] if has_survival else ["linear"]
         for space in spaces:
             for affinity_threshold, survival_threshold in threshold_pairs:
                 if space == "linear":

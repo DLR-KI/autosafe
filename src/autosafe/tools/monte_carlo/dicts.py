@@ -111,11 +111,15 @@ class SamplingResult(TypedDict):
         coordinates (Vector): Coordinates of the sample.
         in_odd (bool): Whether the sample is inside the ODD.
         affinity (float): Affinity of the sample.
+        survival (float | None): Log-survival ``log(1 - affinity)``,
+            the quantity membership decisions threshold; None for an
+            exact anchor hit (``-inf``, not representable in JSON).
     """
 
     coordinates: Vector
     in_odd: bool
     affinity: float
+    survival: float | None
 
 
 class ResultStats(TypedDict):

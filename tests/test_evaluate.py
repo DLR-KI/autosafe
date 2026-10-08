@@ -13,6 +13,7 @@ import pytest
 from scipy.spatial import QhullError
 from typer.testing import CliRunner
 
+from autosafe.exceptions import LinearAffinityDecisionWarning
 from autosafe.samples import Samples
 from autosafe.tools.evaluate import cli as eval_cli
 from autosafe.tools.evaluate.core import (
@@ -35,6 +36,7 @@ from autosafe.tools.evaluate.workflows import (
     _build_or_load_affinity_odd,
     _extract_anchor_points,
     _extract_mc_samples,
+    _extract_mc_survival,
     _ground_truth_labels_from_yaml,
     _hull_membership,
     _infer_ground_truth_yaml,
@@ -278,36 +280,29 @@ def test_build_threshold_pairs_minimal_count():
     assert pairs == [(0.0, 0.0), (1.0, -np.inf)]
 
 
-def test_evaluate_affinity_metrics_matches_core_confusion_functions():
-    """searchsorted sweep matches the direct per-threshold implementation."""
+def _random_scores() -> tuple[pl.DataFrame, np.ndarray, list[tuple[float, float]]]:
+    """Random affinities with exact survivals, labels, and a threshold grid.
+
+    Returns:
+        tuple: Scores frame, boolean labels, and threshold pairs.
+    """
     rng = np.random.default_rng(1)
-    n = 300
-    affinities = rng.uniform(0.0, 1.0, size=n)
+    affinities = rng.uniform(0.0, 1.0, size=300)
     survivals = np.log1p(-affinities)
-    labels = rng.random(n) < 0.5
-
+    labels = rng.random(300) < 0.5
     df = pl.DataFrame({"affinity": affinities, "survival": survivals})
-    pairs = build_threshold_pairs(20, affinities, survivals)
+    return df, labels, build_threshold_pairs(20, affinities, survivals)
 
+
+def test_evaluate_affinity_metrics_matches_core_confusion_functions():
+    """searchsorted sweep matches the direct per-threshold log implementation."""
+    df, labels, pairs = _random_scores()
     out = evaluate_affinity_metrics(df, {"ref": labels}, pairs, "src")
-
     labels_series = pl.Series("m", labels, dtype=pl.Boolean)
     actually_positive = df.filter(labels_series)
     actually_negative = df.filter(~labels_series)
 
-    for affinity_threshold, survival_threshold in pairs:
-        lin_row = out.filter(
-            (pl.col("affinity_space") == "linear")
-            & (pl.col("survival_threshold") == survival_threshold)
-        )
-        expected_lin = calculate_confusion_matrix(
-            actually_positive, actually_negative, np.float64(affinity_threshold)
-        )
-        assert lin_row["true_positive"][0] == expected_lin["true_positive"]
-        assert lin_row["false_positive"][0] == expected_lin["false_positive"]
-        assert lin_row["true_negative"][0] == expected_lin["true_negative"]
-        assert lin_row["false_negative"][0] == expected_lin["false_negative"]
-
+    for _, survival_threshold in pairs:
         log_row = out.filter(
             (pl.col("affinity_space") == "log")
             & (pl.col("survival_threshold") == survival_threshold)
@@ -319,6 +314,28 @@ def test_evaluate_affinity_metrics_matches_core_confusion_functions():
         assert log_row["false_positive"][0] == expected_log["false_positive"]
         assert log_row["true_negative"][0] == expected_log["true_negative"]
         assert log_row["false_negative"][0] == expected_log["false_negative"]
+
+
+def test_evaluate_affinity_metrics_linear_fallback_matches_core():
+    """Without survival, the warned linear fallback matches the direct rule."""
+    df, labels, pairs = _random_scores()
+    with pytest.warns(LinearAffinityDecisionWarning):
+        out = evaluate_affinity_metrics(
+            df.drop("survival"), {"ref": labels}, pairs, "src"
+        )
+    labels_series = pl.Series("m", labels, dtype=pl.Boolean)
+    actually_positive = df.filter(labels_series)
+    actually_negative = df.filter(~labels_series)
+
+    for affinity_threshold, survival_threshold in pairs:
+        lin_row = out.filter(pl.col("survival_threshold") == survival_threshold)
+        expected_lin = calculate_confusion_matrix(
+            actually_positive, actually_negative, np.float64(affinity_threshold)
+        )
+        assert lin_row["true_positive"][0] == expected_lin["true_positive"]
+        assert lin_row["false_positive"][0] == expected_lin["false_positive"]
+        assert lin_row["true_negative"][0] == expected_lin["true_negative"]
+        assert lin_row["false_negative"][0] == expected_lin["false_negative"]
 
 
 def test_edges_grid_resolves_saturated_tail_better_than_linear():
@@ -731,22 +748,27 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_evaluate_affinity_metrics_dual_space():
-    """Both spaces emitted when 'survival' column is present."""
+    """Only log-space decisions when 'survival' is present; linear warns."""
     affinities = [0.0, 0.5, 1.0]
     survivals = [0.0, float(np.log(0.5)), float("-inf")]
     labels = np.array([True, True, True])
     df = pl.DataFrame({"affinity": affinities, "survival": survivals})
     thresholds = np.array([0.0, 0.5, 1.0])
 
-    out = evaluate_affinity_metrics(df, {"ref": labels}, thresholds, "test")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", LinearAffinityDecisionWarning)
+        out = evaluate_affinity_metrics(df, {"ref": labels}, thresholds, "test")
 
-    # Both spaces must be present
-    assert set(out["affinity_space"].unique().to_list()) == {"linear", "log"}
+    assert set(out["affinity_space"].unique().to_list()) == {"log"}
 
+    # Without survival, the linear rule is the fallback and warns.
+    with pytest.warns(LinearAffinityDecisionWarning, match="saturates at 1.0"):
+        out_lin = evaluate_affinity_metrics(
+            df.drop("survival"), {"ref": labels}, thresholds, "test"
+        )
+    assert set(out_lin["affinity_space"].unique().to_list()) == {"linear"}
     # Linear at threshold 1.0: affinity >= 1.0 -> only point with affinity 1.0 qualifies
-    lin_t1 = out.filter(
-        (pl.col("affinity_space") == "linear") & (pl.col("affinity_threshold") == 1.0)  # ruff:ignore[float-equality-comparison]
-    )
+    lin_t1 = out_lin.filter(pl.col("affinity_threshold") == 1.0)  # ruff:ignore[float-equality-comparison]
     assert lin_t1["true_positive"][0] == 1
 
     # Log at threshold 1.0: survival <= -inf -> only exact anchor hit (survival == -inf)
@@ -911,3 +933,33 @@ def test_subsample_csv_naming(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         csv_output=None,
     )
     assert f"-sub{sub_n}-seed{seed}" in csv_path.name
+
+
+def test_extract_mc_survival_reads_new_and_legacy_files() -> None:
+    """Survival is read when stored (null -> -inf) and None for legacy files."""
+    new = pl.DataFrame({
+        "sampling_results": [
+            [
+                {
+                    "coordinates": [0.0],
+                    "in_odd": True,
+                    "affinity": 0.5,
+                    "survival": -0.69,
+                },
+                {
+                    "coordinates": [1.0],
+                    "in_odd": True,
+                    "affinity": 1.0,
+                    "survival": None,
+                },
+            ]
+        ]
+    })
+    survival = _extract_mc_survival(new)
+    assert survival is not None
+    np.testing.assert_array_equal(survival, [-0.69, -np.inf])
+    legacy = pl.DataFrame({
+        "sampling_results": [[{"coordinates": [0.0], "in_odd": True, "affinity": 0.5}]]
+    })
+    assert _extract_mc_survival(legacy) is None
+    assert _extract_mc_survival(pl.DataFrame({"anchors": [[0.0]]})) is None

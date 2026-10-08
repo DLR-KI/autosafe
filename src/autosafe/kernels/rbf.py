@@ -32,6 +32,52 @@ from autosafe.typing import (
 # lam is defined relative to kappa so the law stays scale-equivariant.
 SIGMA_FLOOR_RATIO = float(np.exp(-10.0))
 
+#: Name of the anchor-count schedule s_N = sqrt(ln N) for the width
+#: multiple, the schedule of the paper's calibrated convergence theorem
+#: and the default of every calibration entry point.
+WIDTH_SCHEDULE_SQRT_LOG_N: Literal["sqrt_log_n"] = "sqrt_log_n"
+
+#: A width multiple: a fixed positive number or the name of a schedule.
+WidthMultiple = float | Literal["sqrt_log_n"]
+
+
+def resolve_width_multiple(s: float | str, n_anchors: int) -> float:
+    """Return the numeric width multiple for an anchor count.
+
+    A fixed ``s`` is returned unchanged. The schedule
+    ``"sqrt_log_n"`` evaluates s_N = sqrt(ln N), which grows without
+    bound while s_N * d_tilde_N still shrinks, as the calibrated
+    convergence theorem requires. ``N`` is the number of anchors that
+    instantiate kernels, i.e. after de-duplication and subsampling.
+
+    Args:
+        s (float | str): Fixed width multiple or schedule name.
+        n_anchors (int): Number of anchors that instantiate kernels.
+
+    Returns:
+        float: The width multiple to use for ``n_anchors`` anchors.
+
+    Raises:
+        ValueError: If ``s`` is not a positive finite number or a known
+            schedule, or if the schedule gets fewer than 2 anchors.
+        TypeError: If ``s`` is neither a number nor a string.
+    """
+    if isinstance(s, str):
+        if s != WIDTH_SCHEDULE_SQRT_LOG_N:
+            raise ValueError(
+                f"unknown width schedule {s!r}; use a positive number or "
+                f"{WIDTH_SCHEDULE_SQRT_LOG_N!r}"
+            )
+        if n_anchors < 2:  # ruff:ignore[magic-value-comparison]
+            raise ValueError("the sqrt_log_n width schedule needs at least 2 anchors")
+        return float(np.sqrt(np.log(n_anchors)))
+    if isinstance(s, bool) or not isinstance(s, (int, float, np.floating)):
+        raise TypeError(f"width multiple must be a number or a schedule, got {s!r}")
+    s_value = float(s)
+    if not np.isfinite(s_value) or s_value <= 0.0:
+        raise ValueError("s must be a finite number greater than 0")
+    return s_value
+
 
 def _to_np(a: object) -> npt.NDArray[np.float64]:
     """Convert array-like (including jax.Array) to NumPy float64.
@@ -573,7 +619,7 @@ def calibrate_rbf_scale_median(
     d_nn: NPMatrix,
     *,
     gamma: float = 1.0,
-    s: float = 3.0,
+    s: WidthMultiple = WIDTH_SCHEDULE_SQRT_LOG_N,
     c: float | None = None,
 ) -> tuple[NPVector, NPVector]:
     """Derive scale-invariant kappa, eta from NN distances.
@@ -592,7 +638,9 @@ def calibrate_rbf_scale_median(
         d_nn (NPMatrix): Per-dimension nearest-neighbor distances,
             shape (n_anchors, n_dims), non-negative.
         gamma (float): Decay constant; eta_j = gamma / median_j.
-        s (float): Width multiple; kappa_j = (s * median_j)**2.
+        s (WidthMultiple): Width multiple or schedule name (see
+            ``resolve_width_multiple``, N = n_anchors); kappa_j =
+            (s * median_j)**2.
         c (float | None): Deprecated alias for ``gamma``.
 
     Returns:
@@ -600,8 +648,8 @@ def calibrate_rbf_scale_median(
             (n_dims,).
 
     Raises:
-        ValueError: If d_nn is not 2D, or all per-dimension medians
-            are zero.
+        ValueError: If d_nn is not 2D, all per-dimension medians
+            are zero, or gamma or s is invalid.
     """
     if c is not None:
         gamma_is_default = bool(np.isclose(gamma, 1.0))
@@ -614,19 +662,20 @@ def calibrate_rbf_scale_median(
             stacklevel=2,
         )
         gamma = c
-    if gamma <= 0.0 or s <= 0.0:
-        raise ValueError("gamma and s must be greater than 0")
+    if gamma <= 0.0:
+        raise ValueError("gamma must be greater than 0")
 
     d = np.asarray(d_nn, dtype=NPFloatType)
     if d.ndim != 2:  # ruff:ignore[magic-value-comparison]
         raise ValueError("d_nn must have shape (n_anchors, n_dims)")
+    s_value = resolve_width_multiple(s, d.shape[0])
     med = np.median(d, axis=0)
     positive = med > 0.0
     if not positive.any():
         raise ValueError("all per-dimension nn-distance medians are zero")
     floor = float(np.median(med[positive]))
     med = np.where(positive, med, floor)
-    kappa = (s * med) ** 2
+    kappa = (s_value * med) ** 2
     eta = gamma / med
     return kappa.astype(NPFloatType), eta.astype(NPFloatType)
 
@@ -635,7 +684,7 @@ def calibrate_rbf_scale_d_tilde(
     d_nn_l2: NPVector,
     *,
     gamma: float = 1.0,
-    s: float = 3.0,
+    s: WidthMultiple = WIDTH_SCHEDULE_SQRT_LOG_N,
     c: float | None = None,
 ) -> tuple[float, float]:
     """Derive scalar (kappa, eta) from full-space NN distances.
@@ -649,14 +698,17 @@ def calibrate_rbf_scale_d_tilde(
         d_nn_l2 (NPVector): Full-space NN distances, shape (n_anchors,),
             non-negative.
         gamma (float): Decay constant; eta = gamma / d_tilde.
-        s (float): Width multiple; kappa = (s * d_tilde)**2.
+        s (WidthMultiple): Width multiple or schedule name (see
+            ``resolve_width_multiple``, N = n_anchors); kappa =
+            (s * d_tilde)**2.
         c (float | None): Deprecated alias for ``gamma``.
 
     Returns:
         tuple[float, float]: (kappa, eta) scalars.
 
     Raises:
-        ValueError: If d_nn_l2 is not 1D or has no positive entries.
+        ValueError: If d_nn_l2 is not 1D, has no positive entries,
+            or gamma or s is invalid.
     """
     if c is not None:
         gamma_is_default = bool(np.isclose(gamma, 1.0))
@@ -669,17 +721,18 @@ def calibrate_rbf_scale_d_tilde(
             stacklevel=2,
         )
         gamma = c
-    if gamma <= 0.0 or s <= 0.0:
-        raise ValueError("gamma and s must be greater than 0")
+    if gamma <= 0.0:
+        raise ValueError("gamma must be greater than 0")
 
     d = np.asarray(d_nn_l2, dtype=NPFloatType)
     if d.ndim != 1:
         raise ValueError("d_nn_l2 must have shape (n_anchors,)")
+    s_value = resolve_width_multiple(s, d.shape[0])
     positive = d[d > 0.0]
     if positive.size == 0:
         raise ValueError("all full-space nn distances are zero")
     d_tilde = float(np.median(positive))
-    return float((s * d_tilde) ** 2), float(gamma / d_tilde)
+    return float((s_value * d_tilde) ** 2), float(gamma / d_tilde)
 
 
 GaussianKernel = RBFKernel

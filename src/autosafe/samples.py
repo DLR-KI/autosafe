@@ -319,6 +319,11 @@ class Samples:
     ) -> "Affinity | AffinityVector":
         """Evaluate vector x's affinity with respect to the samples.
 
+        The linear affinity rounds to exactly 1.0 in float64 once the
+        accumulated kernel mass is large. Do not threshold or rank it;
+        membership decisions use the log-survival from
+        ``affinity_dual`` (see docs/log-space-affinity.md).
+
         Args:
             x (Vector | Matrix | NPVector | NPMatrix): The input vector
                 or matrix (multiple vectors as a column matrix) for

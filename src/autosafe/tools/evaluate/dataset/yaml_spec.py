@@ -69,6 +69,38 @@ def _sampling_bounds_from_yaml(
     return lower_arr, upper_arr
 
 
+def _discrete_values_from_yaml(
+    ground_truth_yaml: Path,
+) -> dict[int, npt.NDArray[np.float64]]:
+    """Extract the valid codes of discrete variables from a limits YAML.
+
+    Legacy `limits` entries with `type: discrete` define a finite set of
+    values, not an interval. The box conversion only keeps their
+    min/max, so the sampler and the ground-truth labeller need the set
+    itself to keep discrete coordinates on valid codes.
+
+    Args:
+        ground_truth_yaml (Path): Path to the ground-truth ODD YAML
+            spec.
+
+    Returns:
+        dict[int, npt.NDArray[np.float64]]: Column index to the sorted
+            unique valid values, for every discrete entry. Empty for
+            YAMLs without a `limits` mapping or without discrete
+            entries.
+    """
+    config = load_yaml_odd_config(ground_truth_yaml)
+    limits = config.get("limits") if "type" not in config else None
+    if not isinstance(limits, dict):
+        return {}
+
+    discrete: dict[int, npt.NDArray[np.float64]] = {}
+    for index, entry in enumerate(limits.values()):
+        if isinstance(entry, dict) and entry.get("type") == "discrete":
+            discrete[index] = np.unique(np.asarray(entry["values"], dtype=float))
+    return discrete
+
+
 def _legacy_limits_yaml_to_odd_config(config: dict[str, Any]) -> dict[str, object]:
     """Convert legacy state-variable limits YAML into an ODD config.
 

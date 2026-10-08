@@ -7,14 +7,16 @@ import hashlib
 import json
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
 
 from autosafe.deduplication import DEDUP_ALGORITHM_VERSION, DeduplicationPolicy
 from autosafe.kernels.rbf import (
+    WIDTH_SCHEDULE_SQRT_LOG_N,
     calibrate_rbf_scale_d_tilde,
+    resolve_width_multiple,
 )
 from autosafe.samples import (
     Samples,
@@ -156,8 +158,9 @@ def _dedup_filename_tag(
 
 # Bump whenever the calibration implementation changes: it is hashed
 # into the ODD cache digest so stale calibrated caches are never
-# silently reused.
-_CALIBRATION_VERSION = 3
+# silently reused. Version 4: the default width multiple changed from
+# s = 3 to the sqrt(ln N) schedule.
+_CALIBRATION_VERSION = 4
 
 _CALIBRATION_META_KEYS = (
     "calibration",
@@ -166,6 +169,45 @@ _CALIBRATION_META_KEYS = (
     "calibration_s",
     "calibration_lambda_rel",
 )
+
+
+def _calibration_width_spec(kernel_kwargs: dict[str, object]) -> object | None:
+    """Return the requested width multiple of a calibrated kernel.
+
+    Args:
+        kernel_kwargs (dict[str, object]): Kernel kwargs, possibly
+            containing calibration meta-keys.
+
+    Returns:
+        object | None: The ``calibration_s`` value (the schedule name
+            when unset), or None when the kernel is not calibrated.
+    """
+    if str(kernel_kwargs.get("calibration", "manual")) != "auto":
+        return None
+    return kernel_kwargs.get("calibration_s", WIDTH_SCHEDULE_SQRT_LOG_N)
+
+
+def _width_filename_tag(kernel_kwargs: dict[str, object]) -> str:
+    """Filename tag naming the width multiple of a calibrated run.
+
+    Output CSVs and sidecars are not keyed by the kernel digest, so
+    without this tag a run with a different width multiple would
+    overwrite the results of an otherwise identical run.
+
+    Args:
+        kernel_kwargs (dict[str, object]): Kernel kwargs, possibly
+            containing calibration meta-keys.
+
+    Returns:
+        str: ``-width-sqrt-log-n`` for the schedule, ``-width-<s>`` for
+            a fixed multiple, or an empty string for manual kernels.
+    """
+    spec = _calibration_width_spec(kernel_kwargs)
+    if spec is None:
+        return ""
+    if isinstance(spec, str):
+        return "-width-" + spec.strip().casefold().replace("_", "-")
+    return f"-width-{float(cast('float', spec)):g}"
 
 
 def _resolve_kernel_calibration(
@@ -214,8 +256,7 @@ def _resolve_kernel_calibration(
         )
         raw_gamma = legacy_c
     gamma = float(raw_gamma) if isinstance(raw_gamma, (int, float)) else 1.0
-    raw_s = meta.pop("calibration_s", 3.0)
-    s = float(raw_s) if isinstance(raw_s, (int, float)) else 3.0
+    raw_s = meta.pop("calibration_s", WIDTH_SCHEDULE_SQRT_LOG_N)
     raw_lambda_rel = meta.pop("calibration_lambda_rel", None)
     if mode == "manual":
         return meta
@@ -230,6 +271,10 @@ def _resolve_kernel_calibration(
     pts = np.asarray(reference_points, dtype=float)
     idx = np.asarray(indices)  # global mode: shape (N,)
     d_l2 = np.linalg.norm(pts[idx] - pts, axis=1)
+    # Numbers and the schedule name are resolved against the number of
+    # anchors that instantiate kernels; anything else raises instead of
+    # silently falling back to a default width.
+    s = resolve_width_multiple(cast("float | str", raw_s), pts.shape[0])
     kappa, eta = calibrate_rbf_scale_d_tilde(d_l2, gamma=gamma, s=s)
     meta["kappa"] = kappa
     meta["eta"] = eta

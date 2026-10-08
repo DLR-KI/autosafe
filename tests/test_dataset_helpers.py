@@ -21,9 +21,12 @@ from autosafe.tools.evaluate.dataset.baselines import (
 from autosafe.tools.evaluate.dataset.dedup_integration import run_dataset_deduplication
 from autosafe.tools.evaluate.dataset.ground_truth import _ground_truth_labels_from_yaml
 from autosafe.tools.evaluate.dataset.normalization import (
+    _normalized_discrete_values,
     _normalizer_from_yaml_bounds,
 )
+from autosafe.tools.evaluate.dataset.sampling import _sample_points_with_bounds
 from autosafe.tools.evaluate.dataset.yaml_spec import (
+    _discrete_values_from_yaml,
     _legacy_limits_yaml_to_odd_config,
     _sampling_bounds_from_yaml,
 )
@@ -223,3 +226,66 @@ def test_unknown_baseline_method_returns_no_labels(
     assert (
         "Critical error in baseline membership computation" in capsys.readouterr().out
     )
+
+
+_DISCRETE_LIMITS = """\
+limits:
+    h:
+        type: range
+        values: [-100.0, 100.0]
+    s_adv:
+        type: discrete
+        values: [0, 1, 2, 4]
+"""
+
+
+def test_discrete_values_are_read_from_limits(tmp_path: Path) -> None:
+    yaml_path = _write_yaml(tmp_path / "limits.yaml", _DISCRETE_LIMITS)
+    discrete = _discrete_values_from_yaml(yaml_path)
+    assert list(discrete) == [1]
+    np.testing.assert_array_equal(discrete[1], [0.0, 1.0, 2.0, 4.0])
+    assert (
+        _discrete_values_from_yaml(_write_yaml(tmp_path / "range.yaml", _LEGACY_LIMITS))
+        == {}
+    )
+
+
+def test_ground_truth_requires_a_valid_discrete_code(tmp_path: Path) -> None:
+    yaml_path = _write_yaml(tmp_path / "limits.yaml", _DISCRETE_LIMITS)
+    points = np.array([
+        [0.0, 2.0],  # valid code
+        [0.0, 2.5],  # inside [0, 4] but not a code
+        [0.0, 3.0],  # gap in the code set
+        [0.0, -0.4],  # below the smallest code
+        [0.0, 4.0 + 1e-9],  # round-trip noise on a valid code
+    ])
+    labels = _ground_truth_labels_from_yaml(yaml_path, points)
+    np.testing.assert_array_equal(labels, [True, False, False, False, True])
+
+
+def test_ground_truth_discrete_codes_survive_normalization(tmp_path: Path) -> None:
+    yaml_path = _write_yaml(tmp_path / "limits.yaml", _DISCRETE_LIMITS)
+    normalizer = _normalizer_from_yaml_bounds(yaml_path)
+    lower = np.array([-100.0, 0.0])
+    codes = _normalized_discrete_values(yaml_path, lower, normalizer)[1]
+    points = np.column_stack([np.zeros(codes.size + 1), np.append(codes, 0.1)])
+    labels = _ground_truth_labels_from_yaml(yaml_path, points, normalizer=normalizer)
+    np.testing.assert_array_equal(labels, [True] * codes.size + [False])
+
+
+def test_bounded_sampler_keeps_discrete_coordinates_on_codes() -> None:
+    rng = np.random.default_rng(1)
+    codes = np.array([0.0, 1.0, 2.0, 4.0])
+    anchors = np.column_stack([rng.uniform(-1, 1, 50), rng.choice(codes, 50)])
+    lower, upper = np.array([-1.0, 0.0]), np.array([1.0, 4.0])
+    plain = _sample_points_with_bounds(anchors, lower, upper, n_samples=400, seed=3)
+    fixed = _sample_points_with_bounds(
+        anchors, lower, upper, n_samples=400, seed=3, discrete_values={1: codes}
+    )
+    # The continuous coordinates come from the same stream either way.
+    np.testing.assert_array_equal(plain[:, 0], fixed[:, 0])
+    assert np.isin(fixed[:, 1], codes).all()
+    assert not np.isin(plain[:, 1], codes).all()
+    # Uniform half covers every code; local half keeps anchor codes.
+    assert set(np.unique(fixed[:200, 1])) == set(codes)
+    assert set(np.unique(fixed[200:, 1])) <= set(np.unique(anchors[:, 1]))

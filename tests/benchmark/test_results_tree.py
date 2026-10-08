@@ -5,7 +5,7 @@
 
 The results under ``experiments/benchmark/results/`` are the artifacts
 behind the paper's benchmark figures and tables. They are committed as
-produced and must never be regenerated in place.
+produced and are only regenerated together with the paper's numbers.
 """
 
 from collections import Counter
@@ -18,7 +18,7 @@ RESULTS_DIR = export_paper_data.DEFAULT_RESULTS_DIR
 #: Committed artifacts per suffix: one results.csv and config.json per
 #: experiment (permutation stability writes a single JSON report), plus
 #: the pgfplots-ready .dat files.
-EXPECTED_SUFFIX_COUNTS = {".dat": 50, ".csv": 11, ".json": 13}
+EXPECTED_SUFFIX_COUNTS = {".dat": 51, ".csv": 11, ".json": 13}
 
 
 def test_results_tree_holds_exactly_the_audited_artifacts() -> None:

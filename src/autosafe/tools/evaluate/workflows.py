@@ -26,6 +26,7 @@ from autosafe.exceptions import (
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
     RBFKernel,
+    resolve_width_multiple,
 )
 from autosafe.samples import (
     Samples,
@@ -64,16 +65,19 @@ from autosafe.tools.evaluate.dataset.normalization import (
     _denormalize_bounds_to_yaml_space,
     _denormalize_points_to_yaml_space,
     _normalize_ood_points,
+    _normalized_discrete_values,
     _normalizer_from_yaml_bounds,
     _numeric_array,
 )
 from autosafe.tools.evaluate.dataset.odd_cache import (
     _CALIBRATION_VERSION,
+    _calibration_width_spec,
     _default_odd_json_path,
     _kernel_kwargs_digest,
     _odd_matches_cache_spec,
     _ODDCacheSpec,
     _resolve_kernel_calibration,
+    _width_filename_tag,
 )
 from autosafe.tools.evaluate.dataset.sampling import (
     _sample_points_around_odd,
@@ -106,6 +110,21 @@ if TYPE_CHECKING:
 _MAX_DATASET_EVAL_SAMPLES = 1_000_000
 
 
+def _mc_sampling_frame(data: pl.DataFrame) -> pl.DataFrame:
+    """Flatten the per-sample records of an MC results JSON.
+
+    Args:
+        data (pl.DataFrame): Loaded MC JSON DataFrame.
+
+    Returns:
+        pl.DataFrame: One row per sample, struct columns unnested.
+    """
+    frame = pl.DataFrame(data["sampling_results"][0])
+    return frame.unnest([
+        col_name for col_name, dtype in frame.schema.items() if dtype == pl.Struct
+    ])
+
+
 def _extract_mc_samples(
     data: pl.DataFrame,
 ) -> tuple[NPMatrix, NPAffinityVector, npt.NDArray[np.bool_]]:
@@ -118,16 +137,38 @@ def _extract_mc_samples(
         tuple[NPMatrix, NPAffinityVector, npt.NDArray[np.bool_]]:
             Coordinates, affinities, in_odd_labels.
     """
-    sampling = pl.DataFrame(data["sampling_results"][0]).unnest([
-        col_name
-        for col_name, dtype in pl.DataFrame(data["sampling_results"][0]).schema.items()
-        if dtype == pl.Struct
-    ])
+    sampling = _mc_sampling_frame(data)
 
     coordinates = np.array(sampling["coordinates"].to_list(), dtype=float)
     affinities = np.array(sampling["affinity"].to_list(), dtype=float)
     in_odd = np.array(sampling["in_odd"].to_list(), dtype=bool)
     return coordinates, affinities, in_odd
+
+
+def _extract_mc_survival(data: pl.DataFrame) -> NPAffinityVector | None:
+    """Extract the per-sample log-survival from MC JSON, if stored.
+
+    Results files written before the survival was recorded have no
+    ``survival`` field; exact anchor hits are stored as null and map to
+    ``-inf``.
+
+    Args:
+        data (pl.DataFrame): Loaded MC JSON DataFrame.
+
+    Returns:
+        NPAffinityVector | None: Log-survival per sample, or None for
+            legacy files.
+    """
+    if "sampling_results" not in data:
+        return None
+    sampling = _mc_sampling_frame(data)
+    if "survival" not in sampling.columns:
+        return None
+    values = [
+        -np.inf if value is None else float(value)
+        for value in sampling["survival"].to_list()
+    ]
+    return np.asarray(values, dtype=float)
 
 
 def evaluate_monte_carlo_results(
@@ -185,7 +226,12 @@ def evaluate_monte_carlo_results(
         if not reference_labels:
             raise ValueError("No reference labels requested for evaluation")
 
-        samples_df = pl.DataFrame({"affinity": affinities})
+        survival = _extract_mc_survival(data)
+        samples_df = (
+            pl.DataFrame({"affinity": affinities, "survival": survival})
+            if survival is not None
+            else pl.DataFrame({"affinity": affinities})
+        )
         all_rows.append(
             evaluate_affinity_metrics(
                 samples_df=samples_df,
@@ -540,6 +586,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             resolved_baseline_params.setdefault(method, {}).setdefault(key, scale)
 
     sampling_bounds = None
+    discrete_values: dict[int, npt.NDArray[np.float64]] = {}
     if effective_ground_truth_yaml is not None:
         sampling_bounds = _sampling_bounds_from_yaml(effective_ground_truth_yaml)
 
@@ -557,6 +604,13 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         else:
             lower_norm = sampling_bounds[0]
             upper_norm = sampling_bounds[1]
+        # Discrete YAML variables stay on their valid codes; the
+        # ground-truth labeller requires the same.
+        discrete_values = _normalized_discrete_values(
+            cast("Path", effective_ground_truth_yaml),
+            sampling_bounds[0],
+            yaml_normalizer,
+        )
         test_points = _sample_points_with_bounds(
             anchor_points,
             lower_norm,
@@ -564,6 +618,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             n_samples=n_samples,
             seed=seed,
             local_noise_std=local_noise_std,
+            discrete_values=discrete_values,
         )
     else:
         test_points = _sample_points_around_odd(
@@ -606,7 +661,8 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
     )
 
     if csv_output is None:
-        # ood_run_tag/dedup_tag keep an OOD or de-duplicated run from
+        # ood_run_tag/dedup_tag keep an OOD or de-duplicated run, and
+        # the width tag a run with another width multiple, from
         # overwriting the CSV and sidecar of the otherwise
         # identically-configured plain run.
         tag = (
@@ -617,6 +673,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             )
             + ood_run_tag
             + dedup_tag
+            + _width_filename_tag(kernel_kwargs)
         )
         csv_output = dataset_path.with_name(
             f"{dataset_path.stem}-evaluation-edges{tag}.csv"
@@ -647,6 +704,14 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             kernel_scale_realized = ksr
     except AttributeError:
         kernel_scale_realized = None
+    width_spec = _calibration_width_spec(kernel_kwargs)
+    width_realized = (
+        resolve_width_multiple(
+            cast("float | str", width_spec), int(anchor_points.shape[0])
+        )
+        if width_spec is not None
+        else None
+    )
     sidecar = {
         "dataset": str(dataset_path),
         "seed": seed,
@@ -678,6 +743,8 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             else None
         ),
         "n_anchors": int(anchor_points.shape[0]),
+        "discrete_columns": sorted(discrete_values),
+        "width_multiple_realized": width_realized,
         "ood_n_points": int(ood_norm.shape[0]) if ood_norm is not None else None,
         "ood_anchor_exclusion_tag": ood_file_tag or None,
         # Audit number: must be 0 on every OOD run. Computed post hoc so
@@ -746,6 +813,9 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         "calibration_version": _CALIBRATION_VERSION,
         "baseline_params_resolved": resolved_baseline_params,
         "threshold_mode": "edges",
+        # Share of evaluation samples whose linear affinity rounds to
+        # exactly 1.0; decisions never use it (log-space rule only).
+        "linear_saturation_fraction": float(np.mean(affinities >= 1.0)),
         "threshold_count": threshold_count,
         "threshold_grid_stats": {
             "smallest_positive_affinity": (

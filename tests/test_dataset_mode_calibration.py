@@ -58,15 +58,16 @@ def test_calibration_end_to_end(tmp_path: Path) -> None:
         threshold_count=11,
     )
 
-    # CSV exists and has both affinity_space values
+    # CSV exists; every decision uses the log-space rule
     assert csv_path.exists()
     assert isinstance(results, pl.DataFrame)
-    assert set(results["affinity_space"].unique().to_list()) == {"linear", "log"}
+    assert set(results["affinity_space"].unique().to_list()) == {"log"}
 
     # Sidecar exists and kappa/eta are scalars consistent with eta == 1/d_tilde
     sidecar_path = csv_path.with_name(csv_path.stem + "-params.json")
     assert sidecar_path.exists()
     sidecar = json.loads(sidecar_path.read_text())
+    assert 0.0 <= sidecar["linear_saturation_fraction"] <= 1.0
     ksr = sidecar["kernel_scale_realized"]
     assert ksr is not None
     assert len(ksr["kappa"]) == 1
@@ -131,3 +132,34 @@ def test_calibration_requires_global_mode(tmp_path: Path) -> None:
             n_samples=500,
             threshold_count=5,
         )
+
+
+def test_discrete_limits_reach_sampler_and_labels(tmp_path: Path) -> None:
+    rng = np.random.default_rng(7)
+    data = np.column_stack([rng.uniform(-50, 50, 80), rng.choice([0, 2, 3], 80)])
+    ds = tmp_path / "discrete.csv"
+    rows = ["h,s_adv"] + [f"{h:.6f},{int(c)}" for h, c in data]
+    ds.write_text("\n".join(rows), encoding="utf-8")
+    (tmp_path / "discrete.yml").write_text(
+        "limits:\n"
+        "  h:\n    type: range\n    values: [-100, 100]\n"
+        "  s_adv:\n    type: discrete\n    values: [0, 1, 2, 3]\n",
+        encoding="utf-8",
+    )
+
+    results, csv_path, _odd_path = evaluate_dataset_mode(
+        ds,
+        closest_sample_mode="global",
+        kernel_kwargs={"calibration": "auto"},
+        references=["ground_truth"],
+        n_samples=1000,
+        threshold_count=11,
+    )
+
+    sidecar = json.loads(csv_path.with_name(csv_path.stem + "-params.json").read_text())
+    assert sidecar["discrete_columns"] == [1]
+    gt = results.filter(pl.col("reference") == "ground_truth")
+    # Codes stay valid, so only the 10 % margin in h is outside: about
+    # 1/1.2 of the uniform half plus all local samples are inside.
+    prevalence = gt["prevalence"][0]
+    assert 0.85 < prevalence < 0.97
