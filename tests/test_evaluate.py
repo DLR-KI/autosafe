@@ -204,7 +204,10 @@ def test_metrics_module(tmp_path: Path):
             pl.DataFrame({"x": [1]}), {"r": np.array([True])}, np.array([0.5]), "s"
         )
 
-    with pytest.raises(ValueError, match="length does not match"):
+    with (
+        pytest.warns(LinearAffinityDecisionWarning),
+        pytest.raises(ValueError, match="length does not match"),
+    ):
         evaluate_affinity_metrics(
             pl.DataFrame({"affinity": [0.1, 0.2]}),
             {"r": np.array([True])},
@@ -212,12 +215,13 @@ def test_metrics_module(tmp_path: Path):
             "s",
         )
 
-    out = evaluate_affinity_metrics(
-        pl.DataFrame({"affinity": [0.9, 0.1]}),
-        {"r": np.array([True, False])},
-        np.array([0.2, 0.8]),
-        "source",
-    )
+    with pytest.warns(LinearAffinityDecisionWarning):
+        out = evaluate_affinity_metrics(
+            pl.DataFrame({"affinity": [0.9, 0.1]}),
+            {"r": np.array([True, False])},
+            np.array([0.2, 0.8]),
+            "source",
+        )
     assert out.height == 2
     csv_path = save_metrics_csv(out, tmp_path / "m" / "results.csv")
     assert csv_path.exists()
