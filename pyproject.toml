@@ -7,18 +7,6 @@ build-backend = "uv_build"
 requires = ["uv_build>=0.11.18,<1.0.0"]
 
 [dependency-groups]
-ci = [
-  "anybadge",
-  "codeclimate-test-reporter",
-  "flake8-docstrings-complete",
-  "flake8-docstrings",
-  "flake8-gl-codeclimate",
-  "flake8-pyproject",
-  "flake8",
-  "pylint-gitlab",
-  "pylint-per-file-ignores",
-  "pylint"
-]
 dev = [
   "commitizen>=4.15.1",
   "prek>=0.3.5",
@@ -33,6 +21,10 @@ docs = [
   "sphinx-rtd-theme>3",
   "sphinx>8",
   "astroid<4"
+]
+lint = [
+  "pylint-per-file-ignores",
+  "pylint"
 ]
 tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
 
@@ -68,7 +60,6 @@ dependencies = [
   "polars>=1.34.0",
   "polytope>=0.2.5",
   "pyyaml>=6.0.2",
-  "pyarrow>=22.0.0",
   "rich>=14.1.0",
   "scikit-learn>=1.7.2",
   "scipy>=1.15.3",
