@@ -13,6 +13,7 @@ from loguru import logger
 
 import autosafe
 from autosafe.exceptions import (
+    KernelParametersNotSetError,
     KernelSaturationError,
     NearAnchorOODWarning,
     OODAnchorCoincidenceError,
@@ -407,7 +408,10 @@ def test_invert_covariance_dense_and_singular() -> None:
 
 
 def test_kernel_over_points_requires_sigma_inv() -> None:
-    with pytest.raises(RuntimeError, match="kernel has no sigma_inv"):
+    with pytest.raises(
+        KernelParametersNotSetError,
+        match="kernel parameter sigma_inv has not been set",
+    ):
         kernel_over_points(_RBFKernel(x_i=np.zeros(2)), np.zeros((3, 2)))
 
 

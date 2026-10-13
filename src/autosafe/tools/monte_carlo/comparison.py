@@ -42,8 +42,8 @@ class ComparisonExperimentConfig:
     """Configuration for legacy comparison evaluation.
 
     Attributes:
-        methods (list[str] | None): Optional list of comparison methods
-            to evaluate. If None, all methods are evaluated.
+        methods (list[MethodName] | None): Optional list of comparison
+            methods to evaluate. If None, all methods are evaluated.
         knn_k (int): Number of neighbors for KNN-based method.
         knn_gamma (float): Gamma parameter for KNN-based method.
         kmeans_clusters (int): Number of clusters for KMeans-based

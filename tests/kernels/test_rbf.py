@@ -10,7 +10,16 @@ import re
 import numpy as np
 import pytest
 
-from autosafe.exceptions import SigmaNotInvertibleError
+from autosafe.exceptions import (
+    ArrayDtypeError,
+    KernelParametersNotSetError,
+    MissingParameterError,
+    NotPositiveSemidefiniteError,
+    ParameterTypeError,
+    ShapeMismatchError,
+    SigmaNotInvertibleError,
+    UnknownOptionError,
+)
 from autosafe.kernels import rbf
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
@@ -46,9 +55,7 @@ class TestRBFKernel:
 
     @staticmethod
     def test_rbf_kernel_init_fails_on_wrong_sigma_shape():
-        with pytest.raises(
-            ValueError, match=re.escape("sigma must have compatible dimensions to x_i.")
-        ):
+        with pytest.raises(ShapeMismatchError, match="sigma has shape"):
             RBFKernel(
                 x_i=np.array([1.0, 2.0, 3.0], dtype=FloatType),
                 sigma=np.eye(2, dtype=FloatType),
@@ -56,16 +63,12 @@ class TestRBFKernel:
 
     @staticmethod
     def test_rbf_kernel_init_fails_on_non_psd_sigma():
-        with pytest.raises(
-            ValueError, match=re.escape("sigma must be positive semidefinite (psd).")
-        ):
+        with pytest.raises(NotPositiveSemidefiniteError):
             RBFKernel(
                 x_i=np.array([1.0, 2.0], dtype=FloatType),
                 sigma=np.array([[-1.0, 0.0], [0.0, -1.0]], dtype=FloatType),
             )
-        with pytest.raises(
-            ValueError, match=re.escape("sigma must be positive semidefinite (psd).")
-        ):
+        with pytest.raises(NotPositiveSemidefiniteError):
             RBFKernel(
                 x_i=np.array([1.0, 2.0], dtype=FloatType),
                 sigma=np.array([[1.0, 0.0], [0.0, 0.0]], dtype=FloatType),
@@ -73,9 +76,7 @@ class TestRBFKernel:
 
     @staticmethod
     def test_rbf_kernel_init_fails_on_non_psd():
-        with pytest.raises(
-            ValueError, match=re.escape("sigma must be positive semidefinite (psd).")
-        ):
+        with pytest.raises(NotPositiveSemidefiniteError):
             RBFKernel(
                 x_i=np.array([1.0, 2.0], dtype=FloatType),
                 sigma=-1.0,
@@ -83,10 +84,7 @@ class TestRBFKernel:
 
     @staticmethod
     def test_rbf_kernel_init_fails_wrong_sigma_type():
-        with pytest.raises(
-            ValueError,
-            match=re.escape("sigma must be either 'eye', a square matrix, or None."),
-        ):
+        with pytest.raises(UnknownOptionError, match="unknown sigma "):
             RBFKernel(
                 x_i=np.array([1.0, 2.0], dtype=FloatType),
                 sigma="identity",  # ty: ignore[invalid-argument-type]
@@ -120,8 +118,8 @@ class TestRBFKernel:
     def test_rbf_kernel_call_fails_with_no_sigma():
         kernel = RBFKernel(x_i=np.array([1.0, 2.0, 3.0], dtype=FloatType))
         with pytest.raises(
-            ValueError,
-            match=re.escape("Kernel has no free parameter matrix (sigma) defined."),
+            KernelParametersNotSetError,
+            match="kernel parameter sigma has not been set",
         ):
             kernel(np.array([1.0, 2.0, 3.0], dtype=FloatType))
 
@@ -133,23 +131,18 @@ class TestRBFKernel:
 
     def test_rbf_kernel_sigma_ii_x_nn_not_array(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(TypeError, match=re.escape("x_nn must be a numpy array.")):
+        with pytest.raises(ParameterTypeError, match="x_nn must be of type"):
             kernel._sigma_ii(x_nn=3)  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_sigma_ii_x_nn_wrong_dtype(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(
-            TypeError, match=re.escape("x_nn must be of dtype FloatType.")
-        ):
+        with pytest.raises(ArrayDtypeError, match="x_nn must have dtype"):
             kernel._sigma_ii(x_nn=np.array([1.0, 2.0, 3.0], dtype=np.float32))  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_sigma_ii_x_nn_shape_mismatch(self):
         kernel = copy.deepcopy(self.kernel)
         dim = kernel.x_i.shape[0]
-        with pytest.raises(
-            ValueError,
-            match=re.escape("x_nn must have the same number of rows as x_i."),
-        ):
+        with pytest.raises(ShapeMismatchError, match="x_nn has shape"):
             kernel._sigma_ii(x_nn=np.ones((dim + 1, dim), dtype=FloatType))
 
     def test_rbf_kernel_sigma_ii_success_vector(self):
@@ -432,10 +425,7 @@ class TestRBFKernel:
 
     def test_rbf_kernel_set_sigma_sigma_not_array(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(
-            ValueError,
-            match=re.escape("sigma must be positive semidefinite (psd)."),
-        ):
+        with pytest.raises(NotPositiveSemidefiniteError):
             kernel.update(sigma=-0.1)
 
     def test_rbf_kernel_set_sigma_scalar_success(self):
@@ -459,10 +449,7 @@ class TestRBFKernel:
 
     def test_rbf_kernel_set_sigma_sigma_not_valid_string(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(
-            ValueError,
-            match=re.escape("sigma must be either 'eye', a square matrix, or None."),
-        ):
+        with pytest.raises(UnknownOptionError, match="unknown sigma "):
             kernel.update(sigma="not_a_valid_string")  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_set_sigma_success_eye(self):
@@ -482,9 +469,7 @@ class TestRBFKernel:
     def test_rbf_kernel_set_sigma_sigma_wrong_dims(self):
         kernel = copy.deepcopy(self.kernel)
         dim = kernel.x_i.shape[0]
-        with pytest.raises(
-            ValueError, match=re.escape("sigma must have compatible dimensions to x_i.")
-        ):
+        with pytest.raises(ShapeMismatchError, match="sigma has shape"):
             kernel.update(sigma=np.eye(dim + 1, dtype=FloatType))
 
     @staticmethod
@@ -493,35 +478,31 @@ class TestRBFKernel:
             x_i=np.array([1.0, 2.0], dtype=FloatType),
             sigma=None,
         )
-        with pytest.raises(
-            ValueError, match=re.escape("sigma must be positive semidefinite (psd).")
-        ):
+        with pytest.raises(NotPositiveSemidefiniteError):
             kernel.update(sigma=np.array([[-1.0, 0.0], [0.0, -1.0]], dtype=FloatType))
 
         kernel = RBFKernel(
             x_i=np.array([1.0, 2.0], dtype=FloatType),
             sigma=None,
         )
-        with pytest.raises(
-            ValueError, match=re.escape("sigma must be positive semidefinite (psd).")
-        ):
+        with pytest.raises(NotPositiveSemidefiniteError):
             kernel.update(sigma=np.array([[1.0, 0.0], [0.0, 0.0]], dtype=FloatType))
 
     def test_rbf_kernel_set_sigma_x_nn_bot_not_defined(self):
         kernel = copy.deepcopy(self.kernel)
         with pytest.raises(
-            ValueError, match=re.escape("x_nn must be provided if sigma is not set.")
+            MissingParameterError, match="x_nn is required unless sigma is given"
         ):
             kernel.update()
 
     def test_rbf_kernel_set_sigma_x_nn_not_array(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ValueError, match=re.escape("x_nn must be a numpy array.")):
+        with pytest.raises(ParameterTypeError, match="x_nn must be of type"):
             kernel.update(x_nn=3)  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_set_sigma_not_array(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ValueError, match=re.escape("sigma must be a numpy array.")):
+        with pytest.raises(ParameterTypeError, match="sigma must be of type"):
             kernel.update(sigma=[[1, 2], [3, 4]])  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_set_sigma_x_nn_wrong_dtype(self):
@@ -535,10 +516,7 @@ class TestRBFKernel:
     def test_rbf_kernel_set_sigma_x_nn_shape_mismatch(self):
         kernel = copy.deepcopy(self.kernel)
         dim = kernel.x_i.shape[0]
-        with pytest.raises(
-            ValueError,
-            match=re.escape("x_nn must have the same number of rows as x_i."),
-        ):
+        with pytest.raises(ShapeMismatchError, match="x_nn has shape"):
             kernel.update(x_nn=np.ones((dim + 1, dim), dtype=FloatType))
 
     def test_rbf_kernel_set_sigma_x_nn_success(self):
@@ -669,9 +647,7 @@ def test_validate_and_broadcast_param_shape_mismatch():
     param = np.array([1.0, 2.0, 3.0], dtype=FloatType)
     name = "test_param"
     dim = 6
-    with pytest.raises(
-        ValueError, match=re.escape("test_param must have the same dimension as x_i.")
-    ):
+    with pytest.raises(ShapeMismatchError, match="test_param has shape"):
         _validate_and_broadcast_param(param, name, dim)
 
 
@@ -679,9 +655,7 @@ def test_validate_and_broadcast_param_wrong_type():
     param = "three"
     name = "test_param"
     dim = 6
-    with pytest.raises(
-        ValueError, match=re.escape("test_param must be a vector or a scalar.")
-    ):
+    with pytest.raises(ParameterTypeError, match="test_param must be of type"):
         _validate_and_broadcast_param(param, name, dim)  # ty: ignore[invalid-argument-type]
 
 
@@ -730,6 +704,9 @@ def _failing_repair(sigma: np.ndarray) -> np.ndarray:
     Whether the real eigenvalue repair succeeds on an all-subnormal sigma
     depends on the CPU (``jnp.linalg.eigh`` returns NaN on some machines
     and finite values on others), so the failure path is forced here.
+
+    Args:
+        sigma (np.ndarray): Sigma matrix to "repair".
 
     Returns:
         np.ndarray: A zero matrix of the same shape.
@@ -807,7 +784,8 @@ def test_refresh_sigma_cache_raises_when_sigma_is_none():
     kernel = copy.deepcopy(RBFKernel(x_i=_X_I_3, sigma=np.eye(3, dtype=FloatType)))
     kernel.sigma = None
     with pytest.raises(
-        RuntimeError, match="_refresh_sigma_cache called before sigma is set"
+        KernelParametersNotSetError,
+        match="kernel parameter sigma has not been set",
     ):
         kernel._refresh_sigma_cache()
 
@@ -818,7 +796,10 @@ def test_get_sigma_inv_diag_jax_raises_when_sigma_inv_none():
     kernel = copy.deepcopy(RBFKernel(x_i=_X_I_3, sigma=np.eye(3, dtype=FloatType)))
     kernel.sigma_inv = None
     kernel._sigma_inv_diag_jax = None
-    with pytest.raises(RuntimeError, match="sigma_inv has not been set"):
+    with pytest.raises(
+        KernelParametersNotSetError,
+        match="kernel parameter sigma_inv has not been set",
+    ):
         kernel._get_sigma_inv_diag_jax()
 
 
@@ -828,5 +809,8 @@ def test_get_sigma_inv_full_jax_raises_when_sigma_inv_none():
     kernel = copy.deepcopy(RBFKernel(x_i=_X_I_3, sigma=_SIGMA_NON_DIAG))
     kernel.sigma_inv = None
     kernel._sigma_inv_full_jax = None
-    with pytest.raises(RuntimeError, match="sigma_inv has not been set"):
+    with pytest.raises(
+        KernelParametersNotSetError,
+        match="kernel parameter sigma_inv has not been set",
+    ):
         kernel._get_sigma_inv_full_jax()

@@ -11,6 +11,7 @@ import numpy.typing as npt
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
+from autosafe.exceptions import NotFittedError
 from autosafe.odd.comparison.base import (
     DecisionBoundary,
     ODDBoundaryMethod,
@@ -32,6 +33,14 @@ class KMeansBoundaries(ODDBoundaryMethod):
     ``radius_quantile`` quantile of that cluster's member distances to
     its centroid (rejecting the farthest members as outliers).
 
+    Args:
+        n_clusters (int): Number of clusters to build.
+        metric (str): Distance metric label used for metadata.
+        min_cluster_size (int): Minimum cluster size to keep.
+        radius_quantile (float): Quantile of the per-cluster
+            centroid-distance distribution used as the inclusion
+            radius (default 0.95).
+
     Attributes:
         n_clusters (int): Number of clusters to find.
         metric (str): Distance metric for clustering.
@@ -49,6 +58,15 @@ class KMeansBoundaries(ODDBoundaryMethod):
             property.
     """
 
+    n_clusters: int
+    metric: str
+    min_cluster_size: int
+    radius_quantile: float
+    centroids: Matrix | None
+    radii: list[float | None]
+    silhouette: FloatType | None
+    conservatism: FloatType | None
+
     def __init__(
         self,
         n_clusters: int = 3,
@@ -56,16 +74,6 @@ class KMeansBoundaries(ODDBoundaryMethod):
         min_cluster_size: int = 3,
         radius_quantile: float = 0.95,
     ) -> None:
-        """Initialize k-means boundary detector.
-
-        Args:
-            n_clusters (int): Number of clusters to build.
-            metric (str): Distance metric label used for metadata.
-            min_cluster_size (int): Minimum cluster size to keep.
-            radius_quantile (float): Quantile of the per-cluster
-                centroid-distance distribution used as the inclusion
-                radius (default 0.95).
-        """
         self.n_clusters = n_clusters
         self.metric = metric
         self.min_cluster_size = min_cluster_size
@@ -83,7 +91,7 @@ class KMeansBoundaries(ODDBoundaryMethod):
         """method_type property for the k-means comparison method.
 
         Returns:
-            Method name.
+            str: Method name.
         """
         return "kmeans"
 
@@ -145,7 +153,7 @@ class KMeansBoundaries(ODDBoundaryMethod):
         """Fit k-means clustering.
 
         Args:
-            data (Matrix): Reference ODD points
+            data (Matrix | NPMatrix): Reference ODD points
                 (shape: (n_features, n_samples))
         """
         # Initial fit
@@ -185,7 +193,7 @@ class KMeansBoundaries(ODDBoundaryMethod):
         outliers.
 
         Args:
-            data (Matrix): Reference ODD points
+            data (Matrix | NPMatrix): Reference ODD points
                 (shape: (n_features, n_samples))
             centroids (Matrix): Cluster centers (shape:
                 (n_features, n_clusters)).
@@ -283,10 +291,10 @@ class KMeansBoundaries(ODDBoundaryMethod):
                 clusters with a radius.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained or self.centroids is None:
-            raise RuntimeError("KMeansBoundaries not fitted yet")
+            raise NotFittedError(type(self).__name__)
 
         point_array = np.asarray(test_point, dtype=float)
 
@@ -311,10 +319,10 @@ class KMeansBoundaries(ODDBoundaryMethod):
                 (shape: (n_samples,)).
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained or self.centroids is None:
-            raise RuntimeError("KMeansBoundaries not fitted yet")
+            raise NotFittedError(type(self).__name__)
 
         n_samples = test_points.shape[1]
         result = np.zeros(n_samples, dtype=bool)

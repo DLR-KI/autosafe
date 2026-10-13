@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
 #
 # SPDX-License-Identifier: MIT
-import re
 from typing import Any
 
 import jax
@@ -9,7 +8,7 @@ import msgspec.json
 import numpy as np
 import pytest
 
-from autosafe.exceptions import EmptyODDError
+from autosafe.exceptions import EmptyODDError, ShapeMismatchError
 from autosafe.kernels.rbf import RBFKernel
 from autosafe.sample import Sample
 from autosafe.samples import (
@@ -221,13 +220,13 @@ def test_init_wrong_type_raises_typeerror(
 ):
     """Test that initialization with wrong type raises TypeError."""
     with pytest.raises(TypeError):
-        _ = Samples(42)  # type: ignore
+        _ = Samples(42)  # ty: ignore[invalid-argument-type]
 
     with pytest.raises(TypeError):
-        _ = Samples("invalid input")  # type: ignore
+        _ = Samples("invalid input")  # ty: ignore[invalid-argument-type]
 
     with pytest.raises(TypeError):
-        _ = Samples([Sample(x=[0.5]), "invalid"])  # type: ignore
+        _ = Samples([Sample(x=[0.5]), "invalid"])  # ty: ignore[invalid-argument-type]
 
     with pytest.raises(TypeError):
         _ = Samples(
@@ -248,9 +247,7 @@ def test_wrong_dimension_raises_valueerror(
 ):
     """Test that initialization with samples of different dimensions raises
     ValueError."""
-    with pytest.raises(
-        ValueError, match=re.escape("All samples must have the same dimension.")
-    ):
+    with pytest.raises(ShapeMismatchError, match="sample has shape"):
         _ = Samples(
             [Sample(x=[0.5, 1.0]), Sample(x=[-0.5])],
             closest_sample_mode=closest_sample_mode,
@@ -258,7 +255,7 @@ def test_wrong_dimension_raises_valueerror(
             kernel_kwargs=kernel_kwargs,
         )
 
-    with pytest.raises(ValueError, match=re.escape("Each sample must be a 1D array.")):
+    with pytest.raises(ShapeMismatchError, match="sample has shape"):
         _ = Samples(
             [[0.5, 1.0], [0.0]],
             closest_sample_mode=closest_sample_mode,
@@ -266,7 +263,7 @@ def test_wrong_dimension_raises_valueerror(
             kernel_kwargs=kernel_kwargs,
         )
 
-    with pytest.raises(ValueError, match=re.escape("Each sample must be a 1D array.")):
+    with pytest.raises(ShapeMismatchError, match="sample has shape"):
         _ = Samples(
             [np.array([0.5, 1.0]), np.array([0.0])],
             closest_sample_mode=closest_sample_mode,
@@ -274,7 +271,7 @@ def test_wrong_dimension_raises_valueerror(
             kernel_kwargs=kernel_kwargs,
         )
 
-    with pytest.raises(ValueError, match=re.escape("Input array must be 1D or 2D.")):
+    with pytest.raises(ShapeMismatchError, match="samples has shape"):
         _ = Samples(
             np.zeros((3, 3, 3)),  # ty: ignore[invalid-argument-type]
             closest_sample_mode=closest_sample_mode,
@@ -300,15 +297,13 @@ def test_wrong_dimension_append_raises_valueerror_on_append(
         kernel_kwargs=kernel_kwargs,
     )
 
-    with pytest.raises(
-        ValueError, match=re.escape("All samples must have the same dimension.")
-    ):
+    with pytest.raises(ShapeMismatchError, match="sample has shape"):
         samples.append(Sample(x=[-0.5]))
 
-    with pytest.raises(ValueError, match=re.escape("Each sample must be a 1D array.")):
+    with pytest.raises(ShapeMismatchError, match="sample has shape"):
         samples.append([[0.0]])
 
-    with pytest.raises(ValueError, match=re.escape("Input array must be 1D or 2D.")):
+    with pytest.raises(ShapeMismatchError, match="samples has shape"):
         samples.append(np.array([0.0]))
 
 

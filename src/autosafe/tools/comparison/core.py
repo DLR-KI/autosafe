@@ -20,6 +20,7 @@ import polars as pl
 import scipy.spatial
 from scipy.stats import qmc
 
+from autosafe.exceptions import UnknownOptionError
 from autosafe.odd.comparison import (
     ClusteredConvexHulls,
     ClusteredSuperlevelSetMonitor,
@@ -78,7 +79,8 @@ def setup_evaluation_framework(dataset_path: str | Path, **kwargs: object) -> di
             the returned configuration mapping.
 
     Returns:
-        Dictionary with dataset metadata, loaded frame, and references.
+        dict: Dictionary with dataset metadata, loaded frame, and
+            references.
     """
     df, dataset_type = load_dataset(Path(dataset_path))
     ref_points = df.to_numpy().T
@@ -144,11 +146,12 @@ def evaluate_dataset_with_comparison_methods(
             selected method, such as k or n_clusters.
 
     Returns:
-        Typed comparison method result with coverage, conservatism,
-        parameters, and decision-boundary metadata.
+        ComparisonMethodResult: Typed comparison method result with
+            coverage, conservatism, parameters, and decision-boundary
+            metadata.
 
     Raises:
-        ValueError: If an unknown method is specified.
+        UnknownOptionError: If an unknown method is specified.
     """
     if method == "hull_single":
         method_results = _hull_membership(ref_points, test_points)
@@ -209,7 +212,7 @@ def evaluate_dataset_with_comparison_methods(
             min_samples=dbscan_kwargs.get("min_samples", 5),
         )
     else:
-        raise ValueError(f"Unknown method: {method}")
+        raise UnknownOptionError("method", method)
 
     monitor.fit(ref_points)
 
@@ -314,10 +317,12 @@ def evaluate_comparison_methods(  # ruff:ignore[complex-structure, too-many-argu
         export_path (str | None): Optional JSON export path.
 
     Returns:
-        Complete comparison evaluation result dictionary.
+        ComparisonEvaluationResults: Complete comparison evaluation
+            result dictionary.
 
     Raises:
-        ValueError: If an unknown comparison method is requested.
+        UnknownOptionError: If an unknown comparison method is
+            requested.
     """
     if methods is None:
         methods = [
@@ -379,7 +384,7 @@ def evaluate_comparison_methods(  # ruff:ignore[complex-structure, too-many-argu
                 method,
             )
         else:
-            raise ValueError(f"Unknown comparison method: {method}")
+            raise UnknownOptionError("method", method)
 
         comparison_results[method_results["method"]] = method_results
 
@@ -424,7 +429,8 @@ def _evaluate_comparison_methods(  # ruff:ignore[too-many-arguments, too-many-po
         export_path (str | None): Optional JSON export path.
 
     Returns:
-        Complete comparison evaluation result dictionary.
+        ComparisonEvaluationResults: Complete comparison evaluation
+            result dictionary.
     """
     return evaluate_comparison_methods(
         dataset_path=dataset_path,

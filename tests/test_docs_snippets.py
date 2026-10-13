@@ -38,6 +38,14 @@ _NO_EXECUTE = re.compile(r"^\.\. no-execute:\s*(?P<reason>.*)$")
 MIN_EXECUTED_BLOCKS = 4
 
 
+class _SnippetFailedError(AssertionError):
+    def __init__(self, label: str, exc: Exception, source: str) -> None:
+        super().__init__(
+            f"{label} failed to execute ({type(exc).__name__}: {exc})."
+            f"\n--- source ---\n{source}"
+        )
+
+
 @dataclasses.dataclass(frozen=True)
 class DocBlock:
     """One extracted ``.. code-block:: python`` block.
@@ -192,10 +200,7 @@ class TestDocsSnippets:
             try:
                 exec(code, namespace)  # ruff:ignore[exec-builtin]
             except Exception as exc:
-                raise AssertionError(
-                    f"{label} failed to execute ({type(exc).__name__}: {exc})."
-                    f"\n--- source ---\n{block.source}"
-                ) from exc
+                raise _SnippetFailedError(label, exc, block.source) from exc
 
     @staticmethod
     def test_minimum_block_coverage():

@@ -50,6 +50,9 @@ _NORMAL = np.array([-1.0, 1.0]) / np.sqrt(2.0)
 def _signed_distance_raw(pts: NPArray) -> NPArray:
     """Signed distance to the linear2d boundary in RAW coords.
 
+    Args:
+        pts (NPArray): (M, 2) RAW points.
+
     Returns:
         NPArray: (M,) signed distances, positive inside.
     """
@@ -62,6 +65,11 @@ def _halo_band_raw(n_band: int, max_dist: float, rng: np.random.Generator) -> NP
     Points lie within signed distance ``[-max_dist, 0)`` of the line and
     inside the 2x box, by offsetting boundary points along the inward
     normal (negated for the exterior).
+
+    Args:
+        n_band (int): Number of band points to return.
+        max_dist (float): Maximum distance outside the boundary.
+        rng (np.random.Generator): Random number generator.
 
     Returns:
         NPArray: (n_band, 2) RAW exterior band points.

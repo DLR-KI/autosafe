@@ -43,7 +43,11 @@ from autosafe.deduplication import (
     check_label_conflicts,
     deduplicate_points,
 )
-from autosafe.exceptions import EmptyAnchorPoolError, OODAnchorCoincidenceError
+from autosafe.exceptions import (
+    EmptyAnchorPoolError,
+    OODAnchorCoincidenceError,
+    ParameterOutOfRangeError,
+)
 from autosafe.pointsets import rows_in
 from autosafe.preprocessing import RangeNormalizer, create_robust_normalization_pipeline
 from autosafe.tools.evaluate.dataset.normalization import _numeric_array
@@ -156,8 +160,8 @@ def run_dataset_deduplication(  # ruff:ignore[too-many-arguments, too-many-local
             inputs.
 
     Raises:
-        ValueError: If ``n_calibration_reserved`` is negative or is not
-            smaller than the number of raw ID rows.
+        ParameterOutOfRangeError: If ``n_calibration_reserved`` is
+            negative or is not smaller than the number of raw ID rows.
         EmptyAnchorPoolError: If subtracting the OOD rows (and any
             reserved calibration rows) leaves no ID candidates.
         OODAnchorCoincidenceError: If, after de-duplication and
@@ -168,9 +172,12 @@ def run_dataset_deduplication(  # ruff:ignore[too-many-arguments, too-many-local
     n_id_raw = id_raw.shape[0]
 
     if n_calibration_reserved < 0 or n_calibration_reserved >= max(n_id_raw, 1):
-        raise ValueError(
-            f"n_calibration_reserved={n_calibration_reserved} must be in "
-            f"[0, {n_id_raw}) for a dataset with {n_id_raw} raw rows"
+        raise ParameterOutOfRangeError(
+            "n_calibration_reserved",
+            n_calibration_reserved,
+            0,
+            n_id_raw,
+            lower_closed=True,
         )
 
     all_ids = np.arange(n_id_raw)

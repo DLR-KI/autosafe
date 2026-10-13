@@ -65,8 +65,14 @@ def _poly5d_with_hole(
 ) -> HoleSplit:
     """poly5d region minus a carved hyperbox (well inside the region).
 
+    Args:
+        n_id (int): Number of in-distribution anchor points.
+        n_val (int): Number of validation points.
+        m_ood (int): Number of in-hole points used as the OOD set.
+        rng (np.random.Generator): Random number generator.
+
     Returns:
-        (id_pts, hole_pts, val_pts, val_labels, probe) where
+        HoleSplit: (id_pts, hole_pts, val_pts, val_labels, probe) where
         ``val_labels`` is true ground-truth membership (region minus
         hole), ``hole_pts`` are in-hole points used as the OOD set, and
         ``probe`` is a DISJOINT held-out in-hole set for the FP metric.
@@ -112,7 +118,7 @@ def _vcas_with_hole(
         rng (np.random.Generator): Seeded RNG.
 
     Returns:
-        Same tuple layout as :func:`_poly5d_with_hole`.
+        HoleSplit: Same tuple layout as :func:`_poly5d_with_hole`.
     """
     df = pl.read_csv(VCAS_CSV)
     cols = [c for c, dt in zip(df.columns, df.dtypes, strict=False) if dt.is_numeric()]

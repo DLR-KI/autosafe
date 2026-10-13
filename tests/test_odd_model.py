@@ -9,6 +9,17 @@ from typing import cast
 import numpy as np
 import pytest
 
+from autosafe.exceptions import (
+    CalibrationSetTooSmallError,
+    EmptyParameterError,
+    InvalidLogSurvivalError,
+    NonFiniteParameterError,
+    ParameterOrderError,
+    ParameterOutOfRangeError,
+    ShapeMismatchError,
+    TooFewAnchorsError,
+    UncertifiableThresholdError,
+)
 from autosafe.odd import AutoSafeConfig, AutoSafeODD
 
 
@@ -126,7 +137,7 @@ def test_input_feature_counts_and_names_are_validated() -> None:
             config={"zeta": 0.5},
             feature_names=["only_one"],
         )
-    with pytest.raises(ValueError, match="expected 2"):
+    with pytest.raises(ShapeMismatchError, match="out_of_distribution_data has shape"):
         AutoSafeODD.fit(
             anchors,
             out_of_distribution_data=np.array([[0.5]]),
@@ -150,21 +161,23 @@ def test_conformal_threshold_helper_uses_finite_sample_rank() -> None:
 
 
 @pytest.mark.parametrize(
-    ("data", "match"),
+    ("data", "error"),
     [
-        ([0.0, 1.0], "shape"),
-        (np.empty((0, 1)), "at least one row"),
-        (np.empty((1, 0)), "at least one feature"),
-        ([[np.inf]], "finite"),
+        ([0.0, 1.0], ShapeMismatchError),
+        (np.empty((0, 1)), EmptyParameterError),
+        (np.empty((1, 0)), EmptyParameterError),
+        ([[np.inf]], NonFiniteParameterError),
     ],
 )
-def test_fit_rejects_invalid_anchor_matrices(data: object, match: str) -> None:
-    with pytest.raises(ValueError, match=match):
+def test_fit_rejects_invalid_anchor_matrices(
+    data: object, error: type[Exception]
+) -> None:
+    with pytest.raises(error, match="in_distribution_data"):
         AutoSafeODD.fit(data, config={"zeta": 0.5})
 
 
 def test_fit_rejects_single_anchor_and_invalid_feature_names() -> None:
-    with pytest.raises(ValueError, match="at least two"):
+    with pytest.raises(TooFewAnchorsError):
         AutoSafeODD.fit([[0.0]], config={"zeta": 0.5})
     with pytest.raises(ValueError, match="unique"):
         AutoSafeODD.fit(
@@ -186,7 +199,10 @@ def test_manual_vector_scales_are_validated() -> None:
             [[0.0, 1.0], [1.0, 2.0]],
             config={"kappa": [1.0], "eta": 1.0, "zeta": 0.5},
         )
-    with pytest.raises(ValueError, match="below maximum_variance"):
+    with pytest.raises(
+        ParameterOrderError,
+        match="variance_floor must be strictly less than maximum_variance",
+    ):
         AutoSafeODD.fit(
             [[0.0], [1.0]],
             config={"kappa": 1.0, "eta": 1.0, "lambda": 1.0, "zeta": 0.5},
@@ -207,21 +223,21 @@ def test_manual_vector_scales_are_validated() -> None:
 def test_conformal_threshold_validation() -> None:
     from autosafe.odd import conformal_membership_threshold
 
-    invalid = [
-        ([-1.0], 0.0, "in \\(0, 1\\)"),
-        ([[-1.0]], 0.5, "one-dimensional"),
-        ([], 0.5, "must not be empty"),
-        ([np.nan], 0.5, "invalid values"),
-        ([-1.0], 0.1, "too small"),
-        ([0.0], 0.5, "zeta=0"),
+    invalid: list[tuple[object, float, type[Exception]]] = [
+        ([-1.0], 0.0, ParameterOutOfRangeError),
+        ([[-1.0]], 0.5, ShapeMismatchError),
+        ([], 0.5, EmptyParameterError),
+        ([np.nan], 0.5, InvalidLogSurvivalError),
+        ([-1.0], 0.1, CalibrationSetTooSmallError),
+        ([0.0], 0.5, UncertifiableThresholdError),
     ]
-    for values, epsilon, match in invalid:
-        with pytest.raises(ValueError, match=match):
+    for values, epsilon, error in invalid:
+        with pytest.raises(error):
             conformal_membership_threshold(values, epsilon)
 
 
 def test_resolved_conformal_threshold_must_exceed_xi() -> None:
-    with pytest.raises(ValueError, match="resolved zeta"):
+    with pytest.raises(ParameterOrderError, match="xi must be strictly less than zeta"):
         AutoSafeODD.fit(
             [[0.0], [1.0]],
             calibration_data=[[20.0], [21.0], [22.0]],

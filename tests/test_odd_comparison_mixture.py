@@ -13,6 +13,9 @@ from autosafe.odd.comparison.mixture import GaussianMixtureBoundary
 def _two_blob_cloud(seed: int = 3) -> np.ndarray:
     """Two well-separated 2D Gaussian blobs, shape (2, 120).
 
+    Args:
+        seed (int): Seed of the random generator.
+
     Returns:
         np.ndarray: Reference points, shape (2, 120).
     """

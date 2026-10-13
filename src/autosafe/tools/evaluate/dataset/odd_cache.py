@@ -13,6 +13,13 @@ import numpy as np
 import numpy.typing as npt
 
 from autosafe.deduplication import DEDUP_ALGORITHM_VERSION, DeduplicationPolicy
+from autosafe.exceptions import (
+    AutoCalibrationModeError,
+    ConflictingParametersError,
+    ParameterOutOfRangeError,
+    ParameterTypeError,
+    UnknownOptionError,
+)
 from autosafe.kernels.rbf import (
     WIDTH_SCHEDULE_SQRT_LOG_N,
     calibrate_rbf_scale_d_tilde,
@@ -239,15 +246,22 @@ def _resolve_kernel_calibration(
             meta-keys.
 
     Raises:
-        ValueError: If an unknown calibration mode is specified.
-        TypeError: If a relative variance floor is not numeric.
+        ConflictingParametersError: If both calibration_gamma and the
+            deprecated calibration_c are given.
+        UnknownOptionError: If an unknown calibration mode is specified.
+        AutoCalibrationModeError: If automatic calibration is requested
+            without the global closest-sample mode.
+        ParameterTypeError: If a relative variance floor is not
+            numeric.
+        ParameterOutOfRangeError: If a relative variance floor is
+            outside (0, 1).
     """
     meta = dict(kernel_kwargs)
     mode = str(meta.pop("calibration", "manual"))
     raw_gamma = meta.pop("calibration_gamma", None)
     legacy_c = meta.pop("calibration_c", None)
     if raw_gamma is not None and legacy_c is not None:
-        raise ValueError("define calibration_gamma or calibration_c, not both")
+        raise ConflictingParametersError("calibration_gamma", "calibration_c")
     if legacy_c is not None:
         warnings.warn(
             "calibration_c is deprecated; use calibration_gamma",
@@ -261,13 +275,9 @@ def _resolve_kernel_calibration(
     if mode == "manual":
         return meta
     if mode != "auto":
-        raise ValueError(f"unknown calibration mode {mode!r}")
+        raise UnknownOptionError("calibration", mode, ("manual", "auto"))
     if closest_sample_mode != "global":
-        raise ValueError(
-            "calibration: auto requires closest_sample_mode: global "
-            "(per-dimension 1D projection distances are a degenerate "
-            "bandwidth scale; see docs/bandwidth-calibration.md)"
-        )
+        raise AutoCalibrationModeError(closest_sample_mode)
     pts = np.asarray(reference_points, dtype=float)
     idx = np.asarray(indices)  # global mode: shape (N,)
     d_l2 = np.linalg.norm(pts[idx] - pts, axis=1)
@@ -280,9 +290,13 @@ def _resolve_kernel_calibration(
     meta["eta"] = eta
     if raw_lambda_rel is not None:
         if not isinstance(raw_lambda_rel, (int, float)):
-            raise TypeError("calibration_lambda_rel must be numeric")
+            raise ParameterTypeError(
+                "calibration_lambda_rel", raw_lambda_rel, (int, float)
+            )
         lambda_rel = float(raw_lambda_rel)
         if not 0.0 < lambda_rel < 1.0:
-            raise ValueError("calibration_lambda_rel must be in (0, 1)")
+            raise ParameterOutOfRangeError(
+                "calibration_lambda_rel", lambda_rel, 0.0, 1.0
+            )
         meta["lam"] = lambda_rel * kappa
     return meta

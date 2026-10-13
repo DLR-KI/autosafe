@@ -25,6 +25,7 @@ from autosafe.cli.experiments import (
     run_spec,
     show_info,
 )
+from autosafe.exceptions import ParameterTypeError, UnknownOptionError
 
 
 def test_get_app():
@@ -301,7 +302,7 @@ def test_run_pipeline_command_error(
         def run_benchmark_experiment(
             dataset_config: dict,  # ruff:ignore[unused-static-method-argument]
         ) -> NoReturn:
-            raise RuntimeError("Test error")
+            raise RuntimeError
 
     monkeypatch.setattr(
         "autosafe.cli.experiments.ExperimentManager",
@@ -325,7 +326,7 @@ def test_glob_run_mc_sample_invalid_kwargs(tmp_path: pathlib.Path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text("n_samples: 100\nfilename: test.json\n")
 
-    with pytest.raises(ValueError, match="kernel_kwargs must be a mapping"):
+    with pytest.raises(ParameterTypeError, match="kernel_kwargs must be of type"):
         glob_run_mc_sample({
             "config_file": str(config_file),
             "kernel_kwargs": "invalid",
@@ -337,7 +338,7 @@ def test_glob_run_mc_sample_invalid_kernel_type(tmp_path: pathlib.Path):
     config_file = tmp_path / "config.yaml"
     config_file.write_text("n_samples: 100\nfilename: test.json\n")
 
-    with pytest.raises(ValueError, match="kernel_type must be one of"):
+    with pytest.raises(UnknownOptionError, match="unknown kernel_type "):
         glob_run_mc_sample({"config_file": str(config_file), "kernel_type": "Invalid"})
 
 
@@ -368,7 +369,7 @@ def test_glob_run_dataset_invalid_comparison_methods(tmp_path: pathlib.Path):
     dataset_path = tmp_path / "test.csv"
     dataset_path.write_text("x,y\n0,0\n")
 
-    with pytest.raises(ValueError, match="comparison_methods must be a list"):
+    with pytest.raises(ParameterTypeError, match="comparison_methods must be of type"):
         glob_run_dataset({
             "dataset_path": str(dataset_path),
             "comparison_methods": "invalid",
@@ -380,7 +381,7 @@ def test_glob_run_dataset_invalid_kernel_kwargs(tmp_path: pathlib.Path):
     dataset_path = tmp_path / "test.csv"
     dataset_path.write_text("x,y\n0,0\n")
 
-    with pytest.raises(TypeError, match="kernel_kwargs must be a mapping"):
+    with pytest.raises(ParameterTypeError, match="kernel_kwargs must be of type"):
         glob_run_dataset({
             "dataset_path": str(dataset_path),
             "kernel_kwargs": "invalid",
@@ -701,7 +702,7 @@ def test_run_spec_unsupported_mode(
         MockManager,
     )
 
-    with pytest.raises(ValueError, match="Unsupported spec mode"):
+    with pytest.raises(UnknownOptionError, match="unknown mode "):
         run_spec(str(spec_file))
 
 

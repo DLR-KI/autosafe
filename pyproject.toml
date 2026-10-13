@@ -105,15 +105,29 @@ version_scheme = "pep440"
 [tool.flake8]
 check-return-types = true
 extend-ignore = ["DCO010", "DCO060"]
-max-complexity = "10"
-max-line-length = "88"
-# Ignore some documentation checks for abstract classes and methods
+# TypedDict keys such as `__ndarray__` are real fields and are documented.
+ignore-special-dunder-class-attributes = false
+# Document `*args`/`**kwargs` without stars, as flake8-docstrings-complete
+# expects.
+omit-stars-when-documenting-varargs = true
+# Ignore some documentation checks for abstract classes and methods.
+# DOC105: Typer commands annotate their parameters as
+# `Annotated[T, typer.Option(...)]`, and pydoclint cannot strip the
+# `Annotated` metadata, so the docstrings document the plain type `T`.
 per-file-ignores = [
+  "src/autosafe/cli/experiments.py: DOC105",
   "src/autosafe/kernels/kernel.py: DCO020, DCO031",
-  "src/autosafe/odd/comparison/base.py: DCO031"
+  "src/autosafe/odd/comparison/base.py: DCO031",
+  "src/autosafe/tools/comparison/cli.py: DOC105",
+  "src/autosafe/tools/evaluate/cli.py: DOC105",
+  "src/autosafe/tools/evaluate/dataset/baselines.py: DCO031",
+  "src/autosafe/tools/monte_carlo/evaluate.py: DOC105",
+  "src/autosafe/tools/monte_carlo/sample.py: DOC105"
 ]
 select = "DCO, DOC"
 style = "google"
+# Properties listed under `Attributes:` count as class attributes.
+treat-property-methods-as-class-attributes = true
 
 [tool.licensecheck]
 ignore_licenses = ["Zlib"]
@@ -199,28 +213,31 @@ extend-select = [
   "FLY",
   "FURB",
   "I",
+  "ICN",
   "INP",
   "ISC",
   "LOG",
   "N",
   "NPY",
   "PERF",
+  "PGH",
   "PIE",
   "PL",
-  "PLE",
-  "PLR",
-  "PLW",
+  "TID",
   "PT",
   "PTH",
+  "PYI",
   "Q",
   "RET",
   "RSE",
   "RUF",
   "S",
   "SIM",
+  "SLOT",
   "SLF",
   "T20",
   "TC",
+  "TRY",
   "UP",
   "W"
 ]

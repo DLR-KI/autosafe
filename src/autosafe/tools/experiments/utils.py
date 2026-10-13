@@ -16,6 +16,11 @@ import orjson
 import polars as pl
 import polars.selectors as cs
 
+from autosafe.exceptions import (
+    MissingColumnError,
+    UnknownCategoryValuesError,
+    UnsupportedFileFormatError,
+)
 from autosafe.preprocessing import create_robust_normalization_pipeline
 from autosafe.tools.experiments.core import DatasetConfig, DatasetType, ExperimentType
 
@@ -70,7 +75,7 @@ def load_dataset(
 
     Raises:
         NotImplementedError: If NumPy array loading is requested.
-        ValueError: If file format is unsupported.
+        UnsupportedFileFormatError: If file format is unsupported.
     """
     options = options or DatasetLoadOptions()
     file_type = options.file_type
@@ -91,7 +96,7 @@ def load_dataset(
     elif file_type == "npy":
         raise NotImplementedError("NumPy array loading not yet implemented")
     else:
-        raise ValueError(f"Unsupported file type: {file_type}")
+        raise UnsupportedFileFormatError(file_type)
 
     # Apply filters if provided
     if filters:
@@ -123,19 +128,18 @@ def encode_categories(
         pl.DataFrame: ``df`` with each listed column as ``Int64`` codes.
 
     Raises:
-        ValueError: If a listed column is missing or holds a value that
-            is not one of its categories.
+        MissingColumnError: If a listed column is missing.
+        UnknownCategoryValuesError: If a column holds a value that is
+            not one of its categories.
     """
     for column, values in categories.items():
         if column not in df.columns:
-            raise ValueError(f"Categorical column {column!r} is not in the dataset")
+            raise MissingColumnError("dataset", column)
         as_text = df[column].cast(pl.String)
         unknown = as_text.filter(~as_text.is_in(values) & as_text.is_not_null())
         if unknown.len() or as_text.null_count():
             bad = unknown.unique().head(5).to_list()
-            raise ValueError(
-                f"Column {column!r} holds values outside its categories: {bad}"
-            )
+            raise UnknownCategoryValuesError(column, bad)
         mapping = {value: code for code, value in enumerate(values)}
         df = df.with_columns(
             as_text.replace_strict(mapping, return_dtype=pl.Int64).alias(column)
@@ -385,7 +389,7 @@ def get_dataset_type(file_path: pathlib.Path) -> str:
         str: Normalized dataset type string.
 
     Raises:
-        ValueError: If the extension is unknown.
+        UnsupportedFileFormatError: If the extension is unknown.
     """
     ext = file_path.suffix.lower()
 
@@ -397,7 +401,7 @@ def get_dataset_type(file_path: pathlib.Path) -> str:
         return "parquet"
     if ext in {".npy", ".npz"}:
         return "numpy"
-    raise ValueError(f"Unknown dataset type for extension: {ext}")
+    raise UnsupportedFileFormatError(ext)
 
 
 def construct_experiment_id(

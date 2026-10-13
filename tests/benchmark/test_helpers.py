@@ -11,6 +11,7 @@ import polars as pl
 import pytest
 from typer.testing import CliRunner
 
+from autosafe.exceptions import ParameterTypeError, TooFewAnchorsError
 from autosafe.odd.comparison.oneclass import OneClassSVMBoundary
 from autosafe.pointsets import rows_in
 from autosafe.sample import Sample
@@ -108,7 +109,7 @@ def test_vcas_hole_split_is_consistent() -> None:
 
 
 def test_build_odd_rejects_single_anchor_and_unknown_mode() -> None:
-    with pytest.raises(ValueError, match="N >= 2"):
+    with pytest.raises(TooFewAnchorsError):
         common.build_odd(np.zeros((1, 2)), mode="calibrated")
     with pytest.raises(ValueError, match="unknown mode"):
         common.build_odd(np.random.default_rng(0).normal(size=(5, 2)), mode="bogus")
@@ -120,7 +121,7 @@ def test_kernel_sigma_rejects_non_rbf_kernel() -> None:
         kernel_cls="Laplacian",
         kernel_kwargs={"alpha": 0.5},
     )
-    with pytest.raises(TypeError, match="not RBFKernel"):
+    with pytest.raises(ParameterTypeError, match="kernel must be of type"):
         common.kernel_sigma(odd.samples[0])
 
 

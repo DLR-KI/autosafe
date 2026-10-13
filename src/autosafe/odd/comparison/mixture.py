@@ -6,6 +6,7 @@
 import numpy as np
 from sklearn.mixture import GaussianMixture
 
+from autosafe.exceptions import NotFittedError
 from autosafe.odd.comparison.base import DecisionBoundary
 from autosafe.odd.comparison.density import SuperlevelSetMonitor
 from autosafe.typing import FloatType, Matrix, NPFloatType, NPMatrix
@@ -36,6 +37,19 @@ class GaussianMixtureBoundary(SuperlevelSetMonitor):
     baseline whose fit silently varies run-to-run would undercut the
     comparison it is meant to support.
 
+    Args:
+        random_state (int): Seed forwarded to ``GaussianMixture``.
+            Required (no default) so determinism is explicit at
+            every call site.
+        n_components_range (tuple[int, int]): Inclusive
+            ``(min, max)`` component count searched by BIC during
+            ``fit``.
+        gamma (FloatType | None): Likelihood (log-space) threshold
+            for the superlevel set. Auto-calibrated from data when
+            ``None``, exactly as in ``SuperlevelSetMonitor``.
+        sigmoid_weight (FloatType | None): Forwarded to
+            ``SuperlevelSetMonitor`` for the score transition.
+
     Attributes:
         random_state (int): Seed for ``GaussianMixture``'s EM
             initialization. Required so two fits with the same value
@@ -49,6 +63,11 @@ class GaussianMixtureBoundary(SuperlevelSetMonitor):
             metadata property.
     """
 
+    random_state: int
+    n_components_range: tuple[int, int]
+    gmm: GaussianMixture | None
+    n_components: int | None
+
     def __init__(
         self,
         random_state: int,
@@ -56,21 +75,6 @@ class GaussianMixtureBoundary(SuperlevelSetMonitor):
         gamma: FloatType | None = None,
         sigmoid_weight: FloatType | None = None,
     ) -> None:
-        """Initialize the Gaussian-mixture boundary.
-
-        Args:
-            random_state (int): Seed forwarded to ``GaussianMixture``.
-                Required (no default) so determinism is explicit at
-                every call site.
-            n_components_range (tuple[int, int]): Inclusive
-                ``(min, max)`` component count searched by BIC during
-                ``fit``.
-            gamma (FloatType | None): Likelihood (log-space) threshold
-                for the superlevel set. Auto-calibrated from data when
-                ``None``, exactly as in ``SuperlevelSetMonitor``.
-            sigmoid_weight (FloatType | None): Forwarded to
-                ``SuperlevelSetMonitor`` for the score transition.
-        """
         super().__init__(gamma=gamma, bandwidth=None, sigmoid_weight=sigmoid_weight)
         self.random_state = random_state
         self.n_components_range = n_components_range
@@ -234,10 +238,10 @@ class GaussianMixtureBoundary(SuperlevelSetMonitor):
             ``SuperlevelSetMonitor.pdf``.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained or self.gmm is None:
-            raise RuntimeError("GaussianMixtureBoundary not fitted yet")
+            raise NotFittedError(type(self).__name__)
 
         log_likelihood = self.gmm.score_samples(test_points.T)
         return np.exp(log_likelihood * self.sigmoid_weight)

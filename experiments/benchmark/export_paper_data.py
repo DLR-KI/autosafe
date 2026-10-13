@@ -31,6 +31,8 @@ from pathlib import Path
 
 import typer
 
+from experiments.benchmark.errors import EmptyResultsFileError, ExportRegistryDriftError
+
 Row = dict[str, str]
 Table = tuple[list[str], list[Row]]
 
@@ -94,13 +96,13 @@ def _read_dat(path: Path) -> Table:
 
     Raises:
         FileNotFoundError: If ``path`` does not exist.
-        ValueError: If the file has no header/rows.
+        EmptyResultsFileError: If the file has no header/rows.
     """
     if not path.exists():
         raise FileNotFoundError(str(path))
     lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     if not lines:
-        raise ValueError(f"empty results file: {path}")
+        raise EmptyResultsFileError(path)
     header = lines[0].split()
     rows = [dict(zip(header, ln.split(), strict=True)) for ln in lines[1:]]
     return header, rows
@@ -512,7 +514,7 @@ if [e.filename for e in _EXPORTS] != EXPECTED_FILENAMES:
     # Module-load invariant: keeps EXPECTED_FILENAMES (used by main and
     # the tests, independent of _EXPORTS) in lockstep with the builder
     # list above.
-    raise AssertionError("_EXPORTS and EXPECTED_FILENAMES have drifted apart")
+    raise ExportRegistryDriftError
 
 
 def run(*, results_dir: Path, outdir: Path) -> dict[str, str]:

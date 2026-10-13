@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 
 from autosafe import ROOT_FOLDER
+from autosafe.exceptions import NoInputFilesError
 from autosafe.tools.evaluate.core import process_files
 from autosafe.tools.evaluate.workflows import evaluate_monte_carlo_results
 from autosafe.tools.monte_carlo import MC_APP
@@ -44,11 +45,10 @@ def evaluate(
             containing the sampling results.
 
     Raises:
-        FileNotFoundError: If no configuration files are found in the
-            specified folder.
+        NoInputFilesError: If no file is given.
     """
     if file is None:
-        raise FileNotFoundError("No file(s) provided for evaluation.")
+        raise NoInputFilesError
     files: list[Path] = []
     for f in file:
         added_files = process_files(f)

@@ -9,6 +9,7 @@ from typing import Any, cast
 import pytest
 
 from autosafe.cli.experiments import glob_run_dataset, glob_run_mc_sample
+from autosafe.exceptions import ParameterTypeError
 
 
 def test_glob_run_dataset_uses_evaluation_samples(
@@ -81,7 +82,7 @@ def test_glob_run_mc_sample_overrides_config(
 
 def test_glob_run_mc_sample_rejects_invalid_kernel_kwargs() -> None:
     """`kernel_kwargs` must be a mapping in run-spec items."""
-    with pytest.raises(ValueError, match="kernel_kwargs must be a mapping"):
+    with pytest.raises(ParameterTypeError, match="kernel_kwargs must be of type"):
         _ = glob_run_mc_sample({
             "mode": "mc-sample",
             "config_file": "experiments/dim_2d/sampling_config.yaml",

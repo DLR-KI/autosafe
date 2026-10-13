@@ -19,6 +19,7 @@ from autosafe.exceptions import (
     MissingRecordIdentifierError,
     NonFiniteCoordinateError,
     ResolutionCellOverflowError,
+    ShapeMismatchError,
 )
 
 
@@ -269,7 +270,7 @@ def test_non_finite_coordinates_rejected() -> None:
 def test_points_must_be_2d() -> None:
     """A 1D or 3D input array is rejected."""
     policy = DeduplicationPolicy(resolution=(1.0,), origin=(0.0,))
-    with pytest.raises(ValueError, match="2D"):
+    with pytest.raises(ShapeMismatchError, match="points has shape"):
         deduplicate_points(np.array([0.0, 1.0, 2.0]), policy)
 
 

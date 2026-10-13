@@ -12,6 +12,11 @@ from typing import cast, overload
 
 import numpy as np
 
+from autosafe.exceptions import (
+    KernelNotDefinedError,
+    ParameterTypeError,
+    ShapeMismatchError,
+)
 from autosafe.kernels.kernel import Kernel
 from autosafe.typing import (
     Affinity,
@@ -32,12 +37,19 @@ class Sample:
     the closest sample in the ODD space.
 
     Args:
-        x (Vector | list[float]): The sample point in the ODD space.
+        x (NPVector | NPMatrix | list[float]): The sample point in the
+            ODD space.
         kernel (Kernel | None): The kernel function used to define the
             sample. Might be None if the kernel is not yet defined.
         closest_sample (list["Sample"] | None): The closest samples in
             the ODD space per dimension, if available; otherwise,
             defaults to None.
+
+    Attributes:
+        x (Vector): The sample point in the ODD space.
+        kernel (Kernel | None): The kernel function of the sample.
+        closest_sample (list['Sample'] | None): The closest samples in
+            the ODD space per dimension.
     """
 
     def __init__(
@@ -68,17 +80,19 @@ class Sample:
                 in the ODD space.
 
         Raises:
-            TypeError: If the value is not a numpy array.
-            ValueError: If the value is not a one-dimensional array.
+            ParameterTypeError: If the value is not a numpy array or a
+                list.
+            ShapeMismatchError: If the value is not a one-dimensional
+                array.
         """
         if not isinstance(value, (np.ndarray, list)):
-            raise TypeError("x must be a numpy array or a list of floats.")
+            raise ParameterTypeError("x", value, (np.ndarray, list))
         if isinstance(value, list):
             value_ = np.array(value, dtype=FloatType)
         else:
             value_ = value.astype(FloatType)
         if value_.ndim != 1:
-            raise ValueError("x must be a one-dimensional array.")
+            raise ShapeMismatchError("x", value_.shape, (None,))
         self.__x = cast("Vector", value_)
 
     @property
@@ -101,15 +115,15 @@ class Sample:
                 kernel.
 
         Raises:
-            TypeError: If the value is not an instance of Kernel or
-                None.
-            ValueError: If the kernel center x_i does not have the same
-                shape as x.
+            ParameterTypeError: If the value is not an instance of
+                Kernel or None.
+            ShapeMismatchError: If the kernel center x_i does not have
+                the same shape as x.
         """
         if value is not None and not isinstance(value, Kernel):
-            raise TypeError("Kernel must be an instance of Kernel class or None.")
+            raise ParameterTypeError("kernel", value, Kernel)
         if value is not None and value.x_i.shape != self.x.shape:
-            raise ValueError("Kernel center x_i must have the same shape as x.")
+            raise ShapeMismatchError("kernel.x_i", value.x_i.shape, self.x.shape)
         self.__kernel = value
 
     @property
@@ -131,12 +145,11 @@ class Sample:
                 ODD space per dimension, or None if not available.
 
         Raises:
-            TypeError: If the value is not a list of Sample instances.
+            ParameterTypeError: If the value is not a list of Sample
+                instances.
         """
         if value is not None and not all(isinstance(s, Sample) for s in value):
-            raise TypeError(
-                "Closest sample must be a list of Sample instances or None.",
-            )
+            raise ParameterTypeError("closest_sample", value, list)
         self.__closest_sample = value
 
     @overload
@@ -159,10 +172,11 @@ class Sample:
                 at x.
 
         Raises:
-            ValueError: If the kernel is not defined for this sample.
+            KernelNotDefinedError: If the kernel is not defined for this
+                sample.
         """
         if self.__kernel is None:
-            raise ValueError("Kernel is not defined for this sample.")
+            raise KernelNotDefinedError
         return self.__kernel(x)
 
     def __repr__(self) -> str:

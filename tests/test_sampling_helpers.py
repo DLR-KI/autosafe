@@ -2,9 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
+import re
+
 import numpy as np
 import pytest
 
+from autosafe.exceptions import DimensionLengthError
 from autosafe.tools.monte_carlo._sample import cast_to_array
 
 
@@ -65,7 +68,7 @@ def test_cast_to_array_dimension_mismatch():
     ]
     for dim, value, name in test_cases:
         with pytest.raises(
-            IndexError,
-            match=f"Length of {name} must match dim if {name} is a list or array.",
+            DimensionLengthError,
+            match=re.escape(f"{name} has length {len(value)}; expected 1 or dim={dim}"),
         ):
             cast_to_array(dim=dim, value=value, name=name)

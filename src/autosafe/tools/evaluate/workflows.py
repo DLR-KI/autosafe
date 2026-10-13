@@ -22,6 +22,12 @@ from autosafe.deduplication import DEDUP_ALGORITHM_VERSION, DeduplicationPolicy
 from autosafe.exceptions import (
     BaselinesOnlyCacheMismatchError,
     BaselinesOnlyRequiresCachedODDError,
+    NoReferenceLabelsError,
+    ParameterDependencyError,
+    TooManySamplesError,
+    UnexpectedNoneError,
+    UnknownOptionError,
+    ZeroNearestNeighborDistancesError,
 )
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
@@ -195,7 +201,7 @@ def evaluate_monte_carlo_results(
         pl.DataFrame: Aggregated metrics.
 
     Raises:
-        ValueError: If no reference labels are requested.
+        NoReferenceLabelsError: If no reference labels are requested.
     """
     references = references or [
         "ground_truth",
@@ -226,7 +232,7 @@ def evaluate_monte_carlo_results(
         )
 
         if not reference_labels:
-            raise ValueError("No reference labels requested for evaluation")
+            raise NoReferenceLabelsError
 
         survival = _extract_mc_survival(data)
         samples_df = (
@@ -344,11 +350,6 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             per iteration instead of one. Faster but may over-shrink
             relative to the one-shrink-per-iteration procedure; off by
             default.
-        include_default_baselines (bool): With a ground-truth YAML, also
-            evaluate every default baseline next to ``references``
-            (the default). ``False`` evaluates exactly ``references``,
-            e.g. ``["ground_truth"]`` for a fine threshold sweep that
-            would otherwise spend hours on unused baselines.
         baselines_only (bool): Skip building/refreshing the affinity
             ODD and require ``odd_json`` to already hold one matching
             the requested ``closest_sample_mode``/``kernel_type``/
@@ -387,15 +388,25 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             coordinates being exactly equal, which is always a hard
             error) raises instead of only being reported for
             adjudication.
+        include_default_baselines (bool): With a ground-truth YAML, also
+            evaluate every default baseline next to ``references``
+            (the default). ``False`` evaluates exactly ``references``,
+            e.g. ``["ground_truth"]`` for a fine threshold sweep that
+            would otherwise spend hours on unused baselines.
 
     Returns:
         tuple[pl.DataFrame, Path, Path]: metrics_df, csv_path,
             odd_json_path.
 
     Raises:
-        ValueError: If no reference labels are available, if
-            local_noise_mode is unknown, or if ood_path is set without
-            ood_xi.
+        ParameterDependencyError: If ood_path is set without ood_xi.
+        TooManySamplesError: If n_samples exceeds the in-memory limit.
+        ZeroNearestNeighborDistancesError: If all anchors are exact
+            duplicates.
+        UnknownOptionError: If local_noise_mode is unknown.
+        UnexpectedNoneError: If the median NN distance is missing
+            where it was computed (an internal invariant).
+        NoReferenceLabelsError: If no reference labels are available.
         BaselinesOnlyRequiresCachedODDError: If ``baselines_only`` is
             set without ``odd_json``.
         BaselinesOnlyCacheMismatchError: If ``baselines_only`` is set
@@ -410,12 +421,9 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             stacklevel=2,
         )
     if ood_path is not None and ood_xi is None:
-        raise ValueError("ood_path requires ood_xi to be set")
+        raise ParameterDependencyError("ood_path", "ood_xi")
     if n_samples > _MAX_DATASET_EVAL_SAMPLES:
-        raise ValueError(
-            "Dataset evaluation samples are too large for in-memory evaluation: "
-            f"{n_samples}. Use <= {_MAX_DATASET_EVAL_SAMPLES} or split runs."
-        )
+        raise TooManySamplesError(n_samples, _MAX_DATASET_EVAL_SAMPLES)
 
     kernel_kwargs = kernel_kwargs or {}
     effective_ground_truth_yaml = ground_truth_yaml or _infer_ground_truth_yaml(
@@ -586,20 +594,18 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         nn_d, _ = tree.query(anchor_arr, k=2)
         positive = nn_d[:, 1][nn_d[:, 1] > 0]
         if positive.size == 0:
-            raise ValueError("all anchors are exact duplicates")
+            raise ZeroNearestNeighborDistancesError(per_dimension=False)
         median_nn = float(np.median(positive))
 
     local_noise_std: float | None = None
     if local_noise_mode == "nn":
         if median_nn is None:
-            raise ValueError(
-                "Cannot compute local noise std without a valid median NN distance"
-            )
+            raise UnexpectedNoneError("median_nn")
         local_noise_std = float(
             local_noise_multiplier * median_nn / np.sqrt(anchor_arr.shape[1])
         )
     elif local_noise_mode != "span":
-        raise ValueError(f"unknown local_noise_mode {local_noise_mode!r}")
+        raise UnknownOptionError("local_noise_mode", local_noise_mode, ("nn", "span"))
 
     # Resolve baseline scale parameters
     bp = baseline_params or {}
@@ -610,7 +616,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
     }
     if bp.get("auto_scale"):
         if median_nn is None:
-            raise ValueError("Cannot auto_scale without a valid median NN distance")
+            raise UnexpectedNoneError("median_nn")
         raw_mult = bp.get("auto_scale_multiplier", 3.0)
         multiplier = float(raw_mult) if isinstance(raw_mult, (int, float)) else 3.0
         scale = multiplier * median_nn
@@ -694,7 +700,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
     )
 
     if not reference_labels:
-        raise ValueError("No reference labels available for dataset evaluation")
+        raise NoReferenceLabelsError
 
     samples_df = pl.DataFrame({"affinity": affinities, "survival": survival_np})
     results = evaluate_affinity_metrics(

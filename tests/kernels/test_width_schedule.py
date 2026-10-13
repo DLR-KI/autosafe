@@ -5,6 +5,13 @@
 import numpy as np
 import pytest
 
+from autosafe.exceptions import (
+    NonFiniteParameterError,
+    NonPositiveParameterError,
+    ParameterTypeError,
+    TooFewAnchorsError,
+    UnknownOptionError,
+)
 from autosafe.kernels.rbf import (
     WIDTH_SCHEDULE_SQRT_LOG_N,
     calibrate_rbf_scale_d_tilde,
@@ -33,12 +40,12 @@ def test_fixed_width_is_returned_unchanged() -> None:
 @pytest.mark.parametrize(
     ("s", "n_anchors", "error", "match"),
     [
-        ("sqrt_n", 10, ValueError, "unknown width schedule"),
-        (WIDTH_SCHEDULE_SQRT_LOG_N, 1, ValueError, "at least 2 anchors"),
-        (0.0, 10, ValueError, "greater than 0"),
-        (float("inf"), 10, ValueError, "finite"),
-        (True, 10, TypeError, "number or a schedule"),
-        (None, 10, TypeError, "number or a schedule"),
+        ("sqrt_n", 10, UnknownOptionError, "unknown s 'sqrt_n'"),
+        (WIDTH_SCHEDULE_SQRT_LOG_N, 1, TooFewAnchorsError, "at least 2 anchors"),
+        (0.0, 10, NonPositiveParameterError, "s must be greater than 0"),
+        (float("inf"), 10, NonFiniteParameterError, "s must contain only finite"),
+        (True, 10, ParameterTypeError, "s must be of type"),
+        (None, 10, ParameterTypeError, "s must be of type"),
     ],
 )
 def test_invalid_width_multiple_raises(
@@ -75,7 +82,7 @@ def test_config_defaults_to_schedule_and_accepts_numbers() -> None:
         "width_in_median_gaps": WIDTH_SCHEDULE_SQRT_LOG_N,
         "relative_variance_floor": parsed.kernel.relative_variance_floor,
     }
-    with pytest.raises(ValueError, match="positive number or 'sqrt_log_n'"):
+    with pytest.raises(UnknownOptionError, match="unknown width_in_median_gaps "):
         CalibratedRBFConfig(width_in_median_gaps="sqrt_n")  # ty: ignore[invalid-argument-type]
 
 
@@ -107,7 +114,7 @@ def test_dataset_calibration_resolves_and_rejects_widths() -> None:
     assert fixed["kappa"] == pytest.approx(
         calibrate_rbf_scale_d_tilde(d_l2, s=3.0)[0], rel=1e-12
     )
-    with pytest.raises(ValueError, match="unknown width schedule"):
+    with pytest.raises(UnknownOptionError, match="unknown s "):
         _resolve_kernel_calibration(
             {"calibration": "auto", "calibration_s": "three"},
             pts,

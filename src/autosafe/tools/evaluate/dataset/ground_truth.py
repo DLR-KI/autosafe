@@ -87,8 +87,8 @@ def _ground_truth_labels_from_yaml(
 
     Args:
         ground_truth_yaml (Path): YAML ODD specification path.
-        test_points (Matrix): Query points (normalized if normalizer
-            provided).
+        test_points (Matrix | NPMatrix): Query points (normalized if
+            normalizer provided).
         normalizer (RangeNormalizer | None): Optional normalizer to
             denormalize points before checking YAML membership. If None,
             test_points are used as-is.

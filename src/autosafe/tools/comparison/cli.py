@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Annotated, cast
 
 import typer
 
+from autosafe.tools.cli_errors import PathNotFoundParameterError
 from autosafe.tools.comparison.core import (
     ComparisonEvaluationResults,
     _evaluate_comparison_methods,
@@ -130,14 +131,14 @@ def run_comparison_evaluation(  # ruff:ignore[too-many-arguments, too-many-posit
 
     Raises:
         FileNotFoundError: If the dataset file does not exist.
-        BadParameter: If the dataset file is not found.
+        PathNotFoundParameterError: If the dataset file is not found.
         RuntimeError: If comparison evaluation fails unexpectedly.
         ValueError: If the requested parameters are invalid.
     """
     dataset_path_obj = pathlib.Path(dataset_path)
 
     if not dataset_path_obj.exists():
-        raise typer.BadParameter(f"Dataset file not found: {dataset_path_obj}")
+        raise PathNotFoundParameterError("dataset", dataset_path_obj)
 
     if methods is None:
         methods: list[MethodName] = [

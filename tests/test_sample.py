@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-import re
 
 import numpy as np
 import pytest
 
+from autosafe.exceptions import KernelNotDefinedError, ShapeMismatchError
 from autosafe.kernels.laplacian import LaplacianKernel
 from autosafe.kernels.rbf import RBFKernel
 from autosafe.sample import Sample
@@ -83,9 +83,7 @@ def test_sample_creation_invalid_x_type():
 def test_sample_creation_x_not_1d():
     """Test the creation of a Sample object with a non-1D x array."""
     x = np.array([[1.0, 2.0], [3.0, 4.0]])
-    with pytest.raises(
-        ValueError, match=re.escape("x must be a one-dimensional array.")
-    ):
+    with pytest.raises(ShapeMismatchError, match="x has shape"):
         _ = Sample(x=x)
 
 
@@ -100,9 +98,7 @@ def test_sample_creation_invalid_kernel_shape():
     """Test the creation of a Sample object with an invalid kernel shape."""
     x = np.array([1.0, 2.0, 3.0])
     kernel = RBFKernel(x_i=np.array([1.0, 2.0]), sigma="eye")
-    with pytest.raises(
-        ValueError, match=re.escape("Kernel center x_i must have the same shape as x.")
-    ):
+    with pytest.raises(ShapeMismatchError, match=r"kernel\.x_i has shape"):
         _ = Sample(x=x, kernel=kernel)
 
 
@@ -133,9 +129,7 @@ def test_sample_call_fails_without_kernel():
     x = np.array([1.0, 2.0, 3.0])
     sample = Sample(x=x)
 
-    with pytest.raises(
-        ValueError, match=re.escape("Kernel is not defined for this sample.")
-    ):
+    with pytest.raises(KernelNotDefinedError):
         _ = sample(x)
 
 

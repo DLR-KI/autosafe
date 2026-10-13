@@ -31,7 +31,7 @@ def _sample_points_around_odd(
             (legacy default).
 
     Returns:
-        Matrix: Sampled points (n_samples, n_dims).
+        npt.NDArray[np.float64]: Sampled points (n_samples, n_dims).
     """
     rng = np.random.default_rng(seed)
 
@@ -87,8 +87,10 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
 
     Args:
         anchor_points (Matrix | NPMatrix): Affinity ODD anchors.
-        lower_bounds (npt.NDArray): Lower bounds for sampling.
-        upper_bounds (npt.NDArray): Upper bounds for sampling.
+        lower_bounds (npt.NDArray[np.float64]): Lower bounds for
+            sampling.
+        upper_bounds (npt.NDArray[np.float64]): Upper bounds for
+            sampling.
         n_samples (int): Number of test points to sample.
         seed (int): PRNG seed.
         local_noise_std (float | None): Per-dimension std for the local
@@ -101,7 +103,8 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
             columns whose period is ``upper_bounds - lower_bounds``.
 
     Returns:
-        Matrix: Array of sampled points with shape (n_samples, n_dims).
+        npt.NDArray[np.float64]: Array of sampled points with shape
+            (n_samples, n_dims).
     """
     rng = np.random.default_rng(seed)
 

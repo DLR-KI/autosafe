@@ -8,6 +8,13 @@ import numpy as np
 import autosafe as af
 
 
+class SmokeTestFailedError(AssertionError):
+    """Raised when the smoke-test point is not within the ODD."""
+
+    def __init__(self) -> None:
+        super().__init__("Smoke test failed: data point is not within ODD.")
+
+
 def smoke_test() -> None:
     # Define anchor points as a samples list
     # The values are inspired by the Iris dataset.
@@ -44,7 +51,7 @@ def smoke_test() -> None:
     data_point = np.array([[5.1, 3.5, 1.4, 0.2]])
     is_within_odd = odd(data_point) >= affinity
     if all(is_within_odd) is False:
-        raise AssertionError("Smoke test failed: data point is not within ODD.")
+        raise SmokeTestFailedError
 
 
 if __name__ == "__main__":

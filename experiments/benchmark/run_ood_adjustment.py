@@ -42,6 +42,12 @@ DEFAULT_OUTDIR = Path("experiments/benchmark/results/ood_adjustment")
 def _uniform_ood(odd: SyntheticODD, m: int, rng: np.random.Generator) -> NPArray:
     """Uniform points on the 2x box, rejected if inside the true ODD.
 
+    Args:
+        odd (SyntheticODD): Ground-truth ODD that defines the box and
+            the rejection.
+        m (int): Number of points to return.
+        rng (np.random.Generator): Random number generator.
+
     Returns:
         NPArray: (m, D) RAW out-of-distribution points.
     """

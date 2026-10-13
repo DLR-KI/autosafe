@@ -8,6 +8,7 @@ from collections.abc import Callable
 import numpy as np
 import pytest
 
+from autosafe.exceptions import NonPositiveParameterError, ShapeMismatchError
 from autosafe.kernels.rbf import calibrate_rbf_scale_d_tilde, calibrate_rbf_scale_median
 
 
@@ -93,7 +94,7 @@ def test_lam_zero_raises():
     from autosafe.kernels.rbf import RBFKernel
 
     kernel = RBFKernel(x_i=np.zeros(2))
-    with pytest.raises(ValueError, match="lam must be strictly positive"):
+    with pytest.raises(NonPositiveParameterError, match="lam must be greater than 0"):
         kernel.update(x_nn=np.ones(2), kappa=1.0, eta=1.0, lam=0.0)
 
 
@@ -134,15 +135,17 @@ def test_deprecated_c_alias_conflicting_gamma_raises(
 def test_non_positive_gamma_or_s_raises(
     calibrate: Callable[..., tuple[object, object]], gamma: float, s: float
 ) -> None:
-    with pytest.raises(ValueError, match=r"must be .*greater than 0"):
+    with pytest.raises(
+        NonPositiveParameterError, match=r"(gamma|s) must be greater than 0"
+    ):
         calibrate(gamma=gamma, s=s)
 
 
 def test_median_calibration_rejects_non_2d_input():
-    with pytest.raises(ValueError, match=r"d_nn must have shape \(n_anchors, n_dims\)"):
+    with pytest.raises(ShapeMismatchError, match="d_nn has shape"):
         calibrate_rbf_scale_median(np.ones(4))  # ty: ignore[invalid-argument-type]
 
 
 def test_d_tilde_calibration_rejects_non_1d_input():
-    with pytest.raises(ValueError, match=r"d_nn_l2 must have shape \(n_anchors,\)"):
+    with pytest.raises(ShapeMismatchError, match="d_nn_l2 has shape"):
         calibrate_rbf_scale_d_tilde(np.ones((4, 2)))  # ty: ignore[invalid-argument-type]

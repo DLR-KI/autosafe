@@ -50,6 +50,10 @@ DEFAULT_OUTDIR = Path("experiments/benchmark/results/anchor_count_sweep")
 def _hull_labels(anchors: NPArray, pts: NPArray) -> npt.NDArray[np.bool_]:
     """Convex-hull membership of ``pts`` w.r.t. the anchor hull.
 
+    Args:
+        anchors (NPArray): (N, D) anchor points spanning the hull.
+        pts (NPArray): (M, D) query points.
+
     Returns:
         npt.NDArray[np.bool_]: (M,) membership mask; all False if the
             hull is degenerate.

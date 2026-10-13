@@ -9,6 +9,11 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial import KDTree
 
+from autosafe.exceptions import (
+    MissingParameterError,
+    NeighborQueryError,
+    NotFittedError,
+)
 from autosafe.odd.comparison.base import (
     DecisionBoundary,
     ODDBoundaryMethod,
@@ -27,13 +32,25 @@ class KNNMonitor(ODDBoundaryMethod):
     Implements the Nearest Neighbors Representation:
     ODD = {x | all(k-nearest-neighbors(x, k) < gamma)}
 
+    Args:
+        k (int): Number of nearest neighbors
+        gamma (FloatType | None):
+            Distance threshold for membership (if None,
+            auto-detected).
+        metric (str): Distance metric for KDTree
+        leaf_size (int): KDTree optimization parameter
+
+    Note:
+        If gamma is None, it will be automatically set based on data
+        distribution via auto_detect_consensus_radius() method.
+
     Attributes:
         k (int): Number of nearest neighbors to consider.
         gamma (FloatType | None): Threshold distance for membership
             decision.
         metric (str): Distance metric.
         leaf_size (int): KDTree optimization parameter.
-        data (Matrix): Reference ODD points.
+        data (Matrix | NPMatrix): Reference ODD points.
         tree (KDTree | None): KDTree used for nearest-neighbor queries.
         trained (bool): Whether the method has been fitted.
         consensus_radius (FloatType | None): Average minimum distance.
@@ -42,6 +59,15 @@ class KNNMonitor(ODDBoundaryMethod):
             property.
     """
 
+    k: int
+    gamma: FloatType | None
+    metric: str
+    leaf_size: int
+    data: Matrix | NPMatrix
+    tree: KDTree | None
+    trained: bool
+    consensus_radius: FloatType | None
+
     def __init__(
         self,
         k: int = 3,
@@ -49,20 +75,6 @@ class KNNMonitor(ODDBoundaryMethod):
         metric: str = "euclidean",
         leaf_size: int = 40,
     ) -> None:
-        """Initialize KNNMonitor with default parameters.
-
-        Args:
-            k (int): Number of nearest neighbors
-            gamma (FloatType | None):
-                Distance threshold for membership (if None,
-                auto-detected).
-            metric (str): Distance metric for KDTree
-            leaf_size (int): KDTree optimization parameter
-
-        Note:
-            If gamma is None, it will be automatically set based on data
-            distribution via auto_detect_consensus_radius() method.
-        """
         self.k = k  # k-nearest neighbors
         self.gamma = gamma  # distance threshold gamma
         self.metric = metric  # distance metric
@@ -149,14 +161,12 @@ class KNNMonitor(ODDBoundaryMethod):
             FloatType: recommended gamma threshold value
 
         Raises:
-            ValueError: If no reference data is available.
+            MissingParameterError: If no reference data is available,
+                neither from initialization nor from this call.
         """
         data_to_use = data if data is not None else self.data
         if data_to_use is None:
-            raise ValueError(
-                "Data must be provided either during initialization or "
-                "in this method call"
-            )
+            raise MissingParameterError("data")
 
         # Build KDTree on the data (transposed to n_samples x
         # n_features format).
@@ -246,15 +256,14 @@ class KNNMonitor(ODDBoundaryMethod):
                 gamma
 
         Raises:
-            RuntimeError: If method not yet fitted
+            NotFittedError: If the monitor is not fitted.
+            NeighborQueryError: If the KD-tree query fails.
         """
         if not self.trained:
-            raise RuntimeError("KNNMonitor not fitted yet. Call .fit() first.")
+            raise NotFittedError(type(self).__name__)
 
         if self.tree is None:
-            raise RuntimeError(
-                "KDTree not initialized. Check that fit() completed successfully."
-            )
+            raise NotFittedError(type(self).__name__)
 
         test_point_reshaped = (
             test_point.reshape(1, -1) if test_point.ndim == 1 else test_point
@@ -263,7 +272,7 @@ class KNNMonitor(ODDBoundaryMethod):
         try:
             distances, _ = self.tree.query(test_point_reshaped, k=self.k)
         except (TypeError, ValueError, RuntimeError) as e:
-            raise RuntimeError(f"KDTree query failed: {e}") from e
+            raise NeighborQueryError from e
 
         return (distances < self.gamma).all()
 
@@ -279,15 +288,13 @@ class KNNMonitor(ODDBoundaryMethod):
                 (shape: (n_samples,)).
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("Method not fitted")
+            raise NotFittedError(type(self).__name__)
 
         if self.tree is None:
-            raise RuntimeError(
-                "KDTree not initialized. Check that fit() completed successfully."
-            )
+            raise NotFittedError(type(self).__name__)
 
         # Single batch KDTree query: (n_samples, n_features) input.
         distances, _ = self.tree.query(test_points.T, k=self.k)

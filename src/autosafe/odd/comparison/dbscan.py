@@ -10,6 +10,7 @@ import numpy.typing as npt
 from scipy.spatial import KDTree
 from sklearn.cluster import DBSCAN
 
+from autosafe.exceptions import NotFittedError
 from autosafe.odd.comparison.base import (
     DecisionBoundary,
     ODDBoundaryMethod,
@@ -109,10 +110,10 @@ class DBSCANCluster(ODDBoundaryMethod):
             bool: True if point is within DBSCAN core radius.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("Not fitted")
+            raise NotFittedError(type(self).__name__)
         if self.core_points_ is None or len(self.core_points_) == 0:
             return False
 
@@ -131,10 +132,10 @@ class DBSCANCluster(ODDBoundaryMethod):
             npt.NDArray[np.bool_]: Boolean membership array.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("Not fitted")
+            raise NotFittedError(type(self).__name__)
         if self._core_tree is None or self.core_points_ is None:
             return np.zeros(test_points.shape[1], dtype=bool)
         dists, _ = self._core_tree.query(test_points.T, k=1)

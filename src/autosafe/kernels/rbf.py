@@ -12,7 +12,22 @@ import numpy as np
 import numpy.typing as npt
 
 from autosafe import _jax_config  # ruff:ignore[unused-import]
-from autosafe.exceptions import SigmaNotInvertibleError
+from autosafe.exceptions import (
+    ArrayDtypeError,
+    DeprecatedAliasConflictError,
+    KernelParametersNotSetError,
+    MissingParameterError,
+    NonFiniteParameterError,
+    NonPositiveParameterError,
+    NotPositiveSemidefiniteError,
+    ParameterOrderError,
+    ParameterTypeError,
+    ShapeMismatchError,
+    SigmaNotInvertibleError,
+    TooFewAnchorsError,
+    UnknownOptionError,
+    ZeroNearestNeighborDistancesError,
+)
 from autosafe.kernels.kernel import Kernel
 from autosafe.typing import (
     Affinity,
@@ -40,6 +55,10 @@ WIDTH_SCHEDULE_SQRT_LOG_N: Literal["sqrt_log_n"] = "sqrt_log_n"
 #: A width multiple: a fixed positive number or the name of a schedule.
 WidthMultiple = float | Literal["sqrt_log_n"]
 
+#: A covariance specification: a matrix, ``"eye"``, or a scalar
+#: multiple of the identity.
+SigmaSpec = NPSquareMatrix | Literal["eye"] | NPFloatType | float
+
 
 def resolve_width_multiple(s: float | str, n_anchors: int) -> float:
     """Return the numeric width multiple for an anchor count.
@@ -58,24 +77,26 @@ def resolve_width_multiple(s: float | str, n_anchors: int) -> float:
         float: The width multiple to use for ``n_anchors`` anchors.
 
     Raises:
-        ValueError: If ``s`` is not a positive finite number or a known
-            schedule, or if the schedule gets fewer than 2 anchors.
-        TypeError: If ``s`` is neither a number nor a string.
+        UnknownOptionError: If ``s`` is a string but not a known
+            schedule.
+        TooFewAnchorsError: If the schedule gets fewer than 2 anchors.
+        ParameterTypeError: If ``s`` is neither a number nor a string.
+        NonFiniteParameterError: If ``s`` is not finite.
+        NonPositiveParameterError: If ``s`` is not positive.
     """
     if isinstance(s, str):
         if s != WIDTH_SCHEDULE_SQRT_LOG_N:
-            raise ValueError(
-                f"unknown width schedule {s!r}; use a positive number or "
-                f"{WIDTH_SCHEDULE_SQRT_LOG_N!r}"
-            )
+            raise UnknownOptionError("s", s, (WIDTH_SCHEDULE_SQRT_LOG_N,))
         if n_anchors < 2:  # ruff:ignore[magic-value-comparison]
-            raise ValueError("the sqrt_log_n width schedule needs at least 2 anchors")
+            raise TooFewAnchorsError(2, n_anchors)
         return float(np.sqrt(np.log(n_anchors)))
     if isinstance(s, bool) or not isinstance(s, (int, float, np.floating)):
-        raise TypeError(f"width multiple must be a number or a schedule, got {s!r}")
+        raise ParameterTypeError("s", s, (float, str))
     s_value = float(s)
-    if not np.isfinite(s_value) or s_value <= 0.0:
-        raise ValueError("s must be a finite number greater than 0")
+    if not np.isfinite(s_value):
+        raise NonFiniteParameterError("s")
+    if s_value <= 0.0:
+        raise NonPositiveParameterError("s", s_value)
     return s_value
 
 
@@ -103,7 +124,7 @@ def _validate_and_broadcast_param(
     broadcasts it to a vector of the specified dimension.
 
     Args:
-        param (npt.NDArray | NPVector | NPFloatType | float): The
+        param (NPVector | NPFloatType | float): The
             parameter to validate and broadcast.
         name (str): The name of the parameter for error messages.
         dim (int): The expected dimension of the parameter.
@@ -112,8 +133,10 @@ def _validate_and_broadcast_param(
         NPVector: The validated and broadcasted parameter as a vector.
 
     Raises:
-        ValueError: If the parameter is not a vector or a scalar, or if
-            it does not match the expected dimension.
+        ShapeMismatchError: If the parameter is a vector that does not
+            match the expected dimension.
+        ParameterTypeError: If the parameter is not a vector or a
+            scalar.
     """
     # 0-d arrays (NumPy or JAX) are treated as scalars
     if isinstance(param, (np.ndarray, jax.Array)) and np.asarray(param).ndim == 0:
@@ -123,9 +146,9 @@ def _validate_and_broadcast_param(
     if isinstance(param, (np.ndarray, jax.Array)):
         param_np = _to_np(param)
         if param_np.shape != (dim,):
-            raise ValueError(f"{name} must have the same dimension as x_i.")
+            raise ShapeMismatchError(name, param_np.shape, (dim,))
         return cast("NPVector", param_np)
-    raise ValueError(f"{name} must be a vector or a scalar.")
+    raise ParameterTypeError(name, param, (float, np.ndarray))
 
 
 def _fix_sigma_matrix(sigma: NPSquareMatrix) -> NPSquareMatrix:
@@ -194,10 +217,15 @@ class RBFKernel(Kernel):
     where :math:`\Sigma` is the positive semidefinite (psd) free
     parameter matrix.
 
+    A sigma without a finite inverse is repaired with a warning; if
+    the repair fails,
+    :class:`~autosafe.exceptions.SigmaNotInvertibleError` is raised.
+
     Args:
-        x_i (NPVector): The kernel center point, also called anchor point.
-        sigma (NPSquareMatrix | Literal["eye"] | None): The free parameter
-            matrix for the kernel, defaults to the identity matrix.
+        x_i (NPVector): The kernel center point, also called anchor
+            point.
+        sigma (SigmaSpec | None): The free parameter matrix for the
+            kernel, defaults to the identity matrix.
         x_nn (NPVector | NPMatrix | None): The nearest neighbor(s) to
             the kernel center point. If x_nn is a collection of nearest
             neighbors, the matrix is expected to contain a column-wise
@@ -206,19 +234,27 @@ class RBFKernel(Kernel):
             kernel, defaults to 1.0.
         eta (KernelScaleParam, optional): Exponential decay factor for
             the kernel, defaults to 1.0.
+        lam (KernelScaleParam | None, optional): Affine lower bound
+            for sigma. If None, uses SIGMA_FLOOR_RATIO * kappa.
+
+    Attributes:
+        sigma_is_diagonal (bool): Whether sigma is set and
+            (numerically) diagonal.
 
     Raises:
-        ValueError: If `sigma` is not psd or does not match the
-            dimension of `x_i`. Or if `sigma` is not one of the
-            expected types (`"eye"`, a square matrix, or `None`).
-        SigmaNotInvertibleError: If `sigma` has no finite inverse,
-            even after repair.
+        UnknownOptionError: If `sigma` is a string other than
+            ``"eye"``.
+        NotPositiveSemidefiniteError: If `sigma` is not psd.
+        ShapeMismatchError: If `sigma` does not match the dimension of
+            `x_i`.
+        ParameterTypeError: If `sigma` is not one of the expected
+            types (`"eye"`, a square matrix, a scalar, or `None`).
     """  # ruff:ignore[doc-line-too-long]
 
     def __init__(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
         self,
         x_i: NPVector,
-        sigma: NPSquareMatrix | Literal["eye"] | NPFloatType | float | None = None,
+        sigma: SigmaSpec | None = None,
         x_nn: NPVector | NPMatrix | None = None,
         kappa: KernelScaleParam = 1.0,
         eta: KernelScaleParam = 1.0,
@@ -247,10 +283,12 @@ class RBFKernel(Kernel):
                 jnp.linalg.inv(jnp.asarray(self.sigma)), NPFloatType
             )
             self._refresh_sigma_cache()
+        elif isinstance(sigma, str):
+            raise UnknownOptionError("sigma", sigma, ("eye",))
         elif isinstance(sigma, (NPFloatType, float, int)):
             sigma_scalar = NPFloatType(sigma)
             if sigma_scalar <= 0:
-                raise ValueError("sigma must be positive semidefinite (psd).")
+                raise NotPositiveSemidefiniteError("sigma")
             self.sigma, self.sigma_inv = _invert_sigma(
                 np.eye(len(self.x_i), dtype=NPFloatType) * sigma_scalar
             )
@@ -258,24 +296,27 @@ class RBFKernel(Kernel):
         elif isinstance(sigma, (np.ndarray, jax.Array)):
             sigma_np = _to_np(sigma)
             if sigma_np.shape != (self.x_i.shape[0], self.x_i.shape[0]):
-                raise ValueError("sigma must have compatible dimensions to x_i.")
+                raise ShapeMismatchError(
+                    "sigma", sigma_np.shape, (self.x_i.shape[0], self.x_i.shape[0])
+                )
             if not np.all(
                 np.asarray(jnp.linalg.eigvals(jnp.asarray(sigma_np)).real) > 0
             ):
-                raise ValueError("sigma must be positive semidefinite (psd).")
+                raise NotPositiveSemidefiniteError("sigma")
             self.sigma, self.sigma_inv = _invert_sigma(sigma_np.astype(NPFloatType))
             self._refresh_sigma_cache()
         else:
-            raise ValueError("sigma must be either 'eye', a square matrix, or None.")
+            raise ParameterTypeError("sigma", sigma, (str, np.ndarray, float))
 
     def _refresh_sigma_cache(self) -> None:
         """Recompute diagonal flag and invalidate cached JAX arrays.
 
         Raises:
-            RuntimeError: If called before sigma has been assigned.
+            KernelParametersNotSetError: If called before sigma has
+                been assigned.
         """
         if self.sigma is None:
-            raise RuntimeError("_refresh_sigma_cache called before sigma is set")
+            raise KernelParametersNotSetError("sigma")
         self._sigma_is_diagonal = bool(
             np.allclose(self.sigma, np.diag(np.diag(self.sigma)))
         )
@@ -300,14 +341,14 @@ class RBFKernel(Kernel):
     def _get_sigma_inv_diag_jax(self) -> jax.Array:
         if self._sigma_inv_diag_jax is None:
             if self.sigma_inv is None:
-                raise RuntimeError("sigma_inv has not been set")
+                raise KernelParametersNotSetError("sigma_inv")
             self._sigma_inv_diag_jax = jnp.asarray(np.diag(self.sigma_inv))
         return self._sigma_inv_diag_jax
 
     def _get_sigma_inv_full_jax(self) -> jax.Array:
         if self._sigma_inv_full_jax is None:
             if self.sigma_inv is None:
-                raise RuntimeError("sigma_inv has not been set")
+                raise KernelParametersNotSetError("sigma_inv")
             self._sigma_inv_full_jax = jnp.asarray(self.sigma_inv)
         return self._sigma_inv_full_jax
 
@@ -315,7 +356,7 @@ class RBFKernel(Kernel):
         self,
         *,
         x_nn: Vector | Matrix | NPVector | NPMatrix | None = None,
-        sigma: NPSquareMatrix | Literal["eye"] | NPFloatType | float | None = None,
+        sigma: SigmaSpec | None = None,
         kappa: KernelScaleParam | None = None,
         eta: KernelScaleParam | None = None,
         lam: KernelScaleParam | None = None,
@@ -342,22 +383,26 @@ class RBFKernel(Kernel):
                 is a collection of nearest neighbors, the matrix is
                 expected to contain a column-wise collection of
                 coordinates.
-            sigma (NPSquareMatrix | Literal["eye"] | None): The free
-                parameter matrix for the kernel.
-            kappa (KernelScaleParam, optional): Scaling factor for the
+            sigma (SigmaSpec | None): The free parameter matrix for the
+                kernel.
+            kappa (KernelScaleParam | None): Scaling factor for the
                 kernel, defaults to 1.0.
-            eta (KernelScaleParam, optional): Exponential decay factor
+            eta (KernelScaleParam | None): Exponential decay factor
                 for the kernel, defaults to 1.0.
             lam (KernelScaleParam | None, optional): Affine lower bound
                 for sigma. If None, uses SIGMA_FLOOR_RATIO * kappa.
 
         Raises:
-            ValueError: If `sigma` is not a numpy array, if it does not
-                have compatible dimensions to `x_i`, or if it is not
-                positive semidefinite (psd). Also raised if `x_nn` is
-                not provided when `sigma` is not set, or if `x_nn` is
-                not a numpy array or does not match the expected dtype
-                and dimensions.
+            UnknownOptionError: If `sigma` is a string other than
+                ``"eye"``.
+            ParameterTypeError: If `sigma` is not a string, numpy
+                array or scalar, or if `x_nn` is not a numpy array.
+            ShapeMismatchError: If `sigma` or `x_nn` does not have
+                dimensions compatible with `x_i`.
+            NotPositiveSemidefiniteError: If `sigma` is not positive
+                semidefinite (psd).
+            MissingParameterError: If neither `sigma` nor `x_nn` is
+                provided.
         """
         if kappa is not None:
             self.kappa = kappa
@@ -370,13 +415,11 @@ class RBFKernel(Kernel):
             if isinstance(sigma, str) and sigma == "eye":
                 sigma = np.eye(self.x_i.shape[0], dtype=NPFloatType)
             elif isinstance(sigma, str):
-                raise ValueError(
-                    "sigma must be either 'eye', a square matrix, or None.",
-                )
+                raise UnknownOptionError("sigma", sigma, ("eye",))
             elif isinstance(sigma, (NPFloatType, float, int)):
                 sigma_scalar = NPFloatType(sigma)
                 if sigma_scalar <= 0:
-                    raise ValueError("sigma must be positive semidefinite (psd).")
+                    raise NotPositiveSemidefiniteError("sigma")
                 sigma = cast(
                     "NPSquareMatrix",
                     np.eye(self.x_i.shape[0], dtype=NPFloatType) * sigma_scalar,
@@ -392,19 +435,21 @@ class RBFKernel(Kernel):
                     )
                 sigma = _to_np(sigma)
                 if sigma.shape != (self.x_i.shape[0], self.x_i.shape[0]):
-                    raise ValueError("sigma must have compatible dimensions to x_i.")
+                    raise ShapeMismatchError(
+                        "sigma", sigma.shape, (self.x_i.shape[0], self.x_i.shape[0])
+                    )
                 if not np.all(
                     np.asarray(jnp.linalg.eigvals(jnp.asarray(sigma)).real) > 0
                 ):
-                    raise ValueError("sigma must be positive semidefinite (psd).")
+                    raise NotPositiveSemidefiniteError("sigma")
             else:
-                raise ValueError("sigma must be a numpy array.")
+                raise ParameterTypeError("sigma", sigma, (str, np.ndarray, float))
             sigma = np.asarray(sigma, NPFloatType)
         else:
             if x_nn is None:
-                raise ValueError("x_nn must be provided if sigma is not set.")
+                raise MissingParameterError("x_nn", unless="sigma")
             if not isinstance(x_nn, (np.ndarray, jax.Array)):
-                raise ValueError("x_nn must be a numpy array.")
+                raise ParameterTypeError("x_nn", x_nn, np.ndarray)
             if isinstance(x_nn, np.ndarray) and x_nn.dtype != NPFloatType:
                 warnings.warn(
                     message="x_nn is not of dtype FloatType. Converting to FloatType.",
@@ -413,7 +458,9 @@ class RBFKernel(Kernel):
                 )
             x_nn = _to_np(x_nn)
             if x_nn.shape[0] != self.x_i.shape[0]:
-                raise ValueError("x_nn must have the same number of rows as x_i.")
+                raise ShapeMismatchError(
+                    "x_nn", x_nn.shape, (self.x_i.shape[0], *x_nn.shape[1:])
+                )
             sigma = self._sigma_ii(x_nn, self.kappa, self.eta, self.lam)
 
         self.sigma, self.sigma_inv = _invert_sigma(np.asarray(sigma, NPFloatType))
@@ -460,21 +507,27 @@ class RBFKernel(Kernel):
             NPSquareMatrix: The diagonal elements of the sigma matrix.
 
         Raises:
-            TypeError: If `x_nn` is not a numpy array or if the dtype
-                does not match `NPFloatType`.
-            ValueError: If `lam` >= `kappa` for any dimension.
+            ParameterTypeError: If `x_nn` is not a numpy array.
+            ArrayDtypeError: If the dtype of `x_nn` does not match
+                `NPFloatType`.
+            ShapeMismatchError: If `x_nn` does not have as many rows as
+                `x_i`.
+            NonPositiveParameterError: If `lam` is not positive.
+            ParameterOrderError: If `lam` >= `kappa` for any dimension.
         """
         if not isinstance(x_nn, (np.ndarray, jax.Array)):
-            raise TypeError("x_nn must be a numpy array.")
+            raise ParameterTypeError("x_nn", x_nn, np.ndarray)
         if isinstance(x_nn, np.ndarray) and x_nn.dtype != NPFloatType:
-            raise TypeError("x_nn must be of dtype FloatType.")
+            raise ArrayDtypeError("x_nn", x_nn.dtype, np.dtype(NPFloatType))
         x_nn = _to_np(x_nn)
 
         kappa_ = _validate_and_broadcast_param(kappa, "kappa", self.x_i.shape[0])
         eta_ = _validate_and_broadcast_param(eta, "eta", self.x_i.shape[0])
 
         if x_nn.shape[0] != self.x_i.shape[0]:
-            raise ValueError("x_nn must have the same number of rows as x_i.")
+            raise ShapeMismatchError(
+                "x_nn", x_nn.shape, (self.x_i.shape[0], *x_nn.shape[1:])
+            )
 
         dim = self.x_i.shape[0]
 
@@ -483,9 +536,9 @@ class RBFKernel(Kernel):
         else:
             lam_ = _validate_and_broadcast_param(lam, "lam", dim)
             if not np.all(lam_ > 0.0):
-                raise ValueError("lam must be strictly positive (0 < lam < kappa)")
+                raise NonPositiveParameterError("lam", lam_)
         if not np.all(lam_ < kappa_):
-            raise ValueError("lam must be strictly less than kappa for all dimensions")
+            raise ParameterOrderError("lam", "kappa")
 
         kappa_col = kappa_.reshape((dim, 1))
         eta_col = eta_.reshape((dim, 1))
@@ -524,7 +577,7 @@ class RBFKernel(Kernel):
         """Evaluate the Radial Basis Function (RBF) kernel at vector x.
 
         Args:
-            x (Vector | NPVector | Matrix | NPMatrix): The input vector
+            x (Matrix | Vector | NPMatrix | NPVector): The input vector
                 or matrix at which to evaluate the kernel.
 
         Returns:
@@ -532,11 +585,11 @@ class RBFKernel(Kernel):
                 x as a JAX array (0-d scalar or (n_points,) vector).
 
         Raises:
-            ValueError: If the kernel has no free parameter matrix
-                (sigma) defined.
+            KernelParametersNotSetError: If the kernel has no free
+                parameter matrix (sigma) defined.
         """
         if self.sigma is None or self.sigma_inv is None:
-            raise ValueError("Kernel has no free parameter matrix (sigma) defined.")
+            raise KernelParametersNotSetError("sigma")
         dim = self.x_i.shape[0]
         x_j = jnp.asarray(x)
         x_i_j = self._get_x_i_jax()
@@ -648,14 +701,17 @@ def calibrate_rbf_scale_median(
             (n_dims,).
 
     Raises:
-        ValueError: If d_nn is not 2D, all per-dimension medians
-            are zero, or gamma or s is invalid.
+        DeprecatedAliasConflictError: If gamma and c disagree.
+        NonPositiveParameterError: If gamma is not positive.
+        ShapeMismatchError: If d_nn is not 2D.
+        ZeroNearestNeighborDistancesError: If all per-dimension
+            medians are zero.
     """
     if c is not None:
         gamma_is_default = bool(np.isclose(gamma, 1.0))
         gamma_matches_alias = bool(np.isclose(gamma, c))
         if not gamma_is_default and not gamma_matches_alias:
-            raise ValueError("gamma and deprecated c cannot define different values")
+            raise DeprecatedAliasConflictError("gamma", "c")
         warnings.warn(
             "'c' is deprecated for RBF calibration; use 'gamma'",
             DeprecationWarning,
@@ -663,16 +719,16 @@ def calibrate_rbf_scale_median(
         )
         gamma = c
     if gamma <= 0.0:
-        raise ValueError("gamma must be greater than 0")
+        raise NonPositiveParameterError("gamma", gamma)
 
     d = np.asarray(d_nn, dtype=NPFloatType)
     if d.ndim != 2:  # ruff:ignore[magic-value-comparison]
-        raise ValueError("d_nn must have shape (n_anchors, n_dims)")
+        raise ShapeMismatchError("d_nn", d.shape, (None, None))
     s_value = resolve_width_multiple(s, d.shape[0])
     med = np.median(d, axis=0)
     positive = med > 0.0
     if not positive.any():
-        raise ValueError("all per-dimension nn-distance medians are zero")
+        raise ZeroNearestNeighborDistancesError(per_dimension=True)
     floor = float(np.median(med[positive]))
     med = np.where(positive, med, floor)
     kappa = (s_value * med) ** 2
@@ -707,14 +763,17 @@ def calibrate_rbf_scale_d_tilde(
         tuple[float, float]: (kappa, eta) scalars.
 
     Raises:
-        ValueError: If d_nn_l2 is not 1D, has no positive entries,
-            or gamma or s is invalid.
+        DeprecatedAliasConflictError: If gamma and c disagree.
+        NonPositiveParameterError: If gamma is not positive.
+        ShapeMismatchError: If d_nn_l2 is not 1D.
+        ZeroNearestNeighborDistancesError: If d_nn_l2 has no positive
+            entries.
     """
     if c is not None:
         gamma_is_default = bool(np.isclose(gamma, 1.0))
         gamma_matches_alias = bool(np.isclose(gamma, c))
         if not gamma_is_default and not gamma_matches_alias:
-            raise ValueError("gamma and deprecated c cannot define different values")
+            raise DeprecatedAliasConflictError("gamma", "c")
         warnings.warn(
             "'c' is deprecated for RBF calibration; use 'gamma'",
             DeprecationWarning,
@@ -722,15 +781,15 @@ def calibrate_rbf_scale_d_tilde(
         )
         gamma = c
     if gamma <= 0.0:
-        raise ValueError("gamma must be greater than 0")
+        raise NonPositiveParameterError("gamma", gamma)
 
     d = np.asarray(d_nn_l2, dtype=NPFloatType)
     if d.ndim != 1:
-        raise ValueError("d_nn_l2 must have shape (n_anchors,)")
+        raise ShapeMismatchError("d_nn_l2", d.shape, (None,))
     s_value = resolve_width_multiple(s, d.shape[0])
     positive = d[d > 0.0]
     if positive.size == 0:
-        raise ValueError("all full-space nn distances are zero")
+        raise ZeroNearestNeighborDistancesError(per_dimension=False)
     d_tilde = float(np.median(positive))
     return float((s_value * d_tilde) ** 2), float(gamma / d_tilde)
 

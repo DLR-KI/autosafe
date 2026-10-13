@@ -44,6 +44,7 @@ import polars as pl
 import typer
 from scipy.spatial import KDTree
 
+from autosafe.exceptions import UnknownOptionError
 from autosafe.kernels.rbf import WIDTH_SCHEDULE_SQRT_LOG_N, resolve_width_multiple
 from experiments.benchmark.common import (
     build_odd,
@@ -94,7 +95,8 @@ def local_cov_scores(
             superposed affinity (higher = more inside).
 
     Raises:
-        ValueError: If ``kind`` is not "iso", "diag", or "full".
+        UnknownOptionError: If ``kind`` is not "iso", "diag", or
+            "full".
     """
     id_pts = np.ascontiguousarray(id_pts, dtype=float)
     x = np.ascontiguousarray(x, dtype=float)
@@ -116,7 +118,7 @@ def local_cov_scores(
         elif kind == "full":
             base = (1.0 - shrink) * cov + shrink * tr * eye
         else:
-            raise ValueError(f"unknown kind {kind!r}")
+            raise UnknownOptionError("kind", kind, ("iso", "diag", "full"))
         sigma = s**2 * base + 1e-9 * tr * eye
         inv = np.linalg.inv(sigma)
         diff = x - id_pts[i]
@@ -171,6 +173,13 @@ def _halo_max(x: NPArray, scores: NPArray, rho: float, w: float, zeta: float) ->
 
     ``scores`` and ``zeta`` must be on the same scale (here: the
     log-survival score and ``log_threshold(zeta)``).
+
+    Args:
+        x (NPArray): (M, 2) query points.
+        scores (NPArray): (M,) membership scores of ``x``.
+        rho (float): Slope of the band's center line.
+        w (float): Vertical half-width of the band.
+        zeta (float): Membership threshold on the scale of ``scores``.
 
     Returns:
         float: Largest cross-band overshoot; 0.0 without false

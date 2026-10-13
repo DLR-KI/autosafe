@@ -14,6 +14,12 @@ import polars as pl
 import pytest
 import yaml
 
+from autosafe.exceptions import (
+    NonPositiveParameterError,
+    ParameterTypeError,
+    UnknownOptionError,
+    UnsupportedFileFormatError,
+)
 from autosafe.tools.experiments import core as core_mod
 from autosafe.tools.experiments import evaluation as eval_mod
 from autosafe.tools.experiments.core import (
@@ -109,7 +115,9 @@ def test_dataset_type_detection():
     assert get_dataset_type(pathlib.Path("test.npy")) == "numpy"
 
     # Test error on unknown type
-    with pytest.raises(ValueError, match="Unknown dataset type"):
+    with pytest.raises(
+        UnsupportedFileFormatError, match=r"unsupported file format '\.unknown'"
+    ):
         get_dataset_type(pathlib.Path("test.unknown"))
 
 
@@ -349,7 +357,9 @@ def test_config_validation():
 
     # Test invalid sample count
     invalid_config = KernelExperimentConfig(n_samples=-100)
-    with pytest.raises(ValueError, match="must be positive"):
+    with pytest.raises(
+        NonPositiveParameterError, match="n_samples must be greater than 0"
+    ):
         invalid_config.validate()
 
 
@@ -383,10 +393,12 @@ def test_dataset_and_kernel_validation_errors(tmp_path: pathlib.Path):
 
     bad_suffix = tmp_path / "data.txt"
     bad_suffix.write_text("x", encoding="utf-8")
-    with pytest.raises(ValueError, match="Unsupported file format"):
+    with pytest.raises(
+        UnsupportedFileFormatError, match=r"unsupported file format '\.txt'"
+    ):
         DatasetConfig(file_path=bad_suffix).validate()
 
-    with pytest.raises(ValueError, match="Unsupported kernel type"):
+    with pytest.raises(UnknownOptionError, match="unknown kernel_type "):
         KernelExperimentConfig(kernel_type=cast("Any", "BadKernel")).validate()
 
 
@@ -495,12 +507,12 @@ def test_run_batch_spec_paths(tmp_path: pathlib.Path):
 
     invalid_spec = tmp_path / "invalid.yaml"
     invalid_spec.write_text("123", encoding="utf-8")
-    with pytest.raises(TypeError, match="Spec must be a list"):
+    with pytest.raises(ParameterTypeError, match="spec must be of type"):
         manager.run_batch_spec(invalid_spec, lambda item: item)
 
     bad_mapping_spec = tmp_path / "bad_mapping.yaml"
     bad_mapping_spec.write_text("experiments: 123", encoding="utf-8")
-    with pytest.raises(TypeError, match="must be a list"):
+    with pytest.raises(ParameterTypeError, match="experiments must be of type"):
         manager.run_batch_spec(bad_mapping_spec, lambda item: item)
 
     spec_path = tmp_path / "batch.yaml"
@@ -716,7 +728,9 @@ def test_utils_extra_file_types_and_logging(tmp_path: pathlib.Path):
     # Explicitly trigger NotImplemented and unsupported format branches.
     with pytest.raises(NotImplementedError):
         load_dataset(csv_path, DatasetLoadOptions(file_type="npy"))
-    with pytest.raises(ValueError, match="Unsupported file type"):
+    with pytest.raises(
+        UnsupportedFileFormatError, match="unsupported file format 'txt'"
+    ):
         load_dataset(csv_path, DatasetLoadOptions(file_type="txt"))
 
     # apply_filters with non-matching keys should return input unchanged.

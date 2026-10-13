@@ -23,8 +23,15 @@ from autosafe import (
     _jax_config,  # ruff:ignore[unused-import]
     ood_consistency,
 )
-from autosafe.exceptions import EmptyODDError
+from autosafe.exceptions import (
+    ClosestSampleNotFoundError,
+    EmptyODDError,
+    ParameterTypeError,
+    ShapeMismatchError,
+    UnknownOptionError,
+)
 from autosafe.kernels import KernelDict
+from autosafe.kernels.kernel import Kernel
 from autosafe.kernels.rbf import RBFKernel
 from autosafe.neighbors import (
     find_closest_vectors_by_index,
@@ -34,6 +41,7 @@ from autosafe.pointsets import rows_in
 from autosafe.sample import Sample
 from autosafe.typing import (
     Affinity,
+    AffinityDual,
     AffinityVector,
     ClosestSampleModeType,
     FloatType,
@@ -78,14 +86,21 @@ class Samples:
         dim (int | None): The dimension of the samples in the set.
         closest_sample_mode (ClosestSampleModeType): Mode to determine
             how closest samples are found.
-        kernel_cls_str (str): The string representation of the kernel
-            class.
-        kernel_cls (KernelType): The kernel class used for the samples.
+        kernel_cls_str (KernelType): The name of the kernel class.
+        kernel_cls (type[Kernel]): The kernel class used for the
+            samples.
         kernel_kwargs (dict[str, Any]): Additional keyword arguments
             passed to the kernel class constructor.
         shape (tuple[int, int]): The shape of the samples set, as a
             tuple of (number of samples, dimension of samples).
     """
+
+    samples: list[Sample]
+    dim: int | None
+    closest_sample_mode: ClosestSampleModeType
+    kernel_cls_str: KernelType
+    kernel_cls: type[Kernel]
+    kernel_kwargs: dict[str, Any]
 
     def __init__(
         self,
@@ -136,11 +151,12 @@ class Samples:
             samplelike (SampleLike): The input to convert to a Sample.
 
         Returns:
-            Sample: The converted Sample object.
+            list[Sample]: The converted Sample objects.
 
         Raises:
-            TypeError: If the input type is not supported.
-            ValueError: If the dimensions of the samples do not match.
+            ParameterTypeError: If the input type is not supported.
+            ShapeMismatchError: If the input array is neither 1D nor 2D,
+                or the dimensions of the samples do not match.
         """
         if isinstance(samplelike, Sample):
             self.__check_dim(samplelike.x)
@@ -152,7 +168,7 @@ class Samples:
                 return [self.__to_sample(samplelike_array)]
             if samplelike_array.ndim == 2:  # ruff:ignore[magic-value-comparison]
                 return [self.__to_sample(row) for row in samplelike_array]
-            raise ValueError("Input array must be 1D or 2D.")
+            raise ShapeMismatchError("samples", samplelike_array.shape, (None, None))
 
         if isinstance(samplelike, list):
             if all(isinstance(s, Sample) for s in samplelike):
@@ -166,13 +182,13 @@ class Samples:
             if all(isinstance(s, (list, np.ndarray)) for s in samplelike):
                 return [self.__to_sample(s) for s in samplelike]
 
-        raise TypeError(f"Unsupported input type for samples: {type(samplelike)}")
+        raise ParameterTypeError("samples", samplelike, (np.ndarray, list, Samples))
 
     def _find_closest_samples(self) -> None:
         """Find the closest samples in the ODD space per dimension.
 
         Raises:
-            ValueError: If the closest_sample_mode is invalid.
+            UnknownOptionError: If the closest_sample_mode is invalid.
         """
         samples_array = cast("Matrix", np.array([sample.x for sample in self.samples]))
 
@@ -181,8 +197,10 @@ class Samples:
         elif self.closest_sample_mode == "per_dimension":
             closest_indices = find_closest_vectors_by_index_per_dimension(samples_array)
         else:
-            raise ValueError(
-                f"Invalid closest_sample_mode: {self.closest_sample_mode}"
+            raise UnknownOptionError(
+                "closest_sample_mode",
+                self.closest_sample_mode,
+                ("global", "per_dimension"),
             )  # pragma: no cover
 
         for idx, sample in tqdm.rich.tqdm(
@@ -211,7 +229,8 @@ class Samples:
                 equality checks.
 
         Raises:
-            ValueError: If a sample does not have a closest sample.
+            ClosestSampleNotFoundError: If a sample does not have a
+                closest sample.
         """
         kwargs = (
             self.kernel_kwargs
@@ -224,7 +243,7 @@ class Samples:
                 sample.kernel = self.kernel_cls(x_i=sample.x, **kwargs)
             # Only for type checkers, this will not happen at runtime.
             if sample.closest_sample is None:  # pragma: no cover
-                raise ValueError(f"No closest sample found for sample {sample}.")
+                raise ClosestSampleNotFoundError(sample)
 
             if (
                 self.closest_sample_mode == "per_dimension"
@@ -288,15 +307,15 @@ class Samples:
                 check.
 
         Raises:
-            ValueError: If the array is not 1d or does not match the
-                dimension of the rest of the samples.
+            ShapeMismatchError: If the array is not 1d or does not match
+                the dimension of the rest of the samples.
         """
         if sample_array.ndim != 1:
-            raise ValueError("Each sample must be a 1D array.")
+            raise ShapeMismatchError("sample", sample_array.shape, (None,))
         if self.dim is None:
             self.dim = sample_array.shape[0]
         if self.dim != sample_array.shape[0]:
-            raise ValueError("All samples must have the same dimension.")
+            raise ShapeMismatchError("sample", sample_array.shape, (self.dim,))
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -363,9 +382,7 @@ class Samples:
 
         return result[0] if is_single else result
 
-    def affinity_dual(
-        self, x: "Vector | Matrix | NPVector | NPMatrix"
-    ) -> "tuple[Affinity, Affinity] | tuple[AffinityVector, AffinityVector]":
+    def affinity_dual(self, x: "Vector | Matrix | NPVector | NPMatrix") -> AffinityDual:
         """Evaluate affinity in linear and log space in one pass.
 
         Args:
@@ -373,7 +390,7 @@ class Samples:
                 matrix of evaluation points.
 
         Returns:
-            tuple: (alpha, survival). alpha is the linear-space
+            AffinityDual: (alpha, survival). alpha is the linear-space
                 affinity (may saturate at exactly 1.0 for many
                 anchors); survival = log(1 - alpha) computed stably
                 (-inf only on exact anchor hits). See

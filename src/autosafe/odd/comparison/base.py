@@ -9,6 +9,11 @@ from typing import Any, Self, TypedDict, cast
 import numpy as np
 import numpy.typing as npt
 
+from autosafe.exceptions import (
+    NonPositiveParameterError,
+    ParameterOutOfRangeError,
+    UnknownOptionError,
+)
 from autosafe.typing import FloatType, Matrix, NPMatrix, NPVector, Vector
 
 
@@ -189,23 +194,31 @@ def validate_comparison_config(config: ODDComparisonConfig) -> None:
             validate.
 
     Raises:
-        ValueError: If methods or numeric configuration values are
-            invalid.
+        UnknownOptionError: If a method is not supported.
+        ParameterOutOfRangeError: If the conservatism target is outside
+            [0, 1].
+        NonPositiveParameterError: If the grid resolution is not
+            positive.
     """
     valid_methods = {"hull", "knn", "kmeans", "density", "all"}
 
     for method in config["methods"]:
         if method not in valid_methods:
-            raise ValueError(
-                f"Invalid comparison method: {method}. Valid methods: {valid_methods}"
-            )
+            raise UnknownOptionError("method", method, valid_methods)
 
     conservatism_target = config.get("conservatism_target")
     if conservatism_target is not None and not (0 <= conservatism_target <= 1):
-        raise ValueError("Conservatism target must be in range [0, 1]")
+        raise ParameterOutOfRangeError(
+            "conservatism_target",
+            conservatism_target,
+            0,
+            1,
+            lower_closed=True,
+            upper_closed=True,
+        )
 
     if config.get("grid_resolution") and config["grid_resolution"] <= 0:
-        raise ValueError("Grid resolution must be positive")
+        raise NonPositiveParameterError("grid_resolution", config["grid_resolution"])
 
 
 __all__ = [

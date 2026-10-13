@@ -13,6 +13,7 @@ from typing import Any, cast
 import orjson
 import yaml
 
+from autosafe.exceptions import InputFileNotFoundError, ParameterTypeError
 from autosafe.tools.experiments.config import (
     DatasetConfig,
     KernelExperimentConfig,
@@ -53,15 +54,14 @@ class _BatchExecutionContext:
 
 
 class ExperimentManager:
-    """Main class for managing and running experiments."""
+    """Main class for managing and running experiments.
+
+    Args:
+        config (KernelExperimentConfig): Kernel experiment
+            configuration.
+    """
 
     def __init__(self, config: KernelExperimentConfig) -> None:
-        """Initialize the experiment manager.
-
-        Args:
-            config (KernelExperimentConfig): Kernel experiment
-                configuration.
-        """
         self.config = config
         self.results: list[ExperimentResult] = []
         self.experiment_count = 0
@@ -301,7 +301,8 @@ class ExperimentManager:
 
         Args:
             spec_path (pathlib.Path): YAML file describing experiments.
-            run_item (Any): Callback that executes one spec entry.
+            run_item (Callable[[dict[str, Any]], dict[str, Any]]):
+                Callback that executes one spec entry.
             state_path (pathlib.Path | None): Optional state file path.
             resume (bool): Skip entries already marked completed.
             stop_on_error (bool): Stop after first failure.
@@ -310,11 +311,11 @@ class ExperimentManager:
             dict[str, Any]: Summary including completed/failed counts.
 
         Raises:
-            FileNotFoundError: If spec file does not exist.
-            TypeError: If spec format is invalid.
+            InputFileNotFoundError: If spec file does not exist.
+            ParameterTypeError: If spec format is invalid.
         """
         if not spec_path.exists():
-            raise FileNotFoundError(f"Spec file not found: {spec_path}")
+            raise InputFileNotFoundError(spec_path)
 
         loaded = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
@@ -322,10 +323,10 @@ class ExperimentManager:
         elif isinstance(loaded, list):
             experiments = loaded
         else:
-            raise TypeError("Spec must be a list or a mapping with 'experiments'")
+            raise ParameterTypeError("spec", loaded, (list, dict))
 
         if not isinstance(experiments, list):
-            raise TypeError("Spec field 'experiments' must be a list")
+            raise ParameterTypeError("experiments", experiments, list)
 
         if state_path is None:
             state_path = spec_path.with_suffix(".state.json")
@@ -361,7 +362,7 @@ def create_experiment_manager(config: KernelExperimentConfig) -> ExperimentManag
             configuration.
 
     Returns:
-        New experiment manager instance.
+        ExperimentManager: New experiment manager instance.
     """
     return ExperimentManager(config)
 

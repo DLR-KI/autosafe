@@ -8,6 +8,7 @@ import math
 import numpy as np
 import pytest
 
+from autosafe.exceptions import UnknownOptionError
 from autosafe.tools.evaluate.comparison import (
     FastHullApproximation,
     HullAutoSelector,
@@ -164,7 +165,7 @@ def test_create_comparison_monitor_fast_hull_approx():
 
 def test_create_comparison_monitor_invalid_method():
     """Test create_comparison_monitor raises ValueError for invalid method."""
-    with pytest.raises(ValueError, match="Unsupported comparison method"):
+    with pytest.raises(UnknownOptionError, match="unknown method "):
         create_comparison_monitor("invalid_method")
 
 
@@ -186,5 +187,5 @@ def test_validate_method_names_valid():
 
 def test_validate_method_names_invalid():
     """Test validate_method_names with invalid names."""
-    with pytest.raises(ValueError, match="Unsupported comparison method"):
+    with pytest.raises(UnknownOptionError, match="unknown method "):
         validate_method_names(["invalid_method"])

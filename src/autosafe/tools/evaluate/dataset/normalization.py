@@ -143,11 +143,11 @@ def _denormalize_points_to_yaml_space(
     """Denormalize points from normalized space to YAML space.
 
     Args:
-        points (Matrix): Points in normalized space.
+        points (Matrix | NPMatrix): Points in normalized space.
         normalizer (RangeNormalizer): Fitted normalizer for inverse.
 
     Returns:
-        Matrix: Points in YAML (raw) space.
+        Matrix | NPMatrix: Points in YAML (raw) space.
     """
     return normalizer.inverse_transform(points)
 

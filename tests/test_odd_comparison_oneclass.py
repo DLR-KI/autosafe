@@ -9,6 +9,7 @@ from collections.abc import Callable
 import numpy as np
 import pytest
 
+from autosafe.exceptions import UnknownOptionError
 from autosafe.odd.comparison.base import ODDBoundaryMethod
 from autosafe.odd.comparison.oneclass import (
     OneClassSVMBoundary,
@@ -22,6 +23,10 @@ from autosafe.odd.comparison.oneclass import (
 def _single_blob(seed: int = 0, loc: tuple[float, float] = (0.0, 0.0)) -> np.ndarray:
     """A single 2D Gaussian blob, shape (2, 40).
 
+    Args:
+        seed (int): Seed of the random generator.
+        loc (tuple[float, float]): Center of the blob.
+
     Returns:
         np.ndarray: Reference points, shape (2, 40).
     """
@@ -33,6 +38,12 @@ def _uniform_test_points(
     seed: int, low: float, high: float, n: int = 200
 ) -> np.ndarray:
     """Uniform 2D test points in [low, high]^2, shape (2, n).
+
+    Args:
+        seed (int): Seed of the random generator.
+        low (float): Lower bound per coordinate.
+        high (float): Upper bound per coordinate.
+        n (int): Number of points.
 
     Returns:
         np.ndarray: Test points, shape (2, n).
@@ -271,12 +282,12 @@ def test_svdd_single_point_call_matches_batch():
 
 def test_svdd_pairwise_kernel_rejects_unknown_kernel() -> None:
     x = np.zeros((2, 3))
-    with pytest.raises(ValueError, match="unknown SVDD kernel"):
+    with pytest.raises(UnknownOptionError, match="unknown kernel "):
         _pairwise_kernel(x, x, kernel="bogus", gamma=1.0, degree=3, coef0=0.0)  # ty: ignore[invalid-argument-type]
 
 
 def test_svdd_kernel_self_rejects_unknown_kernel() -> None:
-    with pytest.raises(ValueError, match="unknown SVDD kernel"):
+    with pytest.raises(UnknownOptionError, match="unknown kernel "):
         _kernel_self(np.zeros((2, 3)), kernel="bogus", gamma=1.0, degree=3, coef0=0.0)  # ty: ignore[invalid-argument-type]
 
 

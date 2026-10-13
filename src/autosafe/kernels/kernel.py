@@ -14,7 +14,7 @@ class Kernel(ABC):
 
     Args:
         x_i (NPVector): The center point of the kernel.
-        **kwargs: Additional keyword arguments for kernel
+        kwargs (object): Additional keyword arguments for kernel
             parameters.
 
     Attributes:

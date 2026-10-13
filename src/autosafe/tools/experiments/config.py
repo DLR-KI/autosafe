@@ -7,6 +7,12 @@ import dataclasses
 import pathlib
 from typing import Any
 
+from autosafe.exceptions import (
+    InputFileNotFoundError,
+    NonPositiveParameterError,
+    UnknownOptionError,
+    UnsupportedFileFormatError,
+)
 from autosafe.tools.experiments.types import DatasetType
 from autosafe.typing import KernelType, Vector
 
@@ -43,14 +49,15 @@ class DatasetConfig:
         """Validate the dataset configuration.
 
         Raises:
-            FileNotFoundError: If the dataset file does not exist.
-            ValueError: If the file extension is unsupported.
+            InputFileNotFoundError: If the dataset file does not exist.
+            UnsupportedFileFormatError: If the file extension is
+                unsupported.
         """
         if not self.file_path.exists():
-            raise FileNotFoundError(f"Dataset file not found: {self.file_path}")
+            raise InputFileNotFoundError(self.file_path)
 
         if self.file_path.suffix.lower() not in {".csv", ".json", ".npy", ".parquet"}:
-            raise ValueError(f"Unsupported file format: {self.file_path.suffix}")
+            raise UnsupportedFileFormatError(self.file_path.suffix)
 
 
 @dataclasses.dataclass
@@ -78,13 +85,17 @@ class KernelExperimentConfig:
         """Validate the kernel configuration.
 
         Raises:
-            ValueError: If the sample count or kernel type is invalid.
+            NonPositiveParameterError: If the sample count is not
+                positive.
+            UnknownOptionError: If the kernel type is invalid.
         """
         if self.n_samples <= 0:
-            raise ValueError("Number of samples must be positive")
+            raise NonPositiveParameterError("n_samples", self.n_samples)
 
         if self.kernel_type not in {"RBF", "Laplacian", "Gaussian"}:
-            raise ValueError(f"Unsupported kernel type: {self.kernel_type}")
+            raise UnknownOptionError(
+                "kernel_type", self.kernel_type, ("RBF", "Laplacian", "Gaussian")
+            )
 
 
 __all__ = [

@@ -9,6 +9,16 @@ import numpy as np
 import polytope as pc
 import yaml
 
+from autosafe.exceptions import (
+    EmptyParameterError,
+    InputFileNotFoundError,
+    LengthMismatchError,
+    MissingConfigFieldError,
+    ParameterTypeError,
+    PolytopeCreationError,
+    UnknownOptionError,
+)
+
 
 def load_yaml_odd_config(config_path: str | Path) -> dict:
     """Load ODD configuration from YAML file.
@@ -20,11 +30,11 @@ def load_yaml_odd_config(config_path: str | Path) -> dict:
         dict: Dictionary with ODD configuration
 
     Raises:
-        FileNotFoundError: If config file doesn't exist
+        InputFileNotFoundError: If config file doesn't exist
     """
     config_path = Path(config_path)
     if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+        raise InputFileNotFoundError(config_path)
 
     with Path(config_path).open(encoding="utf-8") as f:
         config = yaml.safe_load(f)
@@ -46,38 +56,35 @@ def validate_odd_config(config: dict) -> dict:
         dict: Validated configuration
 
     Raises:
-        ValueError: If configuration is invalid
+        MissingConfigFieldError: If a required field is missing.
+        UnknownOptionError: If the ODD type is unknown.
+        ParameterTypeError: If the constraints are not a list.
+        EmptyParameterError: If no constraint is given.
     """
-    if "type" not in config:
-        raise ValueError("Configuration must specify 'type' field")
-
-    if "dim" not in config:
-        raise ValueError("Configuration must specify 'dim' field")
+    for required in ("type", "dim"):
+        if required not in config:
+            raise MissingConfigFieldError("ODD", (required,))
 
     config_type = config["type"]
     valid_types = ["box", "polytope"]
 
     if config_type not in valid_types:
-        raise ValueError(
-            f"Invalid ODD type: {config_type}. Must be one of: {valid_types}"
-        )
+        raise UnknownOptionError("type", config_type, valid_types)
 
     if config_type == "polytope":
         if "constraints" not in config:
-            raise ValueError("Polytope configuration must specify 'constraints' field")
+            raise MissingConfigFieldError("polytope", ("constraints",))
 
         constraints = config["constraints"]
         if not isinstance(constraints, list):
-            raise ValueError("Constraints must be a list")
+            raise ParameterTypeError("constraints", constraints, list)
 
         if len(constraints) == 0:
-            raise ValueError("At least one constraint must be specified")
+            raise EmptyParameterError("constraints")
 
     elif config_type == "box":
         if "lower_bounds" not in config or "upper_bounds" not in config:
-            raise ValueError(
-                "Box configuration must specify 'lower_bounds' and 'upper_bounds'"
-            )
+            raise MissingConfigFieldError("box", ("lower_bounds", "upper_bounds"))
 
     return config
 
@@ -96,7 +103,8 @@ def create_polytope_from_constraints(
         strings
 
     Raises:
-        ValueError: If constraints are invalid
+        PolytopeCreationError: If the constraints do not define a valid
+            polytope.
     """
     if not constraints:
         # Create a full-dimensional unit box as default
@@ -124,9 +132,10 @@ def create_polytope_from_constraints(
 
     try:
         polytope = pc.Region([pc.Polytope(a_matrix, b_vector)])
-        return polytope, constraint_strings
     except (ValueError, TypeError) as err:
-        raise ValueError("Failed to create polytope from constraints") from err
+        raise PolytopeCreationError from err
+    else:
+        return polytope, constraint_strings
 
 
 def _normalize_constraint(
@@ -135,36 +144,41 @@ def _normalize_constraint(
 ) -> tuple[list[float], str, float, str]:
     """Normalize one constraint into the canonical half-space form.
 
+    Args:
+        constraint (dict): Constraint mapping with ``coefficients``,
+            ``relation`` and ``bound``.
+        dim (int): Dimension of the space.
+
     Returns:
         tuple[list[float], str, float, str]: coefficients, relation,
             bound, and description.
 
     Raises:
-        TypeError: If the constraint is not a dictionary.
-        ValueError: If the constraint is invalid.
+        ParameterTypeError: If the constraint is not a dictionary.
+        UnknownOptionError: If the constraint type or relation is
+            unsupported.
+        MissingConfigFieldError: If a constraint field is missing.
+        LengthMismatchError: If the coefficients do not match the
+            dimension.
     """
     if not isinstance(constraint, dict):
-        raise TypeError(f"Each constraint must be a dict, got {type(constraint)}")
+        raise ParameterTypeError("constraint", constraint, dict)
 
     constraint_type = constraint.get("type", "linear")
     if constraint_type != "linear":
-        raise ValueError(f"Unsupported constraint type: {constraint_type}")
+        raise UnknownOptionError("type", constraint_type, ("linear",))
 
     try:
         coefficients = list(constraint["coefficients"])
         relation = constraint["relation"]
         bound = float(constraint["bound"])
     except KeyError as err:
-        raise ValueError(
-            "Linear constraint must have 'coefficients', 'relation', and "
-            "'bound' fields",
+        raise MissingConfigFieldError(
+            "constraint", ("coefficients", "relation", "bound")
         ) from err
 
     if len(coefficients) != dim:
-        raise ValueError(
-            f"Coefficient dimension {len(coefficients)} does not match "
-            f"space dimension {dim}",
-        )
+        raise LengthMismatchError("coefficients", len(coefficients), dim)
 
     # Keep the constraint as written, for the description: negating
     # the coefficients and bound while keeping the original relation
@@ -176,7 +190,7 @@ def _normalize_constraint(
         coefficients = [-c for c in coefficients]
         bound = -bound
     elif relation not in {"<=", "<"}:
-        raise ValueError(f"Unsupported relation: {relation}")
+        raise UnknownOptionError("relation", relation, (">=", ">", "<=", "<"))
 
     description = (
         "("
@@ -215,7 +229,7 @@ def convert_to_positive_form(
             relation, and bound.
 
     Raises:
-        ValueError: If the relation is unsupported.
+        UnknownOptionError: If the relation is unsupported.
     """
     if relation in {">=", ">"}:
         # x1 >= x2 + 4 becomes -x1 + x2 + 4 <= 0
@@ -227,7 +241,9 @@ def convert_to_positive_form(
         new_bound = bound
         new_relation = "<="
     else:
-        raise ValueError(f"Unsupported relation: {relation}")
+        raise UnknownOptionError(
+            "relation", relation, (">=", ">", "<=", "<", "==", "=")
+        )
 
     return new_coefficients, new_relation, new_bound
 
@@ -247,7 +263,8 @@ class ODDFactory:
             of constraints.
 
         Raises:
-            ValueError: If the configuration type is unsupported.
+            UnknownOptionError: If the configuration type is
+                unsupported.
         """
         odd_type = self.config["type"]
 
@@ -274,6 +291,6 @@ class ODDFactory:
             region = polytope
 
         else:
-            raise ValueError(f"Unknown ODD type: {odd_type}")
+            raise UnknownOptionError("type", odd_type, ("box", "polytope"))
 
         return region, description

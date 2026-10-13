@@ -4,11 +4,16 @@
 
 import copy
 import math
-import re
 
 import numpy as np
 import pytest
 
+from autosafe.exceptions import (
+    KernelParametersNotSetError,
+    MissingParameterError,
+    NonPositiveParameterError,
+    ShapeMismatchError,
+)
 from autosafe.kernels import LaplacianKernel
 from autosafe.typing import FloatType
 
@@ -38,9 +43,7 @@ class TestLaplacianKernel:
 
     @staticmethod
     def test_laplacian_kernel_init_fails_on_wrong_alpha_shape():
-        with pytest.raises(
-            ValueError, match=re.escape("alpha must have the same dimension as x_i.")
-        ):
+        with pytest.raises(ShapeMismatchError, match="alpha has shape"):
             LaplacianKernel(
                 x_i=np.array([1.0, 2.0, 3.0], dtype=FloatType),
                 alpha=np.array([1.0, 2.0], dtype=FloatType),
@@ -48,7 +51,9 @@ class TestLaplacianKernel:
 
     @staticmethod
     def test_laplacian_kernel_init_fails_on_negative_alpha():
-        with pytest.raises(ValueError, match=re.escape("alpha must be positive.")):
+        with pytest.raises(
+            NonPositiveParameterError, match="alpha must be greater than 0"
+        ):
             LaplacianKernel(
                 x_i=np.array([1.0, 2.0], dtype=FloatType),
                 alpha=np.array([-1.0, 2.0], dtype=FloatType),
@@ -70,44 +75,45 @@ class TestLaplacianKernel:
 
     def test_laplacian_kernel_update_alpha_fails_on_wrong_shape(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(
-            ValueError, match=re.escape("alpha must have the same dimension as x_i.")
-        ):
+        with pytest.raises(ShapeMismatchError, match="alpha has shape"):
             kernel.update(alpha=np.array([1.0, 2.0], dtype=FloatType))
 
     def test_laplacian_kernel_update_alpha_fails_on_negative_value(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ValueError, match=re.escape("alpha must be positive.")):
+        with pytest.raises(
+            NonPositiveParameterError, match="alpha must be greater than 0"
+        ):
             kernel.update(alpha=np.array([-1.0, 2.0, 3.0], dtype=FloatType))
 
     def test_laplacian_kernel_update_alpha_fails_on_negative_scalar(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ValueError, match=re.escape("alpha must be positive.")):
+        with pytest.raises(
+            NonPositiveParameterError, match="alpha must be greater than 0"
+        ):
             kernel.update(alpha=-1.0)
 
     def test_laplacian_kernel_update_alpha_fails_on_zero_scalar(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ValueError, match=re.escape("alpha must be positive.")):
+        with pytest.raises(
+            NonPositiveParameterError, match="alpha must be greater than 0"
+        ):
             kernel.update(alpha=0.0)
 
     def test_laplacian_kernel_update_alpha_fails_on_zero_vector(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ValueError, match=re.escape("alpha must be positive.")):
+        with pytest.raises(
+            NonPositiveParameterError, match="alpha must be greater than 0"
+        ):
             kernel.update(alpha=np.zeros(3, dtype=FloatType))
 
     def test_laplacian_kernel_update_alpha_fails_on_none(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(
-            ValueError,
-            match=re.escape("alpha must be provided for LaplacianKernel."),
-        ):
+        with pytest.raises(MissingParameterError, match="alpha is required"):
             kernel.update(alpha=None)  # ty: ignore[invalid-argument-type]
 
     def test_laplacian_kernel_update_alpha_fails_on_empty_vector(self):
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(
-            ValueError, match=re.escape("alpha must have the same dimension as x_i.")
-        ):
+        with pytest.raises(ShapeMismatchError, match="alpha has shape"):
             kernel.update(alpha=np.array([], dtype=FloatType))
 
     def test_laplacian_kernel_update_alpha_float(self):
@@ -134,8 +140,8 @@ class TestLaplacianKernel:
     def test_laplacian_kernel_call_fails_with_unset_alpha():
         kernel = LaplacianKernel(x_i=np.array([1.0, 2.0, 3.0], dtype=FloatType))
         with pytest.raises(
-            ValueError,
-            match=re.escape("Kernel parameters have not been set."),
+            KernelParametersNotSetError,
+            match="kernel parameter alpha has not been set",
         ):
             kernel(np.array([1.0, 2.0, 3.0], dtype=FloatType))
 
@@ -368,7 +374,7 @@ def test_validate_alpha_jax_array_wrong_shape():
     import jax.numpy as jnp
     import pytest
 
-    with pytest.raises(ValueError, match=r"alpha must have the same dimension as x_i."):
+    with pytest.raises(ShapeMismatchError, match="alpha has shape"):
         LaplacianKernel(
             x_i=np.array([1.0, 2.0], dtype=FloatType),
             alpha=jnp.array([1.0, 2.0, 3.0]),  # ty: ignore[invalid-argument-type]
@@ -379,7 +385,7 @@ def test_validate_alpha_jax_array_negative():
     import jax.numpy as jnp
     import pytest
 
-    with pytest.raises(ValueError, match=r"alpha must be positive."):
+    with pytest.raises(NonPositiveParameterError, match="alpha must be greater than 0"):
         LaplacianKernel(
             x_i=np.array([1.0, 2.0], dtype=FloatType),
             alpha=jnp.array([-1.0, 2.0]),  # ty: ignore[invalid-argument-type]

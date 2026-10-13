@@ -10,7 +10,13 @@ import polars as pl
 import pytest
 
 from autosafe.deduplication import DeduplicationPolicy
-from autosafe.exceptions import EmptyAnchorPoolError, OODAnchorCoincidenceError
+from autosafe.exceptions import (
+    EmptyAnchorPoolError,
+    EmptyParameterError,
+    MissingColumnError,
+    OODAnchorCoincidenceError,
+    ParameterTypeError,
+)
 from autosafe.tools.evaluate.comparison import FastHullApproximation
 from autosafe.tools.evaluate.dataset.baselines import (
     _baseline_memberships,
@@ -176,7 +182,7 @@ constraints:
     ids=["entry_not_mapping", "values_not_list", "values_empty"],
 )
 def test_malformed_legacy_limits_raise(config: dict[str, object]) -> None:
-    with pytest.raises((TypeError, ValueError), match="Limit entry for 'h'"):
+    with pytest.raises((ParameterTypeError, EmptyParameterError), match=r"^h must"):
         _legacy_limits_yaml_to_odd_config(config)
 
 
@@ -423,5 +429,5 @@ def test_categories_are_encoded_on_load(tmp_path: Path) -> None:
     csv.write_text("speed,vehicle\n1.0,train\n", encoding="utf-8")
     with pytest.raises(ValueError, match="outside its categories"):
         load_dataset(csv, DatasetLoadOptions(normalize=False, categories=categories))
-    with pytest.raises(ValueError, match="is not in the dataset"):
+    with pytest.raises(MissingColumnError):
         load_dataset(csv, DatasetLoadOptions(normalize=False, categories={"x": ["a"]}))

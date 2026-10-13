@@ -25,12 +25,27 @@ from collections.abc import Callable
 import numpy as np
 import numpy.typing as npt
 
+from experiments.benchmark.errors import UnknownSyntheticODDError
+
 NPArray = npt.NDArray[np.float64]
 NPBool = npt.NDArray[np.bool_]
 
 
 class SyntheticODD:
-    """A ground-truth ODD defined by a membership predicate on a box."""
+    """A ground-truth ODD defined by a membership predicate on a box.
+
+    Args:
+        name (str): Registry key.
+        dim (int): Dimensionality.
+        lower (NPArray): Per-dimension lower taxonomy bounds.
+        upper (NPArray): Per-dimension upper taxonomy bounds.
+        predicate (Callable[[NPArray], NPBool]): Maps (M, dim) -> (M,)
+            bool membership.
+
+    Attributes:
+        bbox (tuple[NPArray, NPArray]): The taxonomy bounds as (lower,
+            upper).
+    """
 
     def __init__(
         self,
@@ -40,15 +55,6 @@ class SyntheticODD:
         upper: NPArray,
         predicate: Callable[[NPArray], NPBool],
     ) -> None:
-        """Initialize the synthetic ODD.
-
-        Args:
-            name (str): Registry key.
-            dim (int): Dimensionality.
-            lower (NPArray): Per-dimension lower taxonomy bounds.
-            upper (NPArray): Per-dimension upper taxonomy bounds.
-            predicate (Callable): Maps (M, dim) -> (M,) bool membership.
-        """
         self.name = name
         self.dim = dim
         self.lower = np.asarray(lower, dtype=float)
@@ -208,10 +214,10 @@ def get_odd(name: str) -> SyntheticODD:
         SyntheticODD: The registered ODD.
 
     Raises:
-        KeyError: If ``name`` is not a registered ODD.
+        UnknownSyntheticODDError: If ``name`` is not a registered ODD.
     """
     if name not in _REGISTRY:
-        raise KeyError(f"unknown synthetic ODD {name!r}; have {sorted(_REGISTRY)}")
+        raise UnknownSyntheticODDError(name, _REGISTRY)
     return _REGISTRY[name]
 
 

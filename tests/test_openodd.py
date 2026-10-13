@@ -11,6 +11,11 @@ import numpy as np
 import pytest
 
 import autosafe.odd.openodd as exporter
+from autosafe.exceptions import (
+    EmptyParameterError,
+    KernelParametersNotSetError,
+    UnsupportedFileFormatError,
+)
 from autosafe.odd import (
     AutoSafeConfig,
     AutoSafeODD,
@@ -139,7 +144,9 @@ def test_feature_mapping_must_cover_every_model_dimension() -> None:
 
 
 def test_writer_rejects_non_yaml_suffix(tmp_path: pathlib.Path) -> None:
-    with pytest.raises(ValueError, match=r"\.yaml"):
+    with pytest.raises(
+        UnsupportedFileFormatError, match=r"unsupported file format '\.txt'"
+    ):
         write_openodd_yaml(_model(), tmp_path / "generated.txt")
 
 
@@ -161,7 +168,7 @@ def test_writer_rejects_non_yaml_suffix(tmp_path: pathlib.Path) -> None:
         ),
         (
             lambda: OpenODDNumericFeature(index=0, concept_id="x", unit_type="custom"),
-            "built-in unit type",
+            "unknown unit_type 'custom'",
         ),
         (lambda: OpenODDNumericFeature(index=0, concept_id="x", unit="m"), "unit_type"),
         (
@@ -179,7 +186,7 @@ def test_writer_rejects_non_yaml_suffix(tmp_path: pathlib.Path) -> None:
                 concept_id="color",
                 literals={"red": ()},
             ),
-            "at least one",
+            "indices must not be empty",
         ),
         (
             lambda: OpenODDCategoricalFeature(
@@ -251,7 +258,7 @@ def test_default_feature_names_are_sanitized_and_deduplicated() -> None:
 
 
 def test_feature_collection_validation() -> None:
-    with pytest.raises(ValueError, match="at least one"):
+    with pytest.raises(EmptyParameterError, match="features must not be empty"):
         exporter._validate_features((), 1)
     with pytest.raises(ValueError, match="concept IDs"):
         exporter._validate_features(
@@ -294,7 +301,10 @@ def test_full_covariance_boxes_and_kernel_errors() -> None:
 
     assert lower.shape == upper.shape == (1, 2)
     assert full_count == 1
-    with pytest.raises(ValueError, match="initialized"):
+    with pytest.raises(
+        KernelParametersNotSetError,
+        match="kernel parameter sigma has not been set",
+    ):
         exporter._normalized_kernel_boxes(cast("Any", _dummy_odd(None)))
     with pytest.raises(ValueError, match="positive definite"):
         exporter._normalized_kernel_boxes(

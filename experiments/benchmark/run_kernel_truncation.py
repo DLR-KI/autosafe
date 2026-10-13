@@ -137,6 +137,14 @@ def _ivf_flip_rate(
     Demonstrates why certification mode must use exact search: an
     approximate index can miss high-affinity anchors.
 
+    Args:
+        anchors (NPArray): (N, D) anchor points.
+        inv_diag (NPArray): (N, D) diagonal of each anchor's inverse
+            covariance.
+        x (NPArray): (M, D) query points.
+        k (int): Number of nearest anchors kept per query point.
+        zeta (float): Membership threshold.
+
     Returns:
         dict[str, float] | None: Flip rate keyed by ``nprobe<P>``, or
             None if FAISS is unavailable.

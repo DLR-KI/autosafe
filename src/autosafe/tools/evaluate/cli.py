@@ -8,6 +8,8 @@ from typing import Annotated
 
 import typer
 
+from autosafe.exceptions import NoInputFilesError
+from autosafe.tools.cli_errors import PathNotFoundParameterError
 from autosafe.tools.evaluate.workflows import (
     collect_monte_carlo_files,
     evaluate_dataset_mode,
@@ -63,10 +65,10 @@ def evaluate_sampling_results(
         mode (str): Affinity threshold range mode.
 
     Raises:
-        FileNotFoundError: If no file paths are provided.
+        NoInputFilesError: If no file paths are provided.
     """
     if file is None:
-        raise FileNotFoundError("No file(s) provided for evaluation.")
+        raise NoInputFilesError
 
     files = collect_monte_carlo_files(file)
     evaluate_monte_carlo_results(
@@ -129,11 +131,11 @@ def evaluate_dataset(
         csv_output (str | None): Optional output CSV path.
 
     Raises:
-        BadParameter: If the dataset file does not exist.
+        PathNotFoundParameterError: If the dataset file does not exist.
     """
     dataset = Path(dataset_path)
     if not dataset.exists():
-        raise typer.BadParameter(f"Dataset file not found: {dataset}")
+        raise PathNotFoundParameterError("dataset", dataset)
 
     results, csv_path, odd_path = evaluate_dataset_mode(
         dataset_path=dataset,

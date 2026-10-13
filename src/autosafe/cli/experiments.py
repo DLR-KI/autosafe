@@ -9,6 +9,12 @@ from typing import Annotated, Any, cast
 import typer
 
 from autosafe.deduplication import DeduplicationPolicy
+from autosafe.exceptions import (
+    MissingSpecFieldError,
+    ParameterTypeError,
+    UnknownOptionError,
+)
+from autosafe.tools.cli_errors import PathNotFoundParameterError
 from autosafe.tools.evaluate.workflows import (
     collect_monte_carlo_files,
     evaluate_dataset_mode,
@@ -50,11 +56,11 @@ def _validate_dataset_path(dataset_path: str) -> pathlib.Path:
         pathlib.Path: The validated dataset path.
 
     Raises:
-        BadParameter: If the dataset file does not exist.
+        PathNotFoundParameterError: If the dataset file does not exist.
     """
     path = pathlib.Path(dataset_path)
     if not path.exists():
-        raise typer.BadParameter(f"Dataset file not found: {path}")
+        raise PathNotFoundParameterError("dataset", path)
     return path
 
 
@@ -286,11 +292,12 @@ def list_datasets(
         directory (str): Directory to scan.
 
     Raises:
-        BadParameter: If the provided directory does not exist.
+        PathNotFoundParameterError: If the provided directory does not
+            exist.
     """
     path = pathlib.Path(directory)
     if not path.exists():
-        raise typer.BadParameter(f"Directory not found: {path}")
+        raise PathNotFoundParameterError("directory", path)
 
     supported_extensions = {".csv", ".json", ".parquet", ".npy"}
     datasets = sorted([
@@ -309,7 +316,7 @@ def list_datasets(
 def glob_run_mc_sample(item: dict[str, Any]) -> dict[str, Any]:
     config_file = item.get("config_file")
     if config_file is None:
-        raise ValueError("mc-sample mode requires 'config_file'")
+        raise MissingSpecFieldError("mc-sample", "config_file")
 
     samples_from_spec = item.get("samples", item.get("n_samples"))
     kernel_type_from_spec = item.get("kernel_type")
@@ -319,9 +326,7 @@ def glob_run_mc_sample(item: dict[str, Any]) -> dict[str, Any]:
         kernel_kwargs_from_spec,
         dict,
     ):
-        raise ValueError(
-            f"kernel_kwargs must be a mapping, got {type(kernel_kwargs_from_spec)}"
-        )
+        raise ParameterTypeError("kernel_kwargs", kernel_kwargs_from_spec, dict)
 
     config = create_config(config_file=str(config_file))
 
@@ -331,8 +336,8 @@ def glob_run_mc_sample(item: dict[str, Any]) -> dict[str, Any]:
     if kernel_type_from_spec is not None:
         kernel_type_str = str(kernel_type_from_spec)
         if kernel_type_str not in {"RBF", "Laplacian"}:
-            raise ValueError(
-                "kernel_type must be one of {'RBF', 'Laplacian'} in run-spec"
+            raise UnknownOptionError(
+                "kernel_type", kernel_type_str, ("RBF", "Laplacian")
             )
         config["kernel_config"]["type"] = kernel_type_str
 
@@ -370,16 +375,16 @@ def _resolve_dedup_policy(item: dict[str, Any]) -> DeduplicationPolicy | None:
             when ``dedup_resolution`` is absent.
 
     Raises:
-        TypeError: If ``dedup_resolution``/``dedup_origin`` are
-            supplied but are not sequences of numbers.
-        ValueError: If ``dedup_coordinate_space`` is set and is neither
-            ``"raw"`` nor ``"normalized"``.
+        ParameterTypeError: If ``dedup_resolution``/``dedup_origin``
+            are supplied but are not sequences of numbers.
+        UnknownOptionError: If ``dedup_coordinate_space`` is set and is
+            neither ``"raw"`` nor ``"normalized"``.
     """
     raw_resolution = item.get("dedup_resolution")
     if raw_resolution is None:
         return None
     if not isinstance(raw_resolution, list):
-        raise TypeError(f"dedup_resolution must be a list, got {type(raw_resolution)}")
+        raise ParameterTypeError("dedup_resolution", raw_resolution, list)
     resolution = tuple(float(v) for v in raw_resolution)
 
     raw_origin = item.get("dedup_origin")
@@ -387,14 +392,13 @@ def _resolve_dedup_policy(item: dict[str, Any]) -> DeduplicationPolicy | None:
         origin = tuple(0.0 for _ in resolution)
     else:
         if not isinstance(raw_origin, list):
-            raise TypeError(f"dedup_origin must be a list, got {type(raw_origin)}")
+            raise ParameterTypeError("dedup_origin", raw_origin, list)
         origin = tuple(float(v) for v in raw_origin)
 
     coordinate_space = str(item.get("dedup_coordinate_space", "raw"))
     if coordinate_space not in {"raw", "normalized"}:
-        raise ValueError(
-            f"dedup_coordinate_space must be 'raw' or 'normalized', got "
-            f"{coordinate_space!r}"
+        raise UnknownOptionError(
+            "dedup_coordinate_space", coordinate_space, ("raw", "normalized")
         )
 
     return DeduplicationPolicy(
@@ -409,16 +413,14 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # ruff:ignore[too
     comparison_methods = item.get("comparison_methods")
     if comparison_methods is not None:
         if not isinstance(comparison_methods, list):
-            raise ValueError(
-                f"comparison_methods must be a list, got {type(comparison_methods)}"
-            )
+            raise ParameterTypeError("comparison_methods", comparison_methods, list)
         references = list(comparison_methods)
     else:
         references = item.get("references")
 
     kernel_kwargs = item.get("kernel_kwargs", {})
     if not isinstance(kernel_kwargs, dict):
-        raise TypeError(f"kernel_kwargs must be a mapping, got {type(kernel_kwargs)}")
+        raise ParameterTypeError("kernel_kwargs", kernel_kwargs, dict)
 
     mode_str = str(item.get("closest_sample_mode", "per_dimension"))
     if mode_str == "global":
@@ -497,7 +499,7 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # ruff:ignore[too
 def glob_run_mc_results(item: dict[str, Any]) -> dict[str, Any]:
     inputs = item.get("inputs", [])
     if not isinstance(inputs, list) or len(inputs) == 0:
-        raise ValueError("mc-results mode requires a non-empty 'inputs' list")
+        raise MissingSpecFieldError("mc-results", "inputs")
     files = collect_monte_carlo_files([str(inp) for inp in inputs])
     result_df = evaluate_monte_carlo_results(
         files=files,
@@ -539,11 +541,11 @@ def run_spec(
             failure.
 
     Raises:
-        BadParameter: If the spec file does not exist.
+        PathNotFoundParameterError: If the spec file does not exist.
     """
     spec = pathlib.Path(spec_path)
     if not spec.exists():
-        raise typer.BadParameter(f"Spec file not found: {spec}")
+        raise PathNotFoundParameterError("spec", spec)
 
     manager = ExperimentManager(config=KernelExperimentConfig())
 
@@ -555,7 +557,7 @@ def run_spec(
             return glob_run_dataset(item)
         if mode == "mc-results":
             return glob_run_mc_results(item)
-        raise ValueError(f"Unsupported spec mode: {mode}")
+        raise UnknownOptionError("mode", mode, ("mc-sample", "dataset", "mc-results"))
 
     summary = manager.run_batch_spec(
         spec_path=spec,

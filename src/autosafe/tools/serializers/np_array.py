@@ -29,7 +29,7 @@ def decode_np_array(obj: object) -> npt.NDArray[Any]:
             array.
 
     Returns:
-        np.ndarray: The reconstructed numpy array.
+        npt.NDArray[Any]: The reconstructed numpy array.
     """
     array_obj = cast("NumpyArrayDict", obj)
     return np.array(array_obj["__ndarray__"], dtype=array_obj["dtype"])
@@ -39,7 +39,7 @@ def encode_np_array(array: npt.NDArray[Any]) -> NumpyArrayDict:
     """Convert a numpy array to a NumpyArrayDict.
 
     Args:
-        array (np.ndarray): The numpy array to convert.
+        array (npt.NDArray[Any]): The numpy array to convert.
 
     Returns:
         NumpyArrayDict: The dictionary representation of the numpy

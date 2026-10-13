@@ -67,6 +67,11 @@ Affinity: TypeAlias = Annotated[Float[Array, ""], Ge(0), Le(1)]  # ruff:ignore[f
 AffinityVector: TypeAlias = Annotated[Float[Array, "n"], Ge(0), Le(1)]  # ruff:ignore[undefined-name, quoted-type-alias]
 """1-D JAX array of affinity values, each constrained to [0, 1]."""
 
+AffinityDual: TypeAlias = (
+    tuple[Affinity, Affinity] | tuple[AffinityVector, AffinityVector]
+)
+"""Linear affinity and log-survival, both scalars or both vectors."""
+
 # NumPy types: used for stored state, FAISS, serializers, hashing
 NPFloatType: TypeAlias = np.float64
 """NumPy scalar float dtype; mirrors FloatType for NumPy arrays."""
@@ -142,6 +147,7 @@ OpenODDFeature: TypeAlias = Union[
 
 __all__ = [
     "Affinity",
+    "AffinityDual",
     "AffinityVector",
     "Array",
     "BoundSpec",

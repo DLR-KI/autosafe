@@ -10,6 +10,13 @@ from typing import Any, Literal, cast
 import numpy as np
 import pytest
 
+from autosafe.exceptions import (
+    EmptyParameterError,
+    MissingParameterError,
+    ParameterOrderError,
+    ParameterTypeError,
+    ShapeMismatchError,
+)
 from autosafe.odd import (
     PARAMETER_SPECS,
     AutoSafeConfig,
@@ -106,7 +113,10 @@ def test_membership_mode_and_threshold_must_agree() -> None:
 
 
 def test_xi_must_be_below_fixed_zeta() -> None:
-    with pytest.raises(ValueError, match="must be below"):
+    with pytest.raises(
+        ParameterOrderError,
+        match=r"ood\.max_affinity must be strictly less than membership\.affinity_threshold",
+    ):
         AutoSafeConfig.from_mapping({"zeta": 0.2, "xi": 0.2})
 
 
@@ -156,16 +166,22 @@ def test_parameter_registry_exposes_every_paper_symbol() -> None:
 @pytest.mark.parametrize(
     ("factory", "match"),
     [
-        (lambda: CalibratedRBFConfig(decay_per_median_gap=True), "real number"),
+        (
+            lambda: CalibratedRBFConfig(decay_per_median_gap=True),
+            "decay_per_median_gap must be of type",
+        ),
         (lambda: CalibratedRBFConfig(decay_per_median_gap=np.inf), "finite"),
         (lambda: CalibratedRBFConfig(width_in_median_gaps=0.0), "greater than 0"),
-        (lambda: CalibratedRBFConfig(relative_variance_floor=1.0), "in \\(0, 1\\)"),
+        (
+            lambda: CalibratedRBFConfig(relative_variance_floor=1.0),
+            r"relative_variance_floor must be in \(0\.0, 1\.0\)",
+        ),
         (
             lambda: OODConsistencyConfig(
                 max_affinity=0.1,
                 max_iterations=cast("Any", 1.5),
             ),
-            "integer",
+            "max_iterations must be of type int",
         ),
         (lambda: OODConsistencyConfig(max_affinity=0.1, refresh_interval=0), "greater"),
         (
@@ -175,9 +191,12 @@ def test_parameter_registry_exposes_every_paper_symbol() -> None:
         (lambda: NormalizationConfig(method=cast("Any", "other")), "method"),
         (
             lambda: NormalizationConfig(target_range=cast("Any", (0.0,))),
-            "two values",
+            "target_range has 1 entries",
         ),
-        (lambda: NormalizationConfig(target_range=(1.0, 1.0)), "lower bound"),
+        (
+            lambda: NormalizationConfig(target_range=(1.0, 1.0)),
+            r"target_range\[0\] must be strictly less than",
+        ),
         (lambda: EvaluationConfig(local_noise_multiple=0.0), "greater than 0"),
     ],
 )
@@ -204,19 +223,21 @@ def test_manual_scale_accepts_numpy_scalars_and_vectors(value: np.ndarray) -> No
 
 
 @pytest.mark.parametrize(
-    ("value", "match"),
+    ("value", "error", "match"),
     [
-        (np.ones((1, 1)), "one-dimensional"),
-        ([], "must not be empty"),
+        (np.ones((1, 1)), ShapeMismatchError, "maximum_variance has shape"),
+        ([], EmptyParameterError, "maximum_variance must not be empty"),
     ],
 )
-def test_manual_scale_rejects_invalid_sequences(value: object, match: str) -> None:
-    with pytest.raises(ValueError, match=match):
+def test_manual_scale_rejects_invalid_sequences(
+    value: object, error: type[Exception], match: str
+) -> None:
+    with pytest.raises(error, match=match):
         ManualRBFConfig(maximum_variance=cast("Any", value))
 
 
 def test_mapping_rejects_invalid_names_and_modes() -> None:
-    with pytest.raises(TypeError, match="names must be strings"):
+    with pytest.raises(ParameterTypeError, match="parameter_name must be of type"):
         AutoSafeConfig.from_mapping(cast("Any", {1: 2}))
     with pytest.raises(ValueError, match="unknown autoSAFE parameter"):
         AutoSafeConfig.from_mapping({"zetaa": 0.5})
@@ -236,9 +257,11 @@ def test_mapping_rejects_invalid_names_and_modes() -> None:
         })
     with pytest.raises(ValueError, match=r"membership\.mode"):
         AutoSafeConfig.from_mapping({"membership_mode": "other", "zeta": 0.5})
-    with pytest.raises(ValueError, match="requires zeta or epsilon"):
+    with pytest.raises(
+        MissingParameterError, match="zeta is required unless epsilon is given"
+    ):
         AutoSafeConfig.from_mapping({"kernel_mode": "auto"})
-    with pytest.raises(ValueError, match="require xi"):
+    with pytest.raises(MissingParameterError, match="xi/max_ood_affinity is required"):
         AutoSafeConfig.from_mapping({
             "zeta": 0.5,
             "ood_shrink_factor": 0.8,

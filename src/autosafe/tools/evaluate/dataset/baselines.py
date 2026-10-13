@@ -73,6 +73,9 @@ class _ComparisonMonitor(Protocol):
 
         Args:
             points (Matrix | NPMatrix): Reference points to fit on.
+
+        Returns:
+            object: The fitted monitor.
         """
 
     def evaluate_batch(
@@ -84,6 +87,9 @@ class _ComparisonMonitor(Protocol):
 
         Args:
             test_points (Matrix | NPMatrix): Test points to evaluate.
+
+        Returns:
+            npt.NDArray[np.bool_]: Membership flag per test point.
         """
 
 
@@ -101,7 +107,7 @@ class _BaselineEvaluationData(NamedTuple):
             monitor evaluation.
         n_test_points (int): Number of test points, used for evaluation
             management.
-        method_params (dict[str, dict[str, object]]): Per-method
+        method_params (dict[str, dict[str, object]] | None): Per-method
             parameter overrides passed to create_comparison_monitor.
     """
 
@@ -337,8 +343,9 @@ def _build_dataset_reference_labels(  # ruff:ignore[too-many-arguments]
 
     Args:
         dataset_path (Path): Input dataset path.
-        anchor_points (Matrix): Reference anchor points from ODD.
-        test_points (Matrix): Test points to evaluate.
+        anchor_points (Matrix | NPMatrix): Reference anchor points from
+            ODD.
+        test_points (Matrix | NPMatrix): Test points to evaluate.
         references (list[str] | None): Baseline reference methods.
         ground_truth_yaml (Path | None): Path to YAML GT.
         normalizer (RangeNormalizer | None): Optional normalizer.

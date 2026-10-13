@@ -13,7 +13,14 @@ import pytest
 from scipy.spatial import QhullError
 from typer.testing import CliRunner
 
-from autosafe.exceptions import LinearAffinityDecisionWarning
+from autosafe.exceptions import (
+    LengthMismatchError,
+    LinearAffinityDecisionWarning,
+    NoInputFilesError,
+    NonPositiveParameterError,
+    NoReferenceLabelsError,
+    UnknownOptionError,
+)
 from autosafe.samples import Samples
 from autosafe.tools.evaluate import cli as eval_cli
 from autosafe.tools.evaluate.core import (
@@ -133,7 +140,7 @@ def test_core_process_files_and_hull_success(
         _ = points
         calls.append(qhull_options)
         if qhull_options is None:
-            raise QhullError("fail first")
+            raise QhullError
         return _Hull()
 
     monkeypatch.setattr(
@@ -194,9 +201,9 @@ def test_metrics_module(tmp_path: Path):
     assert len(build_affinity_thresholds("linear", 3)) == 3
     assert len(build_affinity_thresholds("log", 4)) == 4
 
-    with pytest.raises(ValueError, match="count must be positive"):
+    with pytest.raises(NonPositiveParameterError, match="count must be greater than 0"):
         build_affinity_thresholds("linear", 0)
-    with pytest.raises(ValueError, match="mode must be"):
+    with pytest.raises(UnknownOptionError, match="unknown mode "):
         build_affinity_thresholds("unknown", 2)
 
     with pytest.raises(ValueError, match="affinity"):
@@ -206,7 +213,7 @@ def test_metrics_module(tmp_path: Path):
 
     with (
         pytest.warns(LinearAffinityDecisionWarning),
-        pytest.raises(ValueError, match="length does not match"),
+        pytest.raises(LengthMismatchError, match="r has"),
     ):
         evaluate_affinity_metrics(
             pl.DataFrame({"affinity": [0.1, 0.2]}),
@@ -288,7 +295,7 @@ def _random_scores() -> tuple[pl.DataFrame, np.ndarray, list[tuple[float, float]
     """Random affinities with exact survivals, labels, and a threshold grid.
 
     Returns:
-        tuple: Scores frame, boolean labels, and threshold pairs.
+        tuple[pl.DataFrame, np.ndarray, list[tuple[float, float]]]: Scores frame, boolean labels, and threshold pairs.
     """
     rng = np.random.default_rng(1)
     affinities = rng.uniform(0.0, 1.0, size=300)
@@ -641,7 +648,7 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         "autosafe.tools.evaluate.workflows._baseline_memberships",
         lambda _a, _b, _m, **_kw: {},
     )
-    with pytest.raises(ValueError, match="No reference labels"):
+    with pytest.raises(NoReferenceLabelsError):
         evaluate_monte_carlo_results(
             [mc_file], references=["unknown"], csv_output=tmp_path / "out2.csv"
         )
@@ -688,7 +695,7 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         "autosafe.tools.evaluate.workflows._baseline_memberships",
         lambda _a, _b, _m, **_kw: {},
     )
-    with pytest.raises(ValueError, match="No reference labels"):
+    with pytest.raises(NoReferenceLabelsError):
         evaluate_dataset_mode(
             dataset_path=ds,
             n_samples=2,
@@ -705,8 +712,7 @@ def test_workflows_public_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     no_file = runner.invoke(eval_cli.EVAL_APP, ["sampling-results"])
     assert no_file.exit_code != 0
-    assert isinstance(no_file.exception, FileNotFoundError)
-    assert "No file" in str(no_file.exception)
+    assert isinstance(no_file.exception, NoInputFilesError)
 
     monkeypatch.setattr(
         "autosafe.tools.evaluate.cli.collect_monte_carlo_files", lambda _f: [mc_file]

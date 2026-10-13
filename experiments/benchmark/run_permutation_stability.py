@@ -44,6 +44,9 @@ DEFAULT_OUTDIR = Path("experiments/benchmark/results/permutation_stability")
 def _sigma_by_coord(odd: Samples) -> dict[tuple, NPArray]:
     """Map each rounded anchor coordinate to its sigma diagonal.
 
+    Args:
+        odd (Samples): Built ODD whose anchors carry RBF kernels.
+
     Returns:
         dict[tuple, NPArray]: Sigma diagonal keyed by the anchor
             coordinate rounded to 9 decimals.

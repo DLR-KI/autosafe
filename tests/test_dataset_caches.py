@@ -14,7 +14,14 @@ import numpy as np
 import pytest
 
 import autosafe
-from autosafe.exceptions import EmptyAnchorPoolError
+from autosafe.exceptions import (
+    AutoCalibrationModeError,
+    ConflictingParametersError,
+    EmptyAnchorPoolError,
+    ParameterOutOfRangeError,
+    ParameterTypeError,
+    UnknownOptionError,
+)
 from autosafe.kernels.rbf import RBFKernel
 from autosafe.preprocessing import RangeNormalizer
 from autosafe.samples import Samples
@@ -77,7 +84,7 @@ def test_neighbor_cache_hit_skips_recomputation(
     assert cache.exists()
 
     def _fail(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("cache hit must not recompute")
+        pytest.fail("cache hit must not recompute")
 
     monkeypatch.setattr(neighbor_cache, "_compute_neighbor_indices", _fail)
     second = _get_or_create_neighbor_indices(
@@ -223,22 +230,32 @@ def test_calibration_lambda_rel_sets_relative_floor() -> None:
         (
             {"calibration": "auto", "calibration_gamma": 1.0, "calibration_c": 1.0},
             "global",
-            ValueError,
+            ConflictingParametersError,
             "not both",
         ),
-        ({"calibration": "bogus"}, "global", ValueError, "unknown calibration mode"),
-        ({"calibration": "auto"}, "per_dimension", ValueError, "requires"),
+        (
+            {"calibration": "bogus"},
+            "global",
+            UnknownOptionError,
+            "unknown calibration 'bogus'",
+        ),
+        (
+            {"calibration": "auto"},
+            "per_dimension",
+            AutoCalibrationModeError,
+            "requires",
+        ),
         (
             {"calibration": "auto", "calibration_lambda_rel": "0.1"},
             "global",
-            TypeError,
-            "must be numeric",
+            ParameterTypeError,
+            "calibration_lambda_rel must be of type",
         ),
         (
             {"calibration": "auto", "calibration_lambda_rel": 1.0},
             "global",
-            ValueError,
-            r"must be in \(0, 1\)",
+            ParameterOutOfRangeError,
+            r"calibration_lambda_rel must be in \(0\.0, 1\.0\)",
         ),
     ],
     ids=["gamma_and_c", "unknown_mode", "per_dimension", "lambda_type", "lambda_range"],

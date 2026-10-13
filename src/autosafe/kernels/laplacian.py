@@ -10,6 +10,12 @@ import jax.numpy as jnp
 import numpy as np
 
 from autosafe import _jax_config  # ruff:ignore[unused-import]
+from autosafe.exceptions import (
+    KernelParametersNotSetError,
+    MissingParameterError,
+    NonPositiveParameterError,
+    ShapeMismatchError,
+)
 from autosafe.kernels.kernel import Kernel
 from autosafe.typing import (
     Affinity,
@@ -35,27 +41,28 @@ def _validate_alpha(
             kernel.
 
     Returns:
-        NPVector: The validated alpha vector.
+        NPVector | None: The validated alpha vector.
 
     Raises:
-        ValueError: If alpha is not positive or does not match the
-            dimension of x_i.
+        NonPositiveParameterError: If alpha is not positive.
+        ShapeMismatchError: If alpha does not match the dimension of
+            x_i.
     """
     if isinstance(alpha, (float, int)):
         if alpha <= 0:
-            raise ValueError("alpha must be positive.")
+            raise NonPositiveParameterError("alpha", alpha)
         alpha = cast("NPVector", np.full_like(x_i, alpha, dtype=NPFloatType))
     elif isinstance(alpha, jax.Array):
         alpha = np.asarray(alpha, NPFloatType)
         if alpha.shape != x_i.shape:
-            raise ValueError("alpha must have the same dimension as x_i.")
+            raise ShapeMismatchError("alpha", alpha.shape, x_i.shape)
         if not np.all(alpha > 0):
-            raise ValueError("alpha must be positive.")
+            raise NonPositiveParameterError("alpha", alpha)
     elif alpha is not None:
         if alpha.shape != x_i.shape:
-            raise ValueError("alpha must have the same dimension as x_i.")
+            raise ShapeMismatchError("alpha", alpha.shape, x_i.shape)
         if not np.all(alpha > 0):
-            raise ValueError("alpha must be positive.")
+            raise NonPositiveParameterError("alpha", alpha)
         alpha = alpha.astype(NPFloatType)
     return alpha
 
@@ -119,12 +126,12 @@ class LaplacianKernel(Kernel):
                 kernel.
 
         Raises:
-            ValueError: If `alpha` is None. While this is not allowed
-                per type hints anyway, it is included for clarity as
-                None is allowed in the constructor.
+            MissingParameterError: If `alpha` is None. While this is
+                not allowed per type hints anyway, it is included for
+                clarity as None is allowed in the constructor.
         """
         if alpha is None:
-            raise ValueError("alpha must be provided for LaplacianKernel.")
+            raise MissingParameterError("alpha")
         self.alpha = _validate_alpha(self.x_i, alpha)
         # Invalidate JAX cache
         self._x_i_jax = None
@@ -150,10 +157,11 @@ class LaplacianKernel(Kernel):
                 kernel at x as a JAX array.
 
         Raises:
-            ValueError: If the kernel parameters have not been set.
+            KernelParametersNotSetError: If the kernel parameters have
+                not been set.
         """
         if self.alpha is None:
-            raise ValueError("Kernel parameters have not been set.")
+            raise KernelParametersNotSetError("alpha")
         dim = self.x_i.shape[0]
         x_j = jnp.asarray(x)
         x_i_j = self._get_x_i_jax()

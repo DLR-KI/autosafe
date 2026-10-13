@@ -23,11 +23,15 @@ import tqdm.rich
 from loguru import logger
 
 from autosafe.exceptions import (
+    KernelNotDefinedError,
+    KernelParametersNotSetError,
     KernelSaturationError,
     NearAnchorOODWarning,
     OODAnchorCoincidenceError,
     OODConsistencyNotReachedError,
     OODDimensionMismatchError,
+    ParameterOutOfRangeError,
+    UnsupportedKernelError,
 )
 from autosafe.kernels.rbf import RBFKernel
 from autosafe.pointsets import rows_in
@@ -97,10 +101,10 @@ def kernel_over_points(
             ``log1m_k = log(1 - k)`` (``-inf`` on an exact hit).
 
     Raises:
-        RuntimeError: If the kernel has no sigma_inv.
+        KernelParametersNotSetError: If the kernel has no sigma_inv.
     """
     if kern.sigma_inv is None:
-        raise RuntimeError("kernel has no sigma_inv")
+        raise KernelParametersNotSetError("sigma_inv")
     diff = np.asarray(points, dtype=float) - np.asarray(kern.x_i, dtype=float)
     inv = np.asarray(kern.sigma_inv, dtype=float)
     if kern.sigma_is_diagonal:
@@ -171,12 +175,12 @@ def _validate_parameters(xi: float, shrink_factor: float) -> None:
         shrink_factor (float): Covariance scale factor c.
 
     Raises:
-        ValueError: If either falls outside (0, 1).
+        ParameterOutOfRangeError: If either falls outside (0, 1).
     """
     if not 0.0 < xi < 1.0:
-        raise ValueError("xi must be in (0, 1)")
+        raise ParameterOutOfRangeError("xi", xi, 0.0, 1.0)
     if not 0.0 < shrink_factor < 1.0:
-        raise ValueError("shrink_factor must be in (0, 1)")
+        raise ParameterOutOfRangeError("shrink_factor", shrink_factor, 0.0, 1.0)
 
 
 def _validate_disjoint(odd: "Samples", ood: npt.NDArray[np.float64]) -> None:
@@ -241,19 +245,17 @@ def _dominant_kernel(
             kernel itself, and all kernel values at ``point``.
 
     Raises:
-        RuntimeError: If the selected kernel is undefined.
-        TypeError: If the selected kernel is not an RBFKernel.
+        KernelNotDefinedError: If the selected kernel is undefined.
+        UnsupportedKernelError: If the selected kernel is not an
+            RBFKernel.
     """
     k_vals = kernel_values_at(odd, point)
     i_star = int(np.argmax(k_vals))
     kern = odd.samples[i_star].kernel
     if kern is None:  # pragma: no cover
-        raise RuntimeError(f"Kernel {i_star} is not defined.")
+        raise KernelNotDefinedError(i_star)
     if not isinstance(kern, RBFKernel):
-        raise TypeError(
-            f"Kernel {i_star} is not an RBFKernel; "
-            "OOD consistency only supports RBFKernel."
-        )
+        raise UnsupportedKernelError(i_star, kern)
     return i_star, kern, k_vals
 
 
@@ -403,6 +405,10 @@ class _LoopState:
     Bundled so the loop body reads as a sequence of small steps instead
     of threading eight values through every helper.
 
+    Args:
+        survival (npt.NDArray[np.float64]): Initial per-point
+            log-survival, from an exact computation.
+
     Attributes:
         survival (npt.NDArray[np.float64]): Per-point log-survival.
         exact (bool): Whether ``survival`` is an exact recomputation.
@@ -411,6 +417,13 @@ class _LoopState:
         iterations (int): Adjustments applied so far.
         worst_alpha (float): Affinity of the most-violated point.
     """
+
+    survival: npt.NDArray[np.float64]
+    exact: bool
+    recomputations: int
+    adjusted: dict[int, int]
+    iterations: int
+    worst_alpha: float
 
     def __init__(self, survival: npt.NDArray[np.float64]) -> None:
         self.survival = survival

@@ -242,6 +242,9 @@ def main(
 def _nn_dists(pts: NPArray) -> NPArray:
     """Full-space L2 distance from each point to its nearest other one.
 
+    Args:
+        pts (NPArray): (N, D) points.
+
     Returns:
         NPArray: (N,) nearest-neighbor distances.
     """
@@ -256,6 +259,14 @@ def _perturbed_validation(
     rng: np.random.Generator,
 ) -> tuple[NPArray, npt.NDArray[np.bool_]]:
     """Half uniform-on-2x-box, half anchor-perturbed validation points.
+
+    Args:
+        odd_gt (SyntheticODD): Ground-truth ODD for box and labels.
+        id_raw (NPArray): (N, D) RAW in-distribution anchor points.
+        sigma_raw (float): Std of the Gaussian anchor perturbation in
+            RAW units.
+        n (int): Total number of validation points.
+        rng (np.random.Generator): Random number generator.
 
     Returns:
         tuple[NPArray, npt.NDArray[np.bool_]]: Points in the same

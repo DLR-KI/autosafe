@@ -101,13 +101,7 @@ def _load_dataset_context(
     kernel_type: KernelType,
     kernel_kwargs: dict[str, Any],
     closest_sample_mode: ClosestSampleModeType,
-) -> tuple[
-    Samples,
-    int,
-    int,
-    NPVector,
-    NPVector,
-]:
+) -> tuple[Samples, int, int, NPVector, NPVector]:
     """Load the ODD and derived dataset context for an experiment.
 
     Args:
@@ -120,7 +114,7 @@ def _load_dataset_context(
             the closest sample.
 
     Returns:
-        tuple[Samples, int, int, npt.NDArray, npt.NDArray]: ODD object,
+        tuple[Samples, int, int, NPVector, NPVector]: ODD object,
             dataset size, dataset dimensions, and bounds.
     """
     if dataset_path.suffix.lower() == ".json":

@@ -12,6 +12,7 @@ import jax.numpy as jnp
 from autosafe import (
     _jax_config,  # ruff:ignore[unused-import]  # MUST precede first jnp use
 )
+from autosafe.exceptions import UnknownOptionError
 from autosafe.typing import DualVariant, StandardVariant
 
 if TYPE_CHECKING:
@@ -42,7 +43,8 @@ def _build_tile(
             tuple[jax.Array, jax.Array].
 
     Raises:
-        ValueError: If `variant` is not a recognized variant name.
+        UnknownOptionError: If `variant` is not a recognized variant
+            name.
     """
     if variant == "diag":
 
@@ -131,7 +133,7 @@ def _build_tile(
             return jnp.prod(factor, axis=0), jnp.sum(log_term, axis=0)
 
         return _tile
-    raise ValueError(f"unknown variant {variant!r}")
+    raise UnknownOptionError("variant", variant)
 
 
 @overload
@@ -178,8 +180,8 @@ def _affinity(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
         x (jax.Array): (M, D) array of evaluation points.
         anchor_chunk (int): Tile size along the anchor dimension.
         point_chunk (int): Tile size along the point dimension.
-        variant (str): "diag" for diagonal covariance, "full_dense"
-            for dense.
+        variant (StandardVariant): "diag" for diagonal covariance,
+            "full_dense" for dense.
 
     Returns:
         jax.Array: (M,) affinity values = 1 - prod_i(1 - k_i).
@@ -255,7 +257,7 @@ def _affinity_dual(  # ruff:ignore[too-many-arguments, too-many-locals, too-many
         x (jax.Array): (M, D) array of evaluation points.
         anchor_chunk (int): Tile size along the anchor dimension.
         point_chunk (int): Tile size along the point dimension.
-        variant (str): "diag_dual" or "full_dense_dual".
+        variant (DualVariant): "diag_dual" or "full_dense_dual".
 
     Returns:
         tuple[jax.Array, jax.Array]: (alpha, survival), each (M,).

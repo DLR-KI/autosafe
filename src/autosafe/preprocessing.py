@@ -9,6 +9,12 @@ import jax.numpy as jnp
 import numpy as np
 
 from autosafe import _jax_config  # ruff:ignore[unused-import]
+from autosafe.exceptions import (
+    NotFittedError,
+    RangeBoundsUnavailableError,
+    ShapeMismatchError,
+    UnknownOptionError,
+)
 from autosafe.typing import FloatType, Matrix, NPFloatType, NPMatrix, NPVector
 
 
@@ -21,6 +27,20 @@ class RangeNormalizer:
     2. Preserving outliers (values can exceed target range)
     3. Handling zero-variance dimensions gracefully
     4. Supporting different normalization methods
+
+    Args:
+        target_range (tuple[float, float]): Desired output range.
+            (for example [-1, 1] for kernelaffinity).
+        method (Literal["minmax", "iqr", "zscore"]):
+            Normalization method. Supported values are 'minmax',
+            'iqr', and 'zscore' (default 'iqr').
+        iqr_factor (float): Multiplier for IQR to define "normal".
+            range bounds.
+        eps (float): Small constant to prevent division by zero.
+
+    Attributes:
+        range_bounds_ (tuple[NPVector, NPVector]): Lower and upper
+            bounds used for normalization, available after fitting.
     """
 
     def __init__(
@@ -30,18 +50,6 @@ class RangeNormalizer:
         iqr_factor: float = 1.5,
         eps: float = 1e-10,
     ) -> None:
-        """Initialize the range normalizer.
-
-        Args:
-            target_range (tuple[float, float]): Desired output range.
-                (for example [-1, 1] for kernelaffinity).
-            method (Literal["minmax", "iqr", "zscore"]):
-                Normalization method. Supported values are 'minmax',
-                'iqr', and 'zscore' (default 'iqr').
-            iqr_factor (float): Multiplier for IQR to define "normal".
-                range bounds.
-            eps (float): Small constant to prevent division by zero.
-        """
         self.target_range = target_range
         self.target_min, self.target_high = target_range
         self.target_span = self.target_high - self.target_min
@@ -73,11 +81,10 @@ class RangeNormalizer:
             RangeNormalizer: Self for chaining.
 
         Raises:
-            ValueError: If input data is not 2D or if required.
-                statistics cannot be computed for the selected method.
+            ShapeMismatchError: If input data is not 2D.
         """
         if x.ndim != 2:  # ruff:ignore[magic-value-comparison]
-            raise ValueError(f"Expected 2D data, got {x.ndim}D shape: {x.shape}")
+            raise ShapeMismatchError("x", x.shape, (None, None))
 
         x_j = jnp.asarray(x, dtype=FloatType)
         self.n_features_ = x_j.shape[1]
@@ -122,17 +129,19 @@ class RangeNormalizer:
                 can exceed target range).
 
         Raises:
-            ValueError: If normalizer is not initialized or if required.
-                statistics are not available for the selected method.
+            NotFittedError: If normalizer is not initialized or if
+                required statistics are not available for the selected
+                method.
+            UnknownOptionError: If the normalization method is unknown.
         """
         if not self.initialized_:
-            raise ValueError("Normalizer must be fit to data before transforming.")
+            raise NotFittedError(type(self).__name__)
 
         x_j = jnp.asarray(x, dtype=FloatType)
 
         if self.method == "minmax":
             if self.ref_min_ is None or self.ref_max_ is None:
-                raise ValueError("Min-max normalizer requires fitted min/max values.")
+                raise NotFittedError(type(self).__name__)
 
             normalized = (x_j - self.ref_min_) / (
                 (self.ref_max_ - self.ref_min_) + self.eps
@@ -141,9 +150,7 @@ class RangeNormalizer:
 
         if self.method == "iqr":
             if self.ref_q1_ is None or self.ref_q3_ is None or self.ref_bounds_ is None:
-                raise ValueError(
-                    "IQR-based normalizer requires fitted Q1/Q3/bounds values."
-                )
+                raise NotFittedError(type(self).__name__)
 
             lower = self.ref_bounds_[0]
             upper = self.ref_bounds_[1]
@@ -162,12 +169,12 @@ class RangeNormalizer:
 
         if self.method == "zscore":
             if self.ref_mean_ is None or self.ref_std_ is None:
-                raise ValueError("Z-score normalizer requires fitted mean/std values.")
+                raise NotFittedError(type(self).__name__)
 
             z_scores = (x_j - self.ref_mean_) / self.ref_std_
             return ((z_scores + 3.0) / 6.0) * self.target_span + self.target_min
 
-        raise ValueError(f"Unknown method: {self.method}")
+        raise UnknownOptionError("method", self.method, ("minmax", "iqr", "zscore"))
 
     def fit_transform(self, x: Matrix | NPMatrix) -> "Matrix":
         """Fit and transform in one step.
@@ -193,23 +200,24 @@ class RangeNormalizer:
             Matrix: Inverse transformed data as a JAX array.
 
         Raises:
-            ValueError: If normalizer is not initialized or if inverse.
-                transform is not implemented for the selected method.
+            NotFittedError: If normalizer is not initialized.
+            UnknownOptionError: If inverse transform is not implemented
+                for the selected method.
         """
         if not self.initialized_:
-            raise ValueError("Normalizer must be fit before inverse transform.")
+            raise NotFittedError(type(self).__name__)
 
         x_j = jnp.asarray(x, dtype=FloatType)
 
         if self.method == "minmax":
             if self.ref_min_ is None or self.ref_max_ is None:
-                raise ValueError("Min-max normalizer requires fitted min/max values.")
+                raise NotFittedError(type(self).__name__)
             return (x_j - self.target_min) / self.target_span * (
                 self.ref_max_ - self.ref_min_
             ) + self.ref_min_
         if self.method == "iqr":
             if self.ref_q1_ is None or self.ref_q3_ is None or self.ref_bounds_ is None:
-                raise ValueError("IQR normalizer requires fitted Q1/Q3/bounds values.")
+                raise NotFittedError(type(self).__name__)
             lower = self.ref_bounds_[0]
             upper = self.ref_bounds_[1]
             min_denom = jnp.maximum(
@@ -226,11 +234,11 @@ class RangeNormalizer:
             return x_normalized * span + lower
         if self.method == "zscore":
             if self.ref_mean_ is None or self.ref_std_ is None:
-                raise ValueError("Z-score normalizer requires fitted mean/std values.")
+                raise NotFittedError(type(self).__name__)
             x_normalized = (x_j - self.target_min) / self.target_span
             z_scores = x_normalized * 6.0 - 3.0
             return z_scores * self.ref_std_ + self.ref_mean_
-        raise ValueError(f"Inverse transform not implemented for method: {self.method}")
+        raise UnknownOptionError("method", self.method, ("minmax", "iqr", "zscore"))
 
     @property
     def range_bounds_(self) -> tuple[NPVector, NPVector]:
@@ -241,8 +249,8 @@ class RangeNormalizer:
                 for normalization, based on the selected method.
 
         Raises:
-            ValueError: If range bounds are not available for the.
-                selected method.
+            RangeBoundsUnavailableError: If range bounds are not
+                available for the selected method.
         """
         if (
             self.method == "minmax"
@@ -252,7 +260,7 @@ class RangeNormalizer:
             return self.ref_min_, self.ref_max_
         if self.method == "iqr" and self.ref_bounds_ is not None:
             return self.ref_bounds_[0], self.ref_bounds_[1]  # lower, upper
-        raise ValueError(f"Range bounds not available for method: {self.method}")
+        raise RangeBoundsUnavailableError(self.method)
 
 
 def create_robust_normalization_pipeline(

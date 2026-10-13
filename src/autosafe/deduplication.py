@@ -46,6 +46,7 @@ from autosafe.exceptions import (
     MissingRecordIdentifierError,
     NonFiniteCoordinateError,
     ResolutionCellOverflowError,
+    ShapeMismatchError,
 )
 
 #: Stable source-record identifier. Ints and strings sort
@@ -342,7 +343,7 @@ def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
             cell ids, the resolved policy, and audit digests.
 
     Raises:
-        ValueError: If ``points`` is not 2-dimensional.
+        ShapeMismatchError: If ``points`` is not 2-dimensional.
         DeduplicationDimensionMismatchError: If ``points``' column count
             does not match ``policy.n_dims``.
         NonFiniteCoordinateError: If any coordinate is non-finite.
@@ -353,9 +354,7 @@ def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
     """
     pts = np.asarray(points, dtype=np.float64)
     if pts.ndim != 2:  # ruff:ignore[magic-value-comparison]
-        raise ValueError(
-            f"points must be a 2D (n_points, n_dims) array, got ndim={pts.ndim}"
-        )
+        raise ShapeMismatchError("points", pts.shape, (None, None))
     n_input, n_dims = pts.shape
     if n_dims != policy.n_dims:
         raise DeduplicationDimensionMismatchError(policy.n_dims, n_dims)

@@ -10,6 +10,20 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from autosafe.exceptions import (
+    CalibrationDataRequiredError,
+    DuplicateFeatureNameError,
+    EmptyFeatureNameError,
+    EmptyParameterError,
+    LengthMismatchError,
+    NonFiniteParameterError,
+    OODConfigurationMismatchError,
+    ParameterOrderError,
+    ParameterTypeError,
+    ShapeMismatchError,
+    TooFewAnchorsError,
+    UnexpectedNoneError,
+)
 from autosafe.kernels.rbf import calibrate_rbf_scale_d_tilde, resolve_width_multiple
 from autosafe.neighbors import find_closest_vectors_by_index
 from autosafe.odd.config import (
@@ -37,21 +51,27 @@ def _as_matrix(
 ) -> NPMatrix:
     """Validate external tabular data and return float64 rows.
 
+    Args:
+        value (npt.ArrayLike): Tabular input data.
+        name (str): Parameter name used in error messages.
+        allow_empty (bool): Whether a matrix without rows is accepted.
+
     Returns:
         NPMatrix: Validated two-dimensional float64 data.
 
     Raises:
-        ValueError: If the input is empty, non-finite, or not a matrix.
+        ShapeMismatchError: If the input is not a matrix.
+        EmptyParameterError: If the input has no rows (unless allowed)
+            or no columns.
+        NonFiniteParameterError: If the input is non-finite.
     """
     result = np.asarray(value, dtype=np.float64)
     if result.ndim != 2:  # ruff:ignore[magic-value-comparison]
-        raise ValueError(f"{name} must have shape (n_samples, n_features)")
-    if not allow_empty and result.shape[0] == 0:
-        raise ValueError(f"{name} must contain at least one row")
-    if result.shape[1] == 0:
-        raise ValueError(f"{name} must contain at least one feature")
+        raise ShapeMismatchError(name, result.shape, (None, None))
+    if (not allow_empty and result.shape[0] == 0) or result.shape[1] == 0:
+        raise EmptyParameterError(name)
     if not np.isfinite(result).all():
-        raise ValueError(f"{name} must contain only finite values")
+        raise NonFiniteParameterError(name)
     return result
 
 
@@ -62,11 +82,17 @@ def _validate_feature_count(
 ) -> None:
     """Validate an optional matrix against the anchor feature count.
 
+    Args:
+        data (NPMatrix | None): Matrix to check, or ``None`` to skip the
+            check.
+        expected (int): Feature count of the anchors.
+        name (str): Parameter name used in error messages.
+
     Raises:
-        ValueError: If the matrix has a different feature count.
+        ShapeMismatchError: If the matrix has a different feature count.
     """
     if data is not None and data.shape[1] != expected:
-        raise ValueError(f"{name} has {data.shape[1]} features; expected {expected}")
+        raise ShapeMismatchError(name, data.shape, (None, expected))
 
 
 def _kernel_scale(
@@ -76,18 +102,22 @@ def _kernel_scale(
 ) -> float | npt.NDArray[np.float64]:
     """Convert immutable configuration scales to kernel arguments.
 
+    Args:
+        value (ScaleValue): Scalar or per-feature scale from the
+            configuration.
+        feature_count (int): Number of features.
+        name (str): Parameter name used in error messages.
+
     Returns:
         float | npt.NDArray[np.float64]: Scalar or feature vector.
 
     Raises:
-        ValueError: If a vector has the wrong feature count.
+        LengthMismatchError: If a vector has the wrong feature count.
     """
     if isinstance(value, tuple):
         result = np.asarray(value, dtype=np.float64)
         if result.shape != (feature_count,):
-            raise ValueError(
-                f"{name} has {result.size} values; expected {feature_count}"
-            )
+            raise LengthMismatchError(name, result.size, feature_count)
         return result
     return value
 
@@ -97,6 +127,11 @@ def _relative_floor(
     ratio: float,
 ) -> ScaleValue:
     """Derive lambda from kappa and a relative floor.
+
+    Args:
+        maximum_variance (ScaleValue): Kappa, a scalar or per-feature
+            tuple.
+        ratio (float): Relative floor lambda_rel.
 
     Returns:
         ScaleValue: Derived absolute variance floor.
@@ -113,8 +148,16 @@ def _validate_floor(
 ) -> None:
     """Validate component-wise ``0 < lambda < kappa``.
 
+    Args:
+        maximum_variance (ScaleValue): Kappa, a scalar or per-feature
+            tuple.
+        variance_floor (ScaleValue): Lambda, a scalar or per-feature
+            tuple.
+        feature_count (int): Number of features.
+
     Raises:
-        ValueError: If any floor is not below its maximum variance.
+        ParameterOrderError: If any floor is not below its maximum
+            variance.
     """
     kappa = np.broadcast_to(
         np.asarray(maximum_variance, dtype=np.float64),
@@ -125,11 +168,15 @@ def _validate_floor(
         (feature_count,),
     )
     if not np.all(lam < kappa):
-        raise ValueError("variance_floor (lambda) must be below maximum_variance")
+        raise ParameterOrderError("variance_floor", "maximum_variance")
 
 
 def _normalizer_from_config(config: AutoSafeConfig) -> RangeNormalizer | None:
     """Create the configured normalizer, if enabled.
+
+    Args:
+        config (AutoSafeConfig): Configuration holding the normalization
+            settings.
 
     Returns:
         RangeNormalizer | None: Unfitted normalizer or ``None``.
@@ -151,6 +198,11 @@ def _transform(
 ) -> NPMatrix | None:
     """Apply a fitted normalizer while preserving ``None``.
 
+    Args:
+        normalizer (RangeNormalizer | None): Fitted normalizer, or
+            ``None`` for identity.
+        data (NPMatrix | None): Data to transform, or ``None``.
+
     Returns:
         NPMatrix | None: Transformed data or ``None``.
     """
@@ -161,22 +213,28 @@ def _transform(
     return np.asarray(normalizer.transform(data), dtype=np.float64)
 
 
+#: Resolved kernel configuration, kernel arguments, and neighbor mode.
+ResolvedKernel = tuple[ResolvedKernelConfig, dict[str, Any], ClosestSampleModeType]
+
+
 def _resolve_kernel(
     anchors: NPMatrix,
     config: AutoSafeConfig,
-) -> tuple[
-    ResolvedKernelConfig,
-    dict[str, Any],
-    ClosestSampleModeType,
-]:
+) -> ResolvedKernel:
     """Resolve kernel parameters against anchor geometry.
 
+    Args:
+        anchors (NPMatrix): Normalized ID anchor points.
+        config (AutoSafeConfig): Configuration holding the kernel
+            settings.
+
     Returns:
-        tuple: Resolved configuration, kernel arguments, and neighbor
-        mode.
+        ResolvedKernel: Resolved configuration, kernel arguments, and
+            neighbor mode.
 
     Raises:
-        TypeError: If an unsupported kernel configuration is provided.
+        ParameterTypeError: If an unsupported kernel configuration is
+            provided.
     """
     feature_count = anchors.shape[1]
     kernel = config.kernel
@@ -209,7 +267,9 @@ def _resolve_kernel(
         return resolved, {"kappa": kappa, "eta": eta, "lam": lam}, "global"
 
     if not isinstance(kernel, ManualRBFConfig):  # pragma: no cover
-        raise TypeError(f"unsupported kernel configuration {type(kernel)}")
+        raise ParameterTypeError(
+            "kernel", kernel, (CalibratedRBFConfig, ManualRBFConfig)
+        )
     floor = kernel.variance_floor
     if floor is None:
         floor = _relative_floor(
@@ -247,6 +307,9 @@ def _resolve_kernel(
 def _fixed_membership(config: FixedMembershipConfig) -> ResolvedMembershipConfig:
     """Resolve a fixed zeta to its authoritative log-space threshold.
 
+    Args:
+        config (FixedMembershipConfig): Fixed membership configuration.
+
     Returns:
         ResolvedMembershipConfig: Fixed threshold in both spaces.
     """
@@ -265,14 +328,22 @@ def _conformal_membership(
 ) -> ResolvedMembershipConfig:
     """Resolve epsilon after OOD adjustment.
 
+    Args:
+        config (ConformalMembershipConfig): Conformal membership
+            configuration.
+        samples (Samples): Fitted (and OOD-adjusted) ODD.
+        calibration_data (NPMatrix | None): Normalized held-out ID
+            calibration points.
+
     Returns:
         ResolvedMembershipConfig: Calibrated membership threshold.
 
     Raises:
-        ValueError: If held-out calibration data is absent.
+        CalibrationDataRequiredError: If held-out calibration data is
+            absent.
     """
     if calibration_data is None:
-        raise ValueError("conformal membership requires held-out calibration_data")
+        raise CalibrationDataRequiredError
     _, survival = samples.affinity_dual(calibration_data)
     zeta, log_threshold = conformal_membership_threshold(
         np.asarray(survival, dtype=np.float64),
@@ -331,15 +402,24 @@ class AutoSafeODD:
             AutoSafeODD: Fitted, queryable ODD.
 
         Raises:
-            ValueError: If data and configuration are inconsistent.
-            RuntimeError: If an internal invariant is violated.
+            TooFewAnchorsError: If fewer than two ID rows are given.
+            LengthMismatchError: If ``feature_names`` does not match the
+                feature count.
+            DuplicateFeatureNameError: If ``feature_names`` repeats a
+                name.
+            EmptyFeatureNameError: If ``feature_names`` contains an
+                empty name.
+            OODConfigurationMismatchError: If OOD data and OOD
+                configuration are not given together.
+            ParameterOrderError: If the resolved zeta is not above xi.
+            UnexpectedNoneError: If an internal invariant is violated.
         """
         if not isinstance(config, AutoSafeConfig):
             config = AutoSafeConfig.from_mapping(config)
 
         id_data = _as_matrix(in_distribution_data, "in_distribution_data")
         if id_data.shape[0] < 2:  # ruff:ignore[magic-value-comparison]
-            raise ValueError("at least two ID anchor rows are required")
+            raise TooFewAnchorsError(2, id_data.shape[0])
         ood_data = (
             None
             if out_of_distribution_data is None
@@ -361,22 +441,16 @@ class AutoSafeODD:
         if feature_names is not None:
             names = tuple(feature_names)
             if len(names) != feature_count:
-                raise ValueError(
-                    f"feature_names has {len(names)} entries; expected {feature_count}"
-                )
+                raise LengthMismatchError("feature_names", len(names), feature_count)
             if len(set(names)) != len(names):
-                raise ValueError("feature_names must be unique")
+                raise DuplicateFeatureNameError(names)
             if any(not name for name in names):
-                raise ValueError("feature_names must not contain empty names")
+                raise EmptyFeatureNameError
 
         if ood_data is None and config.ood is not None:
-            raise ValueError(
-                "OOD consistency configuration requires out_of_distribution_data"
-            )
+            raise OODConfigurationMismatchError(has_configuration=True)
         if ood_data is not None and config.ood is None:
-            raise ValueError(
-                "out_of_distribution_data requires OOD consistency configuration"
-            )
+            raise OODConfigurationMismatchError(has_configuration=False)
 
         normalizer = _normalizer_from_config(config)
         if normalizer is not None:
@@ -385,7 +459,7 @@ class AutoSafeODD:
         ood_normalized = _transform(normalizer, ood_data)
         calibration_normalized = _transform(normalizer, held_out)
         if id_normalized is None:  # pragma: no cover
-            raise RuntimeError("ID normalization unexpectedly returned None")
+            raise UnexpectedNoneError("id_normalized")
 
         resolved_kernel, kernel_kwargs, neighbor_mode = _resolve_kernel(
             id_normalized,
@@ -402,7 +476,7 @@ class AutoSafeODD:
         if ood_normalized is not None:
             ood_config = config.ood
             if ood_config is None:  # pragma: no cover
-                raise RuntimeError("validated OOD config disappeared")
+                raise UnexpectedNoneError("config.ood")
             ood_result = samples.enforce_ood_consistency(
                 ood_normalized,
                 xi=ood_config.max_affinity,
@@ -426,7 +500,7 @@ class AutoSafeODD:
             config.ood is not None
             and config.ood.max_affinity >= resolved_membership.affinity_threshold
         ):
-            raise ValueError("resolved zeta must be greater than OOD max affinity xi")
+            raise ParameterOrderError("xi", "zeta")
 
         return cls(
             in_distribution_data=id_data,
@@ -453,11 +527,15 @@ class AutoSafeODD:
     ) -> tuple[NPMatrix, bool]:
         """Validate and normalize query rows.
 
+        Args:
+            data (npt.ArrayLike): One query point or a matrix of query
+                points.
+
         Returns:
             tuple[NPMatrix, bool]: Query matrix and single-row marker.
 
         Raises:
-            RuntimeError: If normalization violates its contract.
+            UnexpectedNoneError: If normalization violates its contract.
         """
         raw = np.asarray(data, dtype=np.float64)
         is_single = raw.ndim == 1
@@ -470,7 +548,7 @@ class AutoSafeODD:
         )
         transformed = _transform(self.normalizer, matrix)
         if transformed is None:  # pragma: no cover
-            raise RuntimeError("query normalization unexpectedly returned None")
+            raise UnexpectedNoneError("transformed")
         return transformed, is_single
 
     def affinity(

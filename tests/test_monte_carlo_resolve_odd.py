@@ -21,6 +21,7 @@ import numpy as np
 import polytope as pc
 import pytest
 
+from autosafe.exceptions import ParameterTypeError
 from autosafe.tools.monte_carlo.sample import _resolve_odd
 
 _HALF_SPACE = {
@@ -114,5 +115,5 @@ def test_resolve_odd_accepts_yaml_path(tmp_path: Path):
 
 def test_resolve_odd_rejects_unsupported_custom_config_type():
     """Anything but a YAML path or a mapping is rejected explicitly."""
-    with pytest.raises(ValueError, match="YAML path or a mapping"):
+    with pytest.raises(ParameterTypeError, match="custom_odd_config must be of type"):
         _resolve_odd(_config(custom_odd_config=42), _box())

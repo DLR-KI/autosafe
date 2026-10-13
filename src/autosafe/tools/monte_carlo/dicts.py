@@ -13,9 +13,9 @@ from autosafe.typing import BoundSpec, KernelType, NPMatrix, NPVector, Vector
 class KernelConfig(TypedDict):
     """Configuration for a kernel.
 
-    Args:
+    Attributes:
         type (KernelType): The type of the kernel.
-        params (dict): The parameters for the kernel.
+        params (dict[str, Any]): The parameters for the kernel.
     """
 
     type: KernelType
@@ -25,7 +25,7 @@ class KernelConfig(TypedDict):
 class MonteCarloConfig(TypedDict):
     """Settings for the Monte Carlo sampling.
 
-    Args:
+    Attributes:
         dim (int): Number of dimensions.
         odd_type (Literal["box"]): Polytope type of the ODD. All
             shapes other than 'box' are not implemented yet.
@@ -39,9 +39,9 @@ class MonteCarloConfig(TypedDict):
             use.
         samples (int): Number of samples to draw.
         filename (Path): Path to the output file.
-        custom_odd_config (str | dict | None): Optional custom ODD
-            configuration. Can be a path to YAML file or inline
-            configuration dict for polytope definitions.
+        custom_odd_config (str | dict[str, Any] | None): Optional
+            custom ODD configuration. Can be a path to YAML file or
+            inline configuration dict for polytope definitions.
     """
 
     dim: int
@@ -60,7 +60,7 @@ class MonteCarloConfig(TypedDict):
 class PolytopeDict(TypedDict):
     """Dictionary representation of a polytope.
 
-    Args:
+    Attributes:
         A (NPMatrix): The polytope's half-space matrix.
         b (NPVector): The polytope's half-space vector.
     """
@@ -72,7 +72,7 @@ class PolytopeDict(TypedDict):
 class RegionDict(TypedDict):
     """Dictionary representation of a polytope region.
 
-    Args:
+    Attributes:
         list_poly (list[PolytopeDict]): List of polytopes defining the
             region.
     """
@@ -83,7 +83,7 @@ class RegionDict(TypedDict):
 class BoxBounds(TypedDict):
     """Bounds of the sampling box.
 
-    Args:
+    Attributes:
         lower_bounds (Vector): Lower bounds of the box.
         upper_bounds (Vector): Upper bounds of the box.
     """
@@ -95,7 +95,7 @@ class BoxBounds(TypedDict):
 class ODDBounds(TypedDict):
     """Bounds of the ODD box.
 
-    Args:
+    Attributes:
         lower_bounds (Vector): Lower bounds of the ODD.
         upper_bounds (Vector): Upper bounds of the ODD.
     """
@@ -107,7 +107,7 @@ class ODDBounds(TypedDict):
 class SamplingResult(TypedDict):
     """Result of a single Monte Carlo sample.
 
-    Args:
+    Attributes:
         coordinates (Vector): Coordinates of the sample.
         in_odd (bool): Whether the sample is inside the ODD.
         affinity (float): Affinity of the sample.
@@ -128,10 +128,11 @@ class ResultStats(TypedDict):
     This includes not only the results of the sampling, but also the
     definitions of the sampling box and the ODD.
 
-    Args:
+    Attributes:
         box (RegionDict): The sampling box.
         odd (RegionDict): The ODD box.
-        anchors (list): The anchor points used for the autoSAFE ODD.
+        anchors (list[Any]): The anchor points used for the autoSAFE
+            ODD.
         config (MonteCarloConfig): Configuration of the Monte Carlo
             sampling.
         autosafe_odd (Samples): The autoSAFE ODD.
@@ -152,7 +153,7 @@ class ResultStats(TypedDict):
 class PerformanceMetricsDict(TypedDict):
     """Performance metrics for Monte Carlo sampling evaluation.
 
-    Args:
+    Attributes:
         accuracy (float): The accuracy of the sampling.
         prevalance (float): The prevalence of positive samples.
         precision (float): The precision of the sampling.
@@ -182,7 +183,7 @@ class PerformanceMetricsDict(TypedDict):
 class ConfusionMatrixDict(TypedDict):
     """Confusion matrix for Monte Carlo sampling evaluation.
 
-    Args:
+    Attributes:
         true_positive (int): Number of true positive samples.
         false_positive (int): Number of false positive samples.
         true_negative (int): Number of true negative samples.
@@ -198,7 +199,7 @@ class ConfusionMatrixDict(TypedDict):
 class EvaluationResultsDict(TypedDict):
     """Data class for evaluation results.
 
-    Args:
+    Attributes:
         file (str): The name of the evaluated file.
         lim (float): The affinity limit used for evaluation.
         total_samples (int): Total number of samples evaluated.

@@ -20,13 +20,18 @@ import typer
 from experiments.benchmark import run_all
 
 
+class _ExplodedError(ValueError):
+    def __init__(self, name: str) -> None:
+        super().__init__(f"{name} exploded")
+
+
 def _fake_experiment(
     calls: list, name: str, *, fail: bool = False
 ) -> Callable[..., None]:
     def _main(*, quick: bool, seed: int, outdir: Path) -> None:
         calls.append((name, quick, seed, outdir))
         if fail:
-            raise ValueError(f"{name} exploded")
+            raise _ExplodedError(name)
         outdir.mkdir(parents=True, exist_ok=True)
         (outdir / "marker.txt").write_text("ok", encoding="utf-8")
 

@@ -26,6 +26,9 @@ from autosafe.tools.evaluate.workflows import evaluate_dataset_mode
 def _make_synthetic_dataset(tmp_path: Path) -> Path:
     """40-row, 2-dim dataset with two Gaussian blobs.
 
+    Args:
+        tmp_path (Path): Directory to write the CSV file to.
+
     Returns:
         Path: Path to the synthetic CSV dataset.
     """

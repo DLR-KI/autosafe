@@ -36,7 +36,7 @@ def from_csv(
         closest_sample_mode (ClosestSampleModeType): The closest sample
             mode to use.
         kernel_cls (KernelType): The kernel type to use.
-        kernel_kwargs (dict[str, Any]): The kernel parameters.
+        kernel_kwargs (dict[str, Any] | None): The kernel parameters.
         dedup_policy (DeduplicationPolicy | None): OFF BY DEFAULT. When
             set, rows are collapsed to one observed representative per
             resolution cell (see ``autosafe.deduplication``) before
@@ -72,7 +72,7 @@ def from_polars(
         closest_sample_mode (ClosestSampleModeType): The closest sample
             mode to use.
         kernel_cls (KernelType): The kernel type to use.
-        kernel_kwargs (dict[str, Any]): The kernel parameters.
+        kernel_kwargs (dict[str, Any] | None): The kernel parameters.
         dedup_policy (DeduplicationPolicy | None): OFF BY DEFAULT. See
             :func:`from_csv`.
 
@@ -104,7 +104,7 @@ def from_numpy(
         closest_sample_mode (ClosestSampleModeType): The closest sample
             mode to use.
         kernel_cls (KernelType): The kernel type to use.
-        kernel_kwargs (dict[str, Any]): The kernel parameters.
+        kernel_kwargs (dict[str, Any] | None): The kernel parameters.
         dedup_policy (DeduplicationPolicy | None): OFF BY DEFAULT. When
             set, rows are collapsed to one observed representative per
             resolution cell (see ``autosafe.deduplication``) before

@@ -13,6 +13,24 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
+from autosafe.exceptions import (
+    DuplicateConceptIdError,
+    DuplicateIndexError,
+    EmptyParameterError,
+    FeatureMappingCoverageError,
+    InvalidIdentifierError,
+    KernelParametersNotSetError,
+    LengthMismatchError,
+    NegativeIndexError,
+    NonFiniteParameterError,
+    NotPositiveDefiniteError,
+    ParameterDependencyError,
+    ReservedMetadataKeyError,
+    UnknownOptionError,
+    UnrepresentableODDError,
+    UnsupportedFileFormatError,
+    WhitespaceInUnitError,
+)
 from autosafe.odd.model import AutoSafeODD
 from autosafe.odd.openodd_schema import (
     OPENODD_VERSION,
@@ -62,20 +80,17 @@ _BUILTIN_UNIT_TYPES = frozenset({
 
 def _validate_identifier(value: str, name: str) -> None:
     if not _IDENTIFIER_PATTERN.fullmatch(value):
-        raise ValueError(
-            f"{name} must start with a letter and contain only letters, "
-            "digits, dots, hyphens, or underscores"
-        )
+        raise InvalidIdentifierError(name, value)
 
 
 def _indices(value: Sequence[int], name: str) -> tuple[int, ...]:
     result = tuple(value)
     if not result:
-        raise ValueError(f"{name} must contain at least one feature index")
+        raise EmptyParameterError(name)
     if any(isinstance(index, bool) or index < 0 for index in result):
-        raise ValueError(f"{name} must contain non-negative integers")
+        raise NegativeIndexError(name, result)
     if len(set(result)) != len(result):
-        raise ValueError(f"{name} must not contain duplicate indices")
+        raise DuplicateIndexError(name, result)
     return result
 
 
@@ -93,24 +108,29 @@ class OpenODDNumericFeature:
         """Validate the numeric feature mapping.
 
         Raises:
-            ValueError: If the mapping is not valid.
+            NegativeIndexError: If the index is not a non-negative
+                integer.
+            UnknownOptionError: If the primitive or unit type is
+                unknown.
+            ParameterDependencyError: If a unit is given without a unit
+                type.
+            WhitespaceInUnitError: If the unit contains whitespace.
         """
         if isinstance(self.index, bool) or self.index < 0:
-            raise ValueError("index must be a non-negative integer")
+            raise NegativeIndexError("index", self.index)
         _validate_identifier(self.concept_id, "concept_id")
         if self.primitive_type not in {"float", "integer"}:
-            raise ValueError("primitive_type must be 'float' or 'integer'")
+            raise UnknownOptionError(
+                "primitive_type", self.primitive_type, ("float", "integer")
+            )
         if self.unit_type is not None:
             _validate_identifier(self.unit_type, "unit_type")
             if self.unit_type not in _BUILTIN_UNIT_TYPES:
-                raise ValueError(
-                    f"unit_type must be an ASAM built-in unit type; "
-                    f"received {self.unit_type!r}"
-                )
+                raise UnknownOptionError("unit_type", self.unit_type)
         if self.unit is not None and self.unit_type is None:
-            raise ValueError("unit requires a unit_type")
+            raise ParameterDependencyError("unit", "unit_type")
         if self.unit is not None and any(char.isspace() for char in self.unit):
-            raise ValueError("unit must not contain whitespace")
+            raise WhitespaceInUnitError(self.unit)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,23 +150,23 @@ class OpenODDCategoricalFeature:
         """Validate and freeze the categorical encoding.
 
         Raises:
-            ValueError: If the mapping is not valid.
+            EmptyParameterError: If no literals are given.
+            LengthMismatchError: If a literal's prototype does not match
+                the number of indices.
+            NonFiniteParameterError: If a prototype is not finite.
         """
         normalized_indices = _indices(self.indices, "indices")
         _validate_identifier(self.concept_id, "concept_id")
         if not self.literals:
-            raise ValueError("literals must not be empty")
+            raise EmptyParameterError("literals")
         normalized_literals: dict[str, tuple[float, ...]] = {}
         for literal, prototype in self.literals.items():
             _validate_identifier(literal, "categorical literal")
             values = tuple(float(value) for value in prototype)
             if len(values) != len(normalized_indices):
-                raise ValueError(
-                    f"literal {literal!r} has {len(values)} encoded values; "
-                    f"expected {len(normalized_indices)}"
-                )
+                raise LengthMismatchError(literal, len(values), len(normalized_indices))
             if not np.isfinite(values).all():
-                raise ValueError(f"literal {literal!r} must contain only finite values")
+                raise NonFiniteParameterError(literal)
             normalized_literals[literal] = values
         object.__setattr__(self, "indices", normalized_indices)
         object.__setattr__(self, "literals", normalized_literals)
@@ -165,13 +185,15 @@ class OpenODDExportMetadata:
         """Validate export metadata.
 
         Raises:
-            ValueError: If the metadata is not valid.
+            EmptyParameterError: If the title is empty.
+            ReservedMetadataKeyError: If ``extra`` uses the reserved
+                ``autosafe`` key.
         """
         if not self.title.strip():
-            raise ValueError("title must not be empty")
+            raise EmptyParameterError("title")
         _validate_identifier(self.root_id, "root_id")
         if "autosafe" in self.extra:
-            raise ValueError("extra metadata must not replace reserved 'autosafe'")
+            raise ReservedMetadataKeyError("autosafe")
 
 
 def _safe_identifier(value: str, fallback: str) -> str:
@@ -209,10 +231,10 @@ def _validate_features(
 ) -> tuple[OpenODDFeature, ...]:
     result = tuple(features)
     if not result:
-        raise ValueError("at least one OpenODD feature is required")
+        raise EmptyParameterError("features")
     concept_ids = [feature.concept_id for feature in result]
     if len(concept_ids) != len(set(concept_ids)):
-        raise ValueError("OpenODD feature concept IDs must be unique")
+        raise DuplicateConceptIdError(concept_ids)
     covered: list[int] = []
     for feature in result:
         if isinstance(feature, OpenODDNumericFeature):
@@ -221,10 +243,7 @@ def _validate_features(
             covered.extend(feature.indices)
     expected = list(range(feature_count))
     if sorted(covered) != expected:
-        raise ValueError(
-            "OpenODD features must map every model dimension exactly once; "
-            f"received {sorted(covered)!r}, expected {expected!r}"
-        )
+        raise FeatureMappingCoverageError(covered, expected)
     return result
 
 
@@ -300,7 +319,7 @@ def _normalized_kernel_boxes(odd: AutoSafeODD) -> tuple[NPMatrix, NPMatrix, int]
         kernel = sample.kernel
         sigma = getattr(kernel, "sigma", None)
         if sigma is None:
-            raise ValueError("all fitted samples must have initialized RBF kernels")
+            raise KernelParametersNotSetError("sigma")
         covariance = np.asarray(sigma, dtype=np.float64)
         diagonal = np.diag(np.diag(covariance))
         if np.allclose(covariance, diagonal):
@@ -310,7 +329,7 @@ def _normalized_kernel_boxes(odd: AutoSafeODD) -> tuple[NPMatrix, NPMatrix, int]
             eigenvalues = np.linalg.eigvalsh(covariance)
             minimum = float(np.min(eigenvalues))
             if minimum <= 0.0:
-                raise ValueError("kernel covariance must be positive definite")
+                raise NotPositiveDefiniteError("sigma")
             half_width = np.full(
                 feature_count,
                 math.sqrt(squared_radius * minimum / feature_count),
@@ -331,7 +350,7 @@ def _original_coordinate_boxes(
         lower = np.asarray(odd.normalizer.inverse_transform(lower), dtype=np.float64)
         upper = np.asarray(odd.normalizer.inverse_transform(upper), dtype=np.float64)
     if not np.isfinite(lower).all() or not np.isfinite(upper).all():
-        raise ValueError("exported OpenODD bounds must be finite")
+        raise NonFiniteParameterError("bounds")
     return np.minimum(lower, upper), np.maximum(lower, upper), full_covariance_count
 
 
@@ -432,8 +451,8 @@ def build_openodd_yaml(  # ruff:ignore[too-many-locals]
         dict[str, Any]: Validated YAML-serializable document.
 
     Raises:
-        ValueError: If the model cannot be represented by the supplied
-            feature mappings.
+        UnrepresentableODDError: If the model cannot be represented by
+            the supplied feature mappings.
     """
     export_metadata = metadata or OpenODDExportMetadata()
     feature_count = odd.in_distribution_data.shape[1]
@@ -464,9 +483,7 @@ def build_openodd_yaml(  # ruff:ignore[too-many-locals]
             "INCLUDE_AND": conditions,
         }
     if not modules:
-        raise ValueError(
-            "no OpenODD region can be represented by the supplied feature mapping"
-        )
+        raise UnrepresentableODDError
 
     autosafe_metadata = {
         "asam_openodd_version": OPENODD_VERSION,
@@ -524,12 +541,12 @@ def write_openodd_yaml(
         pathlib.Path: Written YAML path.
 
     Raises:
-        ValueError: If the suffix is not ``.yaml`` or ``.yml``, or the
-            model cannot be represented.
+        UnsupportedFileFormatError: If the suffix is not ``.yaml`` or
+            ``.yml``.
     """
     output_path = pathlib.Path(path)
     if output_path.suffix.casefold() not in {".yaml", ".yml"}:
-        raise ValueError("OpenODD output path must end in .yaml or .yml")
+        raise UnsupportedFileFormatError(output_path.suffix)
     document = build_openodd_yaml(
         odd,
         features=features,

@@ -34,6 +34,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import typer
+from typer import Exit
 
 from experiments.benchmark import (
     run_anchor_count_sweep,
@@ -225,7 +226,7 @@ def main(
         f"-> {outdir} (state: {state_path})"
     )
     if n_failed and stop_on_error:
-        raise typer.Exit(code=1)
+        raise Exit(code=1)
 
 
 if __name__ == "__main__":

@@ -76,6 +76,11 @@ def _reference_dual(
 ) -> tuple[NPVector, NPVector]:
     """NumPy reference: alpha = 1 - prod(1 - k_i), survival = sum log(1 - k_i).
 
+    Args:
+        anchors (NPMatrix): (N, D) anchor points.
+        sigma_inv (np.ndarray): (N, D, D) inverse covariance per anchor.
+        x (NPMatrix): (M, D) evaluation points.
+
     Returns:
         tuple[NPVector, NPVector]: (alpha, survival), each (M,).
     """

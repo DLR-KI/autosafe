@@ -20,6 +20,25 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
+from autosafe.exceptions import (
+    ConfigAliasCollisionError,
+    ConflictingParametersError,
+    DuplicateConfigParameterError,
+    EmptyParameterError,
+    LengthMismatchError,
+    MembershipModeConflictError,
+    MissingParameterError,
+    MixedKernelModesError,
+    NonFiniteParameterError,
+    NonPositiveParameterError,
+    ParameterOrderError,
+    ParameterOutOfRangeError,
+    ParameterTypeError,
+    ShapeMismatchError,
+    UnhandledConfigParametersError,
+    UnknownConfigParameterError,
+    UnknownOptionError,
+)
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
     WIDTH_SCHEDULE_SQRT_LOG_N,
@@ -39,14 +58,14 @@ def _finite_float(value: object, name: str) -> float:
         float: Converted finite value.
 
     Raises:
-        ValueError: If the value is not finite.
-        TypeError: If the value is not numeric.
+        NonFiniteParameterError: If the value is not finite.
+        ParameterTypeError: If the value is not numeric.
     """
     if isinstance(value, bool) or not isinstance(value, (int, float, np.number)):
-        raise TypeError(f"{name} must be a real number")
+        raise ParameterTypeError(name, value, (int, float))
     result = float(value)
     if not math.isfinite(result):
-        raise ValueError(f"{name} must be finite")
+        raise NonFiniteParameterError(name)
     return result
 
 
@@ -61,11 +80,12 @@ def _positive_float(value: object, name: str) -> float:
         float: Converted positive value.
 
     Raises:
-        ValueError: If the converted value is not positive.
+        NonPositiveParameterError: If the converted value is not
+            positive.
     """
     result = _finite_float(value, name)
     if result <= 0.0:
-        raise ValueError(f"{name} must be greater than 0")
+        raise NonPositiveParameterError(name, result)
     return result
 
 
@@ -80,15 +100,14 @@ def _width_multiple(value: object) -> WidthMultiple:
             float.
 
     Raises:
-        ValueError: If the value is neither a known schedule nor a
-            positive finite number.
+        UnknownOptionError: If the value is a string but not a known
+            schedule.
     """
     if isinstance(value, str):
         normalized = value.strip().casefold()
         if normalized != WIDTH_SCHEDULE_SQRT_LOG_N:
-            raise ValueError(
-                f"width_in_median_gaps must be a positive number or "
-                f"{WIDTH_SCHEDULE_SQRT_LOG_N!r}, got {value!r}"
+            raise UnknownOptionError(
+                "width_in_median_gaps", value, (WIDTH_SCHEDULE_SQRT_LOG_N,)
             )
         return WIDTH_SCHEDULE_SQRT_LOG_N
     return _positive_float(value, "width_in_median_gaps")
@@ -105,14 +124,14 @@ def _positive_integer(value: object, name: str) -> int:
         int: Validated positive integer.
 
     Raises:
-        TypeError: If the value is not an integer.
-        ValueError: If the value is not positive.
+        ParameterTypeError: If the value is not an integer.
+        NonPositiveParameterError: If the value is not positive.
     """
     if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
-        raise TypeError(f"{name} must be an integer")
+        raise ParameterTypeError(name, value, int)
     result = int(value)
     if result <= 0:
-        raise ValueError(f"{name} must be greater than 0")
+        raise NonPositiveParameterError(name, result)
     return result
 
 
@@ -127,11 +146,12 @@ def _unit_interval(value: object, name: str) -> float:
         float: Converted value inside ``(0, 1)``.
 
     Raises:
-        ValueError: If the converted value is outside ``(0, 1)``.
+        ParameterOutOfRangeError: If the converted value is outside
+            ``(0, 1)``.
     """
     result = _finite_float(value, name)
     if not 0.0 < result < 1.0:
-        raise ValueError(f"{name} must be in (0, 1)")
+        raise ParameterOutOfRangeError(name, result, 0.0, 1.0)
     return result
 
 
@@ -146,20 +166,21 @@ def _scale_value(value: object, name: str) -> ScaleValue:
         ScaleValue: A float or immutable tuple of floats.
 
     Raises:
-        ValueError: If a sequence is empty or any value is invalid.
+        ShapeMismatchError: If an array is neither 0-d nor 1-d.
+        EmptyParameterError: If a sequence is empty.
     """
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
             return _positive_float(np.ravel(value)[0], name)
         if value.ndim != 1:
-            raise ValueError(f"{name} must be scalar or one-dimensional")
+            raise ShapeMismatchError(name, value.shape, (None,))
         raw: object = list(value)
     else:
         raw = value
     if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)):
         result = tuple(_positive_float(item, name) for item in raw)
         if not result:
-            raise ValueError(f"{name} must not be empty")
+            raise EmptyParameterError(name)
         return result
     return _positive_float(raw, name)
 
@@ -234,8 +255,11 @@ class ManualRBFConfig:
     def __post_init__(self) -> None:
         """Validate and normalize manual kernel parameters.
 
+        The numeric fields are checked by the module's validators,
+        which raise :class:`ValueError` subclasses.
+
         Raises:
-            ValueError: If a parameter is outside its valid range.
+            UnknownOptionError: If ``nearest_neighbor_mode`` is unknown.
         """
         object.__setattr__(
             self,
@@ -262,8 +286,10 @@ class ManualRBFConfig:
             ),
         )
         if self.nearest_neighbor_mode not in {"global", "per_dimension"}:
-            raise ValueError(
-                "nearest_neighbor_mode must be 'global' or 'per_dimension'"
+            raise UnknownOptionError(
+                "nearest_neighbor_mode",
+                self.nearest_neighbor_mode,
+                ("global", "per_dimension"),
             )
 
 
@@ -362,16 +388,20 @@ class NormalizationConfig:
         """Validate normalization settings.
 
         Raises:
-            ValueError: If a setting is outside its valid range.
+            UnknownOptionError: If the method is unknown.
+            LengthMismatchError: If ``target_range`` does not hold two
+                values.
+            ParameterOrderError: If the lower bound of ``target_range``
+                is not below the upper bound.
         """
         if self.method not in {"minmax", "iqr", "zscore"}:
-            raise ValueError("normalization method must be minmax, iqr, or zscore")
+            raise UnknownOptionError("method", self.method, ("minmax", "iqr", "zscore"))
         if len(self.target_range) != 2:  # ruff:ignore[magic-value-comparison]
-            raise ValueError("target_range must contain two values")
+            raise LengthMismatchError("target_range", len(self.target_range), 2)
         low = _finite_float(self.target_range[0], "target_range")
         high = _finite_float(self.target_range[1], "target_range")
         if low >= high:
-            raise ValueError("target_range lower bound must be below upper bound")
+            raise ParameterOrderError("target_range[0]", "target_range[1]")
         object.__setattr__(self, "target_range", (low, high))
         object.__setattr__(
             self,
@@ -634,9 +664,7 @@ for _spec in PARAMETER_SPECS:
         _normalized_alias = _normalize_alias(_alias)
         _existing = _ALIAS_INDEX.get(_normalized_alias)
         if _existing is not None and _existing != _spec:  # pragma: no cover
-            raise RuntimeError(
-                f"parameter alias {_alias!r} maps to multiple canonical fields"
-            )
+            raise ConfigAliasCollisionError(_alias)
         _ALIAS_INDEX[_normalized_alias] = _spec
     _DEPRECATED_ALIASES.update(
         _normalize_alias(alias) for alias in _spec.deprecated_aliases
@@ -657,12 +685,12 @@ def _flatten_mapping(
         list[tuple[str, object]]: Flattened names and values.
 
     Raises:
-        TypeError: If a parameter name is not a string.
+        ParameterTypeError: If a parameter name is not a string.
     """
     flattened: list[tuple[str, object]] = []
     for key, value in mapping.items():
         if not isinstance(key, str):
-            raise TypeError("configuration parameter names must be strings")
+            raise ParameterTypeError("parameter_name", key, str)
         dotted = f"{prefix}.{key}" if prefix else key
         if isinstance(value, Mapping):
             flattened.extend(
@@ -685,10 +713,13 @@ def _resolve_mapping(
         mapping (Mapping[str, object]): User configuration.
 
     Returns:
-        tuple: Canonical values and their original source names.
+        tuple[dict[str, object], tuple[tuple[str, str], ...]]: Canonical
+            values and their original source names.
 
     Raises:
-        ValueError: If a name is unknown or defined more than once.
+        UnknownConfigParameterError: If a name is unknown.
+        DuplicateConfigParameterError: If a parameter is defined more
+            than once.
     """
     resolved: dict[str, object] = {}
     sources: list[tuple[str, str]] = []
@@ -698,12 +729,11 @@ def _resolve_mapping(
         spec = _ALIAS_INDEX.get(normalized)
         if spec is None:
             suggestions = difflib.get_close_matches(normalized, known_names, n=3)
-            suffix = f"; did you mean {', '.join(suggestions)}?" if suggestions else ""
-            raise ValueError(f"unknown autoSAFE parameter {raw_name!r}{suffix}")
+            raise UnknownConfigParameterError(raw_name, suggestions)
         canonical = spec.canonical_name
         if canonical in resolved:
             previous = next(source for target, source in sources if target == canonical)
-            raise ValueError(f"{raw_name!r} and {previous!r} both define {canonical!r}")
+            raise DuplicateConfigParameterError(raw_name, previous, canonical)
         if normalized in _DEPRECATED_ALIASES:
             warnings.warn(
                 f"{raw_name!r} is deprecated; use 'gamma', 'γ', or "  # ruff:ignore[ambiguous-unicode-character-string]
@@ -756,7 +786,7 @@ class AutoSafeConfig:
         """Validate constraints available before fitting.
 
         Raises:
-            ValueError: If OOD and membership thresholds are
+            ParameterOrderError: If OOD and membership thresholds are
                 inconsistent.
         """
         if (
@@ -764,9 +794,8 @@ class AutoSafeConfig:
             and isinstance(self.membership, FixedMembershipConfig)
             and self.ood.max_affinity >= self.membership.affinity_threshold
         ):
-            raise ValueError(
-                "ood.max_affinity (xi) must be below "
-                "membership.affinity_threshold (zeta)"
+            raise ParameterOrderError(
+                "ood.max_affinity", "membership.affinity_threshold"
             )
 
     @classmethod
@@ -784,8 +813,17 @@ class AutoSafeConfig:
             AutoSafeConfig: Validated canonical configuration.
 
         Raises:
-            ValueError: On unknown, conflicting, or incomplete
-                parameters.
+            UnknownOptionError: If ``kernel.mode`` or
+                ``membership.mode`` is unknown.
+            MixedKernelModesError: If calibrated and manual kernel
+                parameters are mixed.
+            ConflictingParametersError: If mutually exclusive
+                parameters are both given.
+            MissingParameterError: If a required parameter is missing.
+            MembershipModeConflictError: If ``membership.mode``
+                contradicts the given threshold.
+            UnhandledConfigParametersError: If parameters are left over
+                after parsing (a parser bug).
         """
         values, sources = _resolve_mapping(mapping)
 
@@ -798,7 +836,7 @@ class AutoSafeConfig:
             "manual": "manual",
         }
         if raw_mode not in mode_aliases:
-            raise ValueError("kernel.mode must be 'calibrated'/'auto' or 'manual'")
+            raise UnknownOptionError("kernel.mode", raw_mode, mode_aliases)
         mode = mode_aliases[raw_mode]
         calibrated_fields = {
             "decay_per_median_gap",
@@ -813,11 +851,11 @@ class AutoSafeConfig:
         has_calibrated = bool(calibrated_fields & kernel_values.keys())
         has_manual = bool(manual_fields & kernel_values.keys())
         if has_calibrated and has_manual:
-            raise ValueError("manual and calibrated kernel parameters cannot be mixed")
-        if mode == "manual" and has_calibrated:
-            raise ValueError("calibrated parameters cannot be used in manual mode")
-        if mode == "calibrated" and has_manual:
-            raise ValueError("manual parameters cannot be used in calibrated mode")
+            raise MixedKernelModesError(None)
+        if (mode == "manual" and has_calibrated) or (
+            mode == "calibrated" and has_manual
+        ):
+            raise MixedKernelModesError(mode)
         if not mode:
             mode = "manual" if has_manual else "calibrated"
         if (
@@ -825,9 +863,8 @@ class AutoSafeConfig:
             and "variance_floor" in kernel_values
             and "relative_variance_floor" in kernel_values
         ):
-            raise ValueError(
-                "define either lambda/variance_floor or "
-                "lambda_rel/relative_variance_floor, not both"
+            raise ConflictingParametersError(
+                "lambda/variance_floor", "lambda_rel/relative_variance_floor"
             )
 
         if mode == "calibrated":
@@ -840,26 +877,25 @@ class AutoSafeConfig:
         membership_values = _take_prefix(values, "membership")
         raw_membership_mode = str(membership_values.pop("mode", "")).casefold()
         if raw_membership_mode not in {"", "auto", "fixed", "conformal"}:
-            raise ValueError("membership.mode must be 'fixed', 'conformal', or 'auto'")
+            raise UnknownOptionError(
+                "membership.mode", raw_membership_mode, ("auto", "fixed", "conformal")
+            )
         zeta = membership_values.pop("affinity_threshold", None)
         epsilon = membership_values.pop("target_false_exclusion_rate", None)
         if membership_values:  # pragma: no cover - alias registry is exhaustive
-            raise ValueError(
-                f"unsupported membership fields: {sorted(membership_values)}"
-            )
+            raise UnhandledConfigParametersError(membership_values)
         if zeta is not None and epsilon is not None:
-            raise ValueError("define either zeta or epsilon, not both")
+            raise ConflictingParametersError("zeta", "epsilon")
         if zeta is None and epsilon is None:
-            raise ValueError("membership requires zeta or epsilon")
+            raise MissingParameterError("zeta", unless="epsilon")
         inferred_membership_mode = "fixed" if zeta is not None else "conformal"
         if raw_membership_mode not in {
             "",
             "auto",
             inferred_membership_mode,
         }:
-            raise ValueError(
-                f"membership.mode={raw_membership_mode!r} conflicts with "
-                f"{'zeta' if zeta is not None else 'epsilon'}"
+            raise MembershipModeConflictError(
+                raw_membership_mode, "zeta" if zeta is not None else "epsilon"
             )
         membership: MembershipConfig
         if zeta is not None:
@@ -873,7 +909,7 @@ class AutoSafeConfig:
         ood: OODConsistencyConfig | None = None
         if ood_values:
             if "max_affinity" not in ood_values:
-                raise ValueError("OOD controls require xi/max_ood_affinity")
+                raise MissingParameterError("xi/max_ood_affinity")
             ood = OODConsistencyConfig(**cast("dict[str, Any]", ood_values))
 
         normalization_values = _take_prefix(values, "normalization")
@@ -885,7 +921,7 @@ class AutoSafeConfig:
         evaluation = EvaluationConfig(**cast("dict[str, Any]", evaluation_values))
 
         if values:  # pragma: no cover - alias registry is exhaustive
-            raise ValueError(f"unhandled autoSAFE parameters: {sorted(values)}")
+            raise UnhandledConfigParametersError(values)
         return cls(
             membership=membership,
             kernel=kernel,
@@ -909,7 +945,7 @@ class AutoSafeConfig:
             dict[str, object]: JSON-compatible configuration mapping.
 
         Raises:
-            ValueError: If ``style`` is unsupported.
+            UnknownOptionError: If ``style`` is unsupported.
         """
         if style == "paper":
             result: dict[str, object] = {}
@@ -953,7 +989,7 @@ class AutoSafeConfig:
             result["m"] = self.evaluation.local_noise_multiple
             return result
         if style != "canonical":
-            raise ValueError("style must be 'canonical' or 'paper'")
+            raise UnknownOptionError("style", style, ("canonical", "paper"))
 
         kernel_mapping: dict[str, object]
         if isinstance(self.kernel, CalibratedRBFConfig):

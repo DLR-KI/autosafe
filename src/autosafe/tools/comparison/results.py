@@ -12,7 +12,7 @@ from autosafe.typing import MethodName
 class ComparisonMethodResult(TypedDict):
     """Result for a single comparison method.
 
-    Args:
+    Attributes:
         method (MethodName): Name of the comparison method used.
         coverage_ratio (float): Proportion of test points covered by the
             method's decision boundary (between 0 and 1).
@@ -36,7 +36,7 @@ class ComparisonMethodResult(TypedDict):
 class ComparisonSummary(TypedDict):
     """Summary of comparison method evaluation.
 
-    Args:
+    Attributes:
         most_conservative (str): Name of the method with the highest.
             conservatism score.
         best_coverage (str): Name of the method with the best coverage
@@ -53,7 +53,7 @@ class ComparisonSummary(TypedDict):
 class ComparisonEvaluationResults(TypedDict):
     """Full comparison evaluation output.
 
-    Args:
+    Attributes:
         dataset (str): Name of the dataset used for evaluation.
         reference_points (int): Number of reference points.
         test_points (int): Number of test points.

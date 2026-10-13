@@ -14,6 +14,7 @@ import numpy.typing as npt
 from sklearn.cluster import KMeans
 from sklearn.neighbors import KernelDensity
 
+from autosafe.exceptions import NotFittedError
 from autosafe.odd.comparison.base import (
     DecisionBoundary,
     ODDBoundaryMethod,
@@ -32,11 +33,19 @@ class SuperlevelSetMonitor(ODDBoundaryMethod):
 
     Implements threshold-based membership: ODD = {x | pdf(x) > gamma}
 
+    Args:
+        gamma (FloatType | None): Likelihood threshold for the.
+            superlevel set.
+        bandwidth (str | None): KDE bandwidth or "scott"/.
+            "silverman" for automatic selection.
+        sigmoid_weight (FloatType | None): Controls seam transition.
+            in the analysis.
+
     Attributes:
         gamma (FloatType): Likelihood threshold gamma.
         bandwidth (str | None): KDE bandwidth parameter.
         kde (KernelDensity | None): Fitted kernel density estimator.
-        ref_points (Matrix | None): Reference ODD points.
+        ref_points (Matrix | NPMatrix | None): Reference ODD points.
         sigmoid_weight (FloatType): Boundary transition sharpness.
             factor.
         candidate_gamma (FloatType | None): Auto-detected gamma value.
@@ -45,22 +54,19 @@ class SuperlevelSetMonitor(ODDBoundaryMethod):
             metadata property.
     """
 
+    gamma: FloatType
+    bandwidth: str | None
+    kde: KernelDensity | None
+    ref_points: Matrix | NPMatrix | None
+    sigmoid_weight: FloatType
+    candidate_gamma: FloatType | None
+
     def __init__(
         self,
         gamma: FloatType | None = None,
         bandwidth: str | None = "scott",
         sigmoid_weight: FloatType | None = None,
     ) -> None:
-        """Initialize superlevel set monitor with density threshold.
-
-        Args:
-            gamma (FloatType | None): Likelihood threshold for the.
-                superlevel set.
-            bandwidth (str | None): KDE bandwidth or "scott"/.
-                "silverman" for automatic selection.
-            sigmoid_weight (FloatType | None): Controls seam transition.
-                in the analysis.
-        """
         self.gamma = gamma if gamma is not None else DEFAULT_GAMMA
         self.bandwidth = bandwidth
         self.sigmoid_weight = (
@@ -136,14 +142,14 @@ class SuperlevelSetMonitor(ODDBoundaryMethod):
             npt.NDArray[np.float64]: PDF values at test points.
 
         Raises:
-            RuntimeError: If the monitor is not fitted or KDE is.
+            NotFittedError: If the monitor is not fitted or the KDE is
                 missing.
         """
         if not self.trained:
-            raise RuntimeError("SuperlevelSetMonitor not fitted yet")
+            raise NotFittedError(type(self).__name__)
 
         if self.kde is None:
-            raise RuntimeError("KDE not initialized")
+            raise NotFittedError(type(self).__name__)
 
         # KDE.score_samples returns log PDF, convert to PDF
         log_pdf = self.kde.score_samples(test_points.T)
@@ -302,10 +308,10 @@ class SuperlevelSetMonitor(ODDBoundaryMethod):
             bool: True if pdf(test_point) > gamma.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("SuperlevelSetMonitor not fitted yet")
+            raise NotFittedError(type(self).__name__)
 
         # Evaluate PDF at test point and apply threshold
         test_point_matrix = cast(
@@ -330,10 +336,10 @@ class SuperlevelSetMonitor(ODDBoundaryMethod):
             npt.NDArray[np.bool_]: Boolean array indicating membership.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("Method not fitted")
+            raise NotFittedError(type(self).__name__)
 
         # Evaluate all points
         pdf_values = self.pdf(test_points)
@@ -409,7 +415,7 @@ class ClusteredSuperlevelSetMonitor(ODDBoundaryMethod):
         """decision_boundary property for the clustered density monitor.
 
         Returns:
-            Structured decision-boundary metadata.
+            DecisionBoundary: Structured decision-boundary metadata.
         """
         return DecisionBoundary(
             type="density_clustered",
@@ -463,10 +469,10 @@ class ClusteredSuperlevelSetMonitor(ODDBoundaryMethod):
             bool: True if any cluster monitor accepts the point.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("ClusteredSuperlevelSetMonitor not fitted yet")
+            raise NotFittedError(type(self).__name__)
 
         return any(monitor(test_point) for monitor in self.monitors)
 
@@ -477,13 +483,13 @@ class ClusteredSuperlevelSetMonitor(ODDBoundaryMethod):
             test_points (Matrix | NPMatrix): Matrix of points.
 
         Returns:
-            Boolean array indicating membership.
+            npt.NDArray[np.bool_]: Boolean array indicating membership.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("ClusteredSuperlevelSetMonitor not fitted yet")
+            raise NotFittedError(type(self).__name__)
 
         if not self.monitors:
             return np.zeros(test_points.shape[1], dtype=bool)

@@ -13,6 +13,11 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from autosafe.exceptions import (
+    EmptyParameterError,
+    NonPositivePeriodError,
+    ParameterTypeError,
+)
 from autosafe.tools.monte_carlo.inequality_utils import load_yaml_odd_config
 
 # Limit types with a finite set of valid values; categorical values are
@@ -50,8 +55,8 @@ def _sampling_bounds_from_yaml(
             spec.
 
     Returns:
-        tuple[npt.NDArray, npt.NDArray] | None: Lower and upper bounds
-            arrays if box-type ODD, else None.
+        tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None:
+            Lower and upper bounds arrays if box-type ODD, else None.
     """
     config = load_yaml_odd_config(ground_truth_yaml)
     if "type" not in config and "limits" in config:
@@ -142,7 +147,7 @@ def _periodic_columns_from_yaml(
             and the period, in YAML space.
 
     Raises:
-        ValueError: If a period is not positive.
+        NonPositivePeriodError: If a period is not positive.
     """
     periodic: dict[int, tuple[float, float]] = {}
     for index, entry in _typed_limit_entries(ground_truth_yaml, "wrapped_range"):
@@ -158,7 +163,7 @@ def _periodic_columns_from_yaml(
         periodic[index] = (float(codes[0]), period)
     for index, (_, period) in periodic.items():
         if not period > 0:
-            raise ValueError(f"Periodic limit in column {index} needs period > 0")
+            raise NonPositivePeriodError(index, period)
     return dict(sorted(periodic.items()))
 
 
@@ -233,15 +238,15 @@ def _legacy_limits_yaml_to_odd_config(config: dict[str, Any]) -> dict[str, objec
     by taking the min/max of each limit entry.
 
     Args:
-        config (dict[str, object]): Loaded legacy limits configuration.
+        config (dict[str, Any]): Loaded legacy limits configuration.
 
     Returns:
         dict[str, object]: ODD-style configuration with `type`, `dim`,
             `lower_bounds`, and `upper_bounds` fields.
 
     Raises:
-        TypeError: If the legacy config is malformed.
-        ValueError: If any limit entry is empty.
+        ParameterTypeError: If the legacy config is malformed.
+        EmptyParameterError: If any limit entry is empty.
     """
     limits = config.get("limits")
     if not isinstance(limits, dict) or not limits:
@@ -251,13 +256,13 @@ def _legacy_limits_yaml_to_odd_config(config: dict[str, Any]) -> dict[str, objec
     upper_bounds: list[float] = []
     for name, entry in limits.items():
         if not isinstance(entry, dict):
-            raise TypeError(f"Limit entry for {name!r} must be a mapping")
+            raise ParameterTypeError(name, entry, dict)
 
         values = entry.get("values")
         if not isinstance(values, list):
-            raise TypeError(f"Limit entry for {name!r} must be a list")
+            raise ParameterTypeError(name, values, list)
         if not values:
-            raise ValueError(f"Limit entry for {name!r} must contain values")
+            raise EmptyParameterError(name)
 
         if entry.get("type") in _FINITE_TYPES:
             codes = _entry_codes(entry)

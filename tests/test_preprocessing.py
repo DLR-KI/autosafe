@@ -9,6 +9,12 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
+from autosafe.exceptions import (
+    NotFittedError,
+    RangeBoundsUnavailableError,
+    ShapeMismatchError,
+    UnknownOptionError,
+)
 from autosafe.preprocessing import RangeNormalizer, create_robust_normalization_pipeline
 from autosafe.typing import FloatType
 
@@ -176,19 +182,19 @@ def test_preprocessing_error_paths_and_inverse_branches():
     """Cover validation and error branches in preprocessing utilities."""
     data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=FloatType)
 
-    with pytest.raises(ValueError, match="Expected 2D data"):
+    with pytest.raises(ShapeMismatchError, match="x has shape"):
         RangeNormalizer().fit(np.array([1.0, 2.0], dtype=FloatType))
 
-    with pytest.raises(ValueError, match="must be fit to data"):
+    with pytest.raises(NotFittedError):
         RangeNormalizer().transform(data)
 
-    with pytest.raises(ValueError, match="must be fit before inverse"):
+    with pytest.raises(NotFittedError):
         RangeNormalizer().inverse_transform(data)
 
     # Force unknown method branch at transform time.
     unknown = RangeNormalizer(method=cast("Any", "unknown"))
     unknown.fit(data)
-    with pytest.raises(ValueError, match="Unknown method"):
+    with pytest.raises(UnknownOptionError, match="unknown method "):
         unknown.transform(data)
 
     minmax = RangeNormalizer(target_range=(-1.0, 1.0), method="minmax")
@@ -209,14 +215,14 @@ def test_preprocessing_error_paths_and_inverse_branches():
     zscore_norm = zscore.fit_transform(data)
     reconstructed_zscore = zscore.inverse_transform(zscore_norm)
     assert np.allclose(reconstructed_zscore, data, atol=1e-6)
-    with pytest.raises(ValueError, match="Range bounds not available"):
+    with pytest.raises(RangeBoundsUnavailableError):
         _ = zscore.range_bounds_
 
     zscore.ref_mean_ = None
-    with pytest.raises(ValueError, match="requires fitted mean/std"):
+    with pytest.raises(NotFittedError):
         zscore.inverse_transform(zscore_norm)
 
-    with pytest.raises(ValueError, match="not implemented"):
+    with pytest.raises(UnknownOptionError, match="unknown method "):
         unknown.inverse_transform(data)
 
 
@@ -229,7 +235,7 @@ def test_preprocessing_transform_missing_fitted_values():
     minmax.initialized_ = True  # Force initialized state
     minmax.ref_min_ = None
     minmax.ref_max_ = None
-    with pytest.raises(ValueError, match="Min-max normalizer requires"):
+    with pytest.raises(NotFittedError):
         minmax.transform(data)
 
     # Test IQR with missing Q1/Q3
@@ -237,7 +243,7 @@ def test_preprocessing_transform_missing_fitted_values():
     iqr.initialized_ = True  # Force initialized state
     iqr.ref_q1_ = None
     iqr.ref_q3_ = None
-    with pytest.raises(ValueError, match="IQR-based normalizer requires"):
+    with pytest.raises(NotFittedError):
         iqr.transform(data)
 
     # Test zscore with missing mean/std
@@ -245,7 +251,7 @@ def test_preprocessing_transform_missing_fitted_values():
     zscore.initialized_ = True  # Force initialized state
     zscore.ref_mean_ = None
     zscore.ref_std_ = None
-    with pytest.raises(ValueError, match="Z-score normalizer requires"):
+    with pytest.raises(NotFittedError):
         zscore.transform(data)
 
 
@@ -258,7 +264,7 @@ def test_preprocessing_inverse_missing_fitted_values():
     minmax.initialized_ = True  # Force initialized state
     minmax.ref_min_ = None
     minmax.ref_max_ = None
-    with pytest.raises(ValueError, match="Min-max normalizer requires"):
+    with pytest.raises(NotFittedError):
         minmax.inverse_transform(data)
 
     # Test IQR inverse with missing Q1/Q3
@@ -266,5 +272,5 @@ def test_preprocessing_inverse_missing_fitted_values():
     iqr.initialized_ = True  # Force initialized state
     iqr.ref_q1_ = None
     iqr.ref_q3_ = None
-    with pytest.raises(ValueError, match="IQR normalizer requires"):
+    with pytest.raises(NotFittedError):
         iqr.inverse_transform(data)

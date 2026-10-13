@@ -15,7 +15,7 @@ import polars as pl
 import scipy.spatial
 import tqdm.rich
 
-from autosafe.exceptions import ConvexHullError
+from autosafe.exceptions import ConvexHullError, NoInputFilesError
 from autosafe.tools.monte_carlo.dicts import (
     ConfusionMatrixDict,
     PerformanceMetricsDict,
@@ -37,7 +37,7 @@ def calculate_confusion_matrix(
         affinity_limit (float): Affinity threshold.
 
     Returns:
-        Confusion-matrix counts.
+        ConfusionMatrixDict: Confusion-matrix counts.
     """
     true_positives = actually_positive.filter(
         pl.col("affinity") >= affinity_limit
@@ -103,7 +103,7 @@ def calculate_performance_metrics(
         confusion_matrix (ConfusionMatrixDict): Confusion-matrix counts.
 
     Returns:
-        Derived performance metrics.
+        PerformanceMetricsDict: Derived performance metrics.
     """
     true_positives = confusion_matrix["true_positive"]
     false_positives = confusion_matrix["false_positive"]
@@ -222,7 +222,7 @@ def process_files(file: str) -> list[Path]:
         list[Path]: Matching JSON file paths.
 
     Raises:
-        FileNotFoundError: If the directory contains no JSON files.
+        NoInputFilesError: If the directory contains no JSON files.
     """
     files: list[Path] = []
     file_ = Path(file)
@@ -231,9 +231,7 @@ def process_files(file: str) -> list[Path]:
     elif file_.is_dir():
         config_files = list(file_.glob("*.json"))
         if not config_files:
-            raise FileNotFoundError(
-                f"No configuration files found in the provided folder: {file_}",
-            )
+            raise NoInputFilesError(file_)
         files.extend(config_files)
     return files
 

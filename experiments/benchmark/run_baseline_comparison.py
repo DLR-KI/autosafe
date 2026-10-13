@@ -35,6 +35,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import KernelDensity
 from sklearn.svm import OneClassSVM
 
+from autosafe.exceptions import UnknownOptionError
 from experiments.benchmark.common import (
     boundary_error,
     build_odd,
@@ -109,11 +110,16 @@ def _score(
             return (tri.find_simplex(val) >= 0).astype(float)
         except Exception:  # ruff: ignore[blind-except]  -- Qhull failure -> all-outside fallback
             return np.zeros(len(val), dtype=float)
-    raise ValueError(f"unknown method {method!r}")
+    raise UnknownOptionError("method", method)
 
 
 def _order_independence(id_pts: NPArray, val: NPArray, seed: int) -> float:
     """Max abs deviation of autoSAFE scores across 5 ID permutations.
+
+    Args:
+        id_pts (NPArray): (N, D) in-distribution anchor points.
+        val (NPArray): (M, D) validation points to score.
+        seed (int): Seed for the permutation generator.
 
     Returns:
         float: Largest absolute score difference to the unpermuted ODD.

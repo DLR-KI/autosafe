@@ -11,6 +11,14 @@ import polars as pl
 import pytest
 from typer.testing import CliRunner
 
+from autosafe.exceptions import (
+    MissingParameterError,
+    NeighborQueryError,
+    NonPositiveParameterError,
+    NotFittedError,
+    ParameterOutOfRangeError,
+    UnknownOptionError,
+)
 from autosafe.odd.comparison.base import (
     ODDBoundaryMethod,
     ODDComparisonConfig,
@@ -112,7 +120,7 @@ def test_base_methods_and_config_validation():
         valid_cfg,
     )
 
-    with pytest.raises(ValueError, match="Invalid comparison method"):
+    with pytest.raises(UnknownOptionError, match="unknown method "):
         validate_comparison_config(invalid_method_cfg)
 
     bad_conservatism_cfg: ODDComparisonConfig = {
@@ -121,7 +129,9 @@ def test_base_methods_and_config_validation():
         "grid_resolution": 10,
         "conservatism_target": np.float64(1.2),
     }
-    with pytest.raises(ValueError, match="Conservatism target"):
+    with pytest.raises(
+        ParameterOutOfRangeError, match="conservatism_target must be in"
+    ):
         validate_comparison_config(bad_conservatism_cfg)
 
     bad_resolution_cfg: ODDComparisonConfig = {
@@ -130,7 +140,9 @@ def test_base_methods_and_config_validation():
         "grid_resolution": -1,
         "conservatism_target": None,
     }
-    with pytest.raises(ValueError, match="Grid resolution"):
+    with pytest.raises(
+        NonPositiveParameterError, match="grid_resolution must be greater than 0"
+    ):
         validate_comparison_config(bad_resolution_cfg)
 
 
@@ -143,7 +155,7 @@ def test_knn_monitor_paths():
 
     # Trigger explicit ValueError branch in auto-detection.
     monitor.data = cast("Any", None)
-    with pytest.raises(ValueError, match="Data must be provided"):
+    with pytest.raises(MissingParameterError, match="data is required"):
         monitor.auto_detect_consensus_radius()
 
     monitor.fit(ref)
@@ -163,7 +175,7 @@ def test_knn_monitor_paths():
             raise ValueError("boom")
 
     monitor.tree = cast("Any", _BadTree())
-    with pytest.raises(RuntimeError, match="KDTree query failed"):
+    with pytest.raises(NeighborQueryError):
         monitor(np.array([0.0, 0.0]))
 
 
@@ -184,16 +196,16 @@ def test_kmeans_cluster_hulls_and_dbscan(monkeypatch: pytest.MonkeyPatch):
     assert kmeans._calculate_silhouette_score(ref) == pytest.approx(0.0)
 
     clustered = ClusteredConvexHulls(n_clusters=2)
-    with pytest.raises(RuntimeError, match="Not fitted"):
+    with pytest.raises(NotFittedError):
         clustered(np.array([0.0, 0.0]))
-    with pytest.raises(ValueError, match="currently supported"):
+    with pytest.raises(UnknownOptionError, match="unknown method "):
         ClusteredConvexHulls(method="dbscan").fit(ref)
     clustered.fit(ref)
     batch = clustered.evaluate_batch(_test_points())
     assert batch.shape == (4,)
 
     dbscan = DBSCANCluster(eps=0.5, min_samples=2)
-    with pytest.raises(RuntimeError, match="Not fitted"):
+    with pytest.raises(NotFittedError):
         dbscan(np.array([0.0, 0.0]))
     dbscan.fit(ref)
     assert isinstance(dbscan(np.array([0.0, 0.0])), bool)
@@ -315,7 +327,7 @@ def test_comparison_core_end_to_end_and_helpers(
         )
         assert res["coverage_ratio"] == pytest.approx(1.0)
 
-    with pytest.raises(ValueError, match="Unknown method"):
+    with pytest.raises(UnknownOptionError, match="unknown method "):
         evaluate_dataset_with_comparison_methods(
             framework["reference_points"], grid, method=cast("Any", "bad")
         )
@@ -336,7 +348,7 @@ def test_comparison_core_end_to_end_and_helpers(
     assert full["summary"]["method_count"] == 2
     assert (tmp_path / "res.json").exists()
 
-    with pytest.raises(ValueError, match="Unknown comparison method"):
+    with pytest.raises(UnknownOptionError, match="unknown method "):
         evaluate_comparison_methods(
             dataset_path=data_path, methods=[cast("Any", "bad")]
         )
@@ -440,10 +452,10 @@ def test_cluster_remaining_knn_branches():
     assert knn.compute_conservatism_metric() == pytest.approx(0.0)
 
     knn.tree = None
-    with pytest.raises(RuntimeError, match="KDTree not initialized"):
+    with pytest.raises(NotFittedError):
         knn(np.array([0.0, 0.0]))
 
-    with pytest.raises(RuntimeError, match="Method not fitted"):
+    with pytest.raises(NotFittedError):
         KNNMonitor().evaluate_batch(_test_points())
 
 
@@ -530,7 +542,7 @@ def test_density_remaining_core_branches(monkeypatch: pytest.MonkeyPatch):
 
     m.trained = True
     m.kde = None
-    with pytest.raises(RuntimeError, match="KDE not initialized"):
+    with pytest.raises(NotFittedError):
         m.pdf(_test_points())
     assert m.suggest_reasonable_gamma() == pytest.approx(0.2)
 
@@ -592,7 +604,7 @@ def test_density_remaining_call_and_clustered_branches(monkeypatch: pytest.Monke
 
     m7 = SuperlevelSetMonitor()
     m7.trained = False
-    with pytest.raises(RuntimeError, match="Method not fitted"):
+    with pytest.raises(NotFittedError):
         m7.evaluate_batch(_test_points())
 
     m8 = SuperlevelSetMonitor(gamma=np.float64(0.1))
@@ -678,7 +690,7 @@ def test_knn_evaluate_batch_tree_none():
     knn = KNNMonitor(k=2)
     knn.trained = True
     knn.tree = None
-    with pytest.raises(RuntimeError, match="KDTree not initialized"):
+    with pytest.raises(NotFittedError):
         knn.evaluate_batch(_test_points())
 
 
@@ -696,7 +708,7 @@ def test_kmeans_empty_cluster_and_evaluate_batch():
 
     # evaluate_batch not-fitted guard.
     km_unfitted = KMeansBoundaries()
-    with pytest.raises(RuntimeError, match="KMeansBoundaries not fitted yet"):
+    with pytest.raises(NotFittedError):
         km_unfitted.evaluate_batch(_test_points())
 
     # evaluate_batch success path.
@@ -772,7 +784,7 @@ def test_clustered_hulls_evaluate_batch_and_ball_fallback(
     # evaluate_batch not-fitted guard.
     ch = ClusteredConvexHulls(n_clusters=1)
     ch.trained = False
-    with pytest.raises(RuntimeError, match="Not fitted"):
+    with pytest.raises(NotFittedError):
         ch.evaluate_batch(_test_points())
 
     # Bounding-ball fallback: hull=None but ball exists.
@@ -822,7 +834,7 @@ def test_dbscan_k_less_than_1_and_evaluate_batch():
 
     # evaluate_batch not-fitted guard.
     db = DBSCANCluster()
-    with pytest.raises(RuntimeError, match="Not fitted"):
+    with pytest.raises(NotFittedError):
         db.evaluate_batch(_test_points())
 
     # evaluate_batch with core tree (needs actual core points).

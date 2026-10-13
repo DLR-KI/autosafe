@@ -29,6 +29,11 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
+from autosafe.exceptions import (
+    ParameterTypeError,
+    TooFewAnchorsError,
+    UnknownOptionError,
+)
 from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
     WIDTH_SCHEDULE_SQRT_LOG_N,
@@ -79,11 +84,12 @@ def build_odd(
             ``odd.affinity_dual(X)``.
 
     Raises:
-        ValueError: If fewer than 2 anchors or unknown mode.
+        TooFewAnchorsError: If fewer than 2 anchors are given.
+        UnknownOptionError: If the mode is unknown.
     """
     pts = np.ascontiguousarray(np.asarray(points, dtype=float))
     if pts.shape[0] < 2:
-        raise ValueError("autoSAFE calibration requires N >= 2 anchors")
+        raise TooFewAnchorsError(2, pts.shape[0])
     odd = Samples(
         [Sample(x=row.copy()) for row in pts],
         closest_sample_mode="global",
@@ -119,7 +125,7 @@ def build_odd(
             "lam": float(lam) if lam is not None else SIGMA_FLOOR_RATIO * float(kappa),
         }
     else:
-        raise ValueError(f"unknown mode {mode!r}")
+        raise UnknownOptionError("mode", mode)
     odd.refresh_kernels(kernel_kwargs_override=override)
     return odd
 
@@ -134,11 +140,11 @@ def kernel_sigma(sample: Sample) -> NPArray:
         NPArray: (D, D) kernel covariance.
 
     Raises:
-        TypeError: If the anchor has no RBF kernel.
+        ParameterTypeError: If the anchor has no RBF kernel.
     """
     kern = sample.kernel
     if not isinstance(kern, RBFKernel):
-        raise TypeError(f"anchor kernel is {type(kern).__name__}, not RBFKernel")
+        raise ParameterTypeError("kernel", kern, RBFKernel)
     return np.asarray(kern.sigma, dtype=float)
 
 
@@ -344,7 +350,7 @@ def write_dat(path: Path, columns: Mapping[str, npt.ArrayLike]) -> None:
 
     Args:
         path (Path): Output ``.dat`` path (parent dirs are created).
-        columns (Mapping[str, ArrayLike]): Ordered column-name ->
+        columns (Mapping[str, npt.ArrayLike]): Ordered column-name ->
             values.
     """
     path = Path(path)

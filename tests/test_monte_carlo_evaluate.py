@@ -7,12 +7,13 @@ import pathlib
 
 import pytest
 
+from autosafe.exceptions import NoInputFilesError
 from autosafe.tools.monte_carlo.evaluate import evaluate
 
 
 def test_evaluate_raises_file_not_found():
     """Test evaluate raises FileNotFoundError when no files provided."""
-    with pytest.raises(FileNotFoundError, match="No file"):
+    with pytest.raises(NoInputFilesError):
         evaluate(file=None)
 
 

@@ -14,6 +14,13 @@ import polytope as pc
 import yaml
 
 from autosafe import ROOT_FOLDER
+from autosafe.exceptions import (
+    ConfigFileNotMappingError,
+    DimensionLengthError,
+    ParameterOrderError,
+    ParameterTypeError,
+    ShapeMismatchError,
+)
 from autosafe.tools.monte_carlo.dicts import (
     KernelConfig,
     MonteCarloConfig,
@@ -46,15 +53,14 @@ def _load_sampling_config_file(config_file_path: Path) -> MonteCarloConfig:
         MonteCarloConfig: Parsed Monte Carlo configuration.
 
     Raises:
-        ValueError: If a YAML file does not contain a mapping.
+        ConfigFileNotMappingError: If a YAML file does not contain a
+            mapping.
     """
     suffix = config_file_path.suffix.lower()
     if suffix in {".yaml", ".yml"}:
         loaded = yaml.safe_load(config_file_path.read_text(encoding="utf-8"))
         if not isinstance(loaded, dict):
-            raise ValueError(
-                f"Expected mapping in YAML config file: {config_file_path}",
-            )
+            raise ConfigFileNotMappingError(config_file_path)
         config_raw = cast("dict[str, object]", loaded)
     else:
         config_raw = cast(
@@ -86,8 +92,6 @@ def create_config(  # ruff:ignore[too-many-arguments, too-many-positional-argume
     """Create a MonteCarloConfig object from the given parameters.
 
     Args:
-        config_file (str | None): Path to the configuration file. If
-            provided, all other parameters are ignored.
         dim (int | None): The dimension of the space to sample. Must be
             greater than 0.
         odd_type (Literal["box"] | None): The type of the ODD polytope.
@@ -106,10 +110,12 @@ def create_config(  # ruff:ignore[too-many-arguments, too-many-positional-argume
             the number of anchors.
         kernel_type (KernelType): The type of the kernel to use. Default
             is "RBF".
-        kernel_params (dict[str, Any] | None): The parameters for the
+        kernel_params (str | None): The parameters for the
             kernel as a JSON string.
         filename (str): Path to the output JSON file where the results
             will be saved.
+        config_file (str | None): Path to the configuration file. If
+            provided, all other parameters are ignored.
         odd_config (str | None): Path to a YAML file or inline JSON
             describing custom ODD inequalities.
 
@@ -205,17 +211,15 @@ def cast_to_array(
         NPVector: The casted numpy array.
 
     Raises:
-        IndexError: If the length of the provided list or array does
-            not match the dimension and is not of length 1.
+        DimensionLengthError: If the length of the provided list or
+            array does not match the dimension and is not of length 1.
     """
     if isinstance(value, (list, np.ndarray)):
         if len(value) == 1:
             scalar = float(np.asarray(value, dtype=float).reshape(-1)[0])
             return np.full(dim, scalar, dtype=NPFloatType)
         if len(value) != dim:
-            raise IndexError(
-                f"Length of {name} must match dim if {name} is a list or array.",
-            )
+            raise DimensionLengthError(name, len(value), dim)
         return np.asarray(value, dtype=NPFloatType)
     return np.full(dim, value, dtype=NPFloatType)
 
@@ -241,20 +245,20 @@ def create_box(
         pc.Region: The created box as a convex polyhedron.
 
     Raises:
-        ValueError: If the dimensions of the lower and upper bounds do
-            not match, or if any lower bound is greater than the
-            corresponding upper bound. Also, if dim is None, both
-            lower_bounds and upper_bounds must be provided as list or
-            array.
+        ParameterTypeError: If dim is None and the bounds are not given
+            as list or array.
+        ShapeMismatchError: If the dimensions of the lower and upper
+            bounds do not match.
+        ParameterOrderError: If any lower bound is greater than the
+            corresponding upper bound.
     """
     if dim is None:
-        if not (
-            isinstance(lower_bounds, (list, np.ndarray))
-            and isinstance(upper_bounds, (list, np.ndarray))
+        for name, bounds in (
+            ("lower_bounds", lower_bounds),
+            ("upper_bounds", upper_bounds),
         ):
-            raise ValueError(
-                "If dim is None, lower_bounds and upper_bounds must be list or array.",
-            )
+            if not isinstance(bounds, (list, np.ndarray)):
+                raise ParameterTypeError(name, bounds, (list, np.ndarray))
 
         lower_arr: npt.NDArray[NPFloatType] = np.asarray(
             lower_bounds, dtype=NPFloatType
@@ -264,11 +268,9 @@ def create_box(
         )
 
         if lower_arr.shape != upper_arr.shape:
-            raise ValueError("Lower and upper bounds must have the same dimension.")
+            raise ShapeMismatchError("upper_bounds", upper_arr.shape, lower_arr.shape)
         if np.any(lower_arr > upper_arr):
-            raise ValueError(
-                "Lower bounds must be element-wise less than or equal to upper bound.",
-            )
+            raise ParameterOrderError("lower_bounds", "upper_bounds", strict=False)
 
         dim = int(lower_arr.shape[0])
     else:

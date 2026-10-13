@@ -191,7 +191,123 @@ Draft202012Validator.check_schema(OPENODD_1_0_YAML_SCHEMA)
 
 
 class OpenODDValidationError(ValueError):
-    """Raised when a document violates the OpenODD YAML mapping."""
+    """Raised when a document violates the OpenODD YAML mapping.
+
+    The subclasses below name the specific violation; catch this class
+    to handle any of them.
+    """
+
+
+class InvalidYAMLError(OpenODDValidationError):
+    """Raised when the YAML source cannot be parsed.
+
+    The parser error is attached as ``__cause__``.
+    """
+
+    def __init__(self, error: yaml.YAMLError) -> None:
+        super().__init__(f"invalid YAML: {error}")
+
+
+class DuplicateYAMLKeyError(OpenODDValidationError):
+    """Raised when a YAML mapping repeats a key."""
+
+    def __init__(self, key: object, line: int) -> None:
+        super().__init__(f"duplicate YAML key {key!r} at line {line}")
+
+
+class SchemaViolationError(OpenODDValidationError):
+    """Raised when a document fails the OpenODD JSON Schema."""
+
+    def __init__(self, path: str, detail: str) -> None:
+        super().__init__(f"{path}: {detail}")
+
+
+class DuplicateModuleIdError(OpenODDValidationError):
+    """Raised when a module ID occurs in more than one collection."""
+
+    def __init__(self, module_id: object) -> None:
+        super().__init__(f"module ID {module_id!r} is not globally unique")
+
+
+class UnknownConditionReferenceError(OpenODDValidationError):
+    """Raised when a condition references an unknown name."""
+
+    def __init__(self, path: str, name: str) -> None:
+        super().__init__(
+            f"{path}: condition references unknown concept, module, or label {name!r}"
+        )
+
+
+class InvalidNumericConditionError(OpenODDValidationError):
+    """Raised when a numeric concept lacks a numeric expression."""
+
+    def __init__(self, path: str, name: str) -> None:
+        super().__init__(
+            f"{path}: numeric concept {name!r} requires an OpenODD numeric expression"
+        )
+
+
+class NonIntegerConditionError(OpenODDValidationError):
+    """Raised when an integer concept is compared to a fraction."""
+
+    def __init__(self, path: str, name: str, value: float) -> None:
+        super().__init__(f"{path}: integer concept {name!r} cannot equal {value!r}")
+
+
+class InvalidBooleanConditionError(OpenODDValidationError):
+    """Raised when a boolean concept is given a non-boolean value."""
+
+    def __init__(self, path: str, name: str) -> None:
+        super().__init__(f"{path}: boolean concept {name!r} requires true or false")
+
+
+class UnknownCategoricalLiteralError(OpenODDValidationError):
+    """Raised when a categorical condition uses an unknown literal."""
+
+    def __init__(self, path: str, name: str, unknown: list[object]) -> None:
+        super().__init__(
+            f"{path}: categorical concept {name!r} uses unknown literal(s) {unknown!r}"
+        )
+
+
+class ConditionNotMappingError(OpenODDValidationError):
+    """Raised when an ``AND``/``OR`` block is not a mapping."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(f"{path}: must be a mapping")
+
+
+class RootModuleDependencyError(OpenODDValidationError):
+    """Raised when a module depends on a root module."""
+
+    def __init__(self, module_id: str, roots: set[str]) -> None:
+        super().__init__(
+            f"module {module_id!r} depends on root module(s) {sorted(roots)!r}"
+        )
+
+
+class ModuleDependencyCycleError(OpenODDValidationError):
+    """Raised when module dependencies form a cycle."""
+
+    def __init__(self, module_id: str) -> None:
+        super().__init__(f"module dependency cycle contains {module_id!r}")
+
+
+class DuplicateTaxonomyIdError(OpenODDValidationError):
+    """Raised when concepts, modules, and labels share an ID."""
+
+    def __init__(self, names: set[str]) -> None:
+        super().__init__(
+            "taxonomy concepts, modules, and labels must have distinct IDs; "
+            f"duplicates: {sorted(names)!r}"
+        )
+
+
+class UnknownModuleFieldsError(OpenODDValidationError):
+    """Raised when a module has fields outside the OpenODD mapping."""
+
+    def __init__(self, module_id: str) -> None:
+        super().__init__(f"module {module_id!r} has unknown fields")
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
@@ -206,19 +322,23 @@ def _construct_mapping(
 ) -> dict[object, object]:
     """Construct a mapping while rejecting YAML duplicate keys.
 
+    Args:
+        loader (_UniqueKeyLoader): YAML loader constructing the
+            document.
+        node (yaml.MappingNode): Mapping node to construct.
+        deep (bool): Whether to construct nested objects immediately.
+
     Returns:
         dict[object, object]: Constructed unique-key mapping.
 
     Raises:
-        OpenODDValidationError: If a key occurs more than once.
+        DuplicateYAMLKeyError: If a key occurs more than once.
     """
     result: dict[object, object] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=deep)
         if key in result:
-            raise OpenODDValidationError(
-                f"duplicate YAML key {key!r} at line {key_node.start_mark.line + 1}"
-            )
+            raise DuplicateYAMLKeyError(key, key_node.start_mark.line + 1)
         result[key] = loader.construct_object(value_node, deep=deep)
     return result
 
@@ -231,6 +351,10 @@ _UniqueKeyLoader.add_constructor(
 
 def _path_text(parts: Sequence[object]) -> str:
     """Format a JSON-style validation path.
+
+    Args:
+        parts (Sequence[object]): Path components; integers are list
+            indices.
 
     Returns:
         str: Human-readable path.
@@ -250,7 +374,7 @@ def _schema_validate(document: object) -> None:
         return
     error = errors[0]
     path = _path_text(tuple(error.absolute_path))
-    raise OpenODDValidationError(f"{path}: {error.message}")
+    raise SchemaViolationError(path, error.message)
 
 
 def _taxonomy_concepts(
@@ -301,9 +425,7 @@ def _module_collections(
             continue
         for module_id, value in collection.items():
             if module_id in modules:
-                raise OpenODDValidationError(
-                    f"module ID {module_id!r} is not globally unique"
-                )
+                raise DuplicateModuleIdError(module_id)
             modules[str(module_id)] = cast("Mapping[str, object]", value)
             if collection_name in {"ODD", "TOD"}:
                 roots.add(str(module_id))
@@ -335,47 +457,54 @@ def _validate_condition(  # ruff:ignore[too-many-arguments]
 ) -> str | None:
     """Validate one condition and return a referenced module, if any.
 
+    Args:
+        name (str): Referenced concept, module, or label ID.
+        value (object): Condition value.
+        path (str): Document path of the condition, for error messages.
+        primitive (Mapping[str, str]): Primitive type per numeric or
+            boolean concept.
+        categorical (Mapping[str, tuple[object, ...]]): Allowed literals
+            per categorical concept.
+        known_references (set[str]): All concept, module, and label IDs.
+
     Returns:
         str | None: Referenced module or label ID, if applicable.
 
     Raises:
-        OpenODDValidationError: If the condition is invalid.
+        UnknownConditionReferenceError: If the condition names an
+            unknown concept, module, or label.
+        InvalidNumericConditionError: If a numeric concept lacks a
+            numeric expression.
+        NonIntegerConditionError: If an integer concept is compared to
+            a fraction.
+        InvalidBooleanConditionError: If a boolean concept gets a
+            non-boolean value.
+        UnknownCategoricalLiteralError: If a categorical concept uses an
+            unknown literal.
     """
     if name not in known_references:
-        raise OpenODDValidationError(
-            f"{path}: condition references unknown concept, module, or label {name!r}"
-        )
+        raise UnknownConditionReferenceError(path, name)
     primitive_type = primitive.get(name)
     if primitive_type in {"float", "integer"}:
         if not _valid_numeric_expression(value):
-            raise OpenODDValidationError(
-                f"{path}: numeric concept {name!r} requires an OpenODD "
-                "numeric expression"
-            )
+            raise InvalidNumericConditionError(path, name)
         if (
             primitive_type == "integer"
             and isinstance(value, float)
             and not value.is_integer()
         ):
-            raise OpenODDValidationError(
-                f"{path}: integer concept {name!r} cannot equal {value!r}"
-            )
+            raise NonIntegerConditionError(path, name, value)
         return None
     if primitive_type == "boolean":
         if not isinstance(value, bool):
-            raise OpenODDValidationError(
-                f"{path}: boolean concept {name!r} requires true or false"
-            )
+            raise InvalidBooleanConditionError(path, name)
         return None
     domain = categorical.get(name)
     if domain is not None:
         observed = value if isinstance(value, list) else [value]
         unknown = [item for item in observed if item not in domain]
         if unknown:
-            raise OpenODDValidationError(
-                f"{path}: categorical concept {name!r} uses unknown "
-                f"literal(s) {unknown!r}"
-            )
+            raise UnknownCategoricalLiteralError(path, name, unknown)
         return None
     return name if isinstance(value, bool) else None
 
@@ -395,7 +524,7 @@ def _walk_conditions(
             continue
         if name in {"AND", "OR"}:
             if not isinstance(value, Mapping):  # covered by JSON Schema
-                raise OpenODDValidationError(f"{child_path}: must be a mapping")
+                raise ConditionNotMappingError(child_path)
             references.update(
                 _walk_conditions(
                     cast("Mapping[str, object]", value),
@@ -426,19 +555,14 @@ def _validate_module_graph(
     for module_id, dependencies in graph.items():
         invalid_roots = dependencies & roots
         if invalid_roots:
-            raise OpenODDValidationError(
-                f"module {module_id!r} depends on root module(s) "
-                f"{sorted(invalid_roots)!r}"
-            )
+            raise RootModuleDependencyError(module_id, invalid_roots)
 
     visiting: set[str] = set()
     visited: set[str] = set()
 
     def visit(module_id: str) -> None:
         if module_id in visiting:
-            raise OpenODDValidationError(
-                f"module dependency cycle contains {module_id!r}"
-            )
+            raise ModuleDependencyCycleError(module_id)
         if module_id in visited:
             return
         visiting.add(module_id)
@@ -460,11 +584,18 @@ def validate_openodd_document(document: object) -> None:
     identifiers, typed expressions, references, root dependencies, and
     module dependency cycles.
 
+    Every violation raises a subclass of
+    :class:`OpenODDValidationError`; the schema, reference and
+    dependency checks run in helpers, so only the checks made here are
+    listed below.
+
     Args:
         document (object): YAML-decoded document.
 
     Raises:
-        OpenODDValidationError: If the document is invalid.
+        DuplicateTaxonomyIdError: If concepts, modules, and labels
+            share an ID.
+        UnknownModuleFieldsError: If a module has unknown fields.
     """
     _schema_validate(document)
     mapping = cast("Mapping[str, object]", document)
@@ -481,16 +612,13 @@ def validate_openodd_document(document: object) -> None:
     duplicate_names = (set(modules) & concept_names) | (labels & set(modules))
     duplicate_names |= labels & concept_names
     if duplicate_names:
-        raise OpenODDValidationError(
-            "taxonomy concepts, modules, and labels must have distinct IDs; "
-            f"duplicates: {sorted(duplicate_names)!r}"
-        )
+        raise DuplicateTaxonomyIdError(duplicate_names)
 
     known_references = concept_names | set(modules) | labels
     graph: dict[str, set[str]] = {}
     for module_id, module in modules.items():
         if set(module) - _MODULE_FIELDS:  # covered by schema, defensive
-            raise OpenODDValidationError(f"module {module_id!r} has unknown fields")
+            raise UnknownModuleFieldsError(module_id)
         dependencies: set[str] = set()
         for section_name in _SECTION_NAMES:
             section = module.get(section_name)
@@ -518,7 +646,8 @@ def parse_openodd_yaml(text: str) -> dict[str, Any]:
         dict[str, Any]: Validated YAML mapping.
 
     Raises:
-        OpenODDValidationError: If parsing or validation fails.
+        InvalidYAMLError: If the text is not valid YAML.
+        OpenODDValidationError: If validation fails.
     """
     try:
         document = yaml.load(
@@ -528,7 +657,7 @@ def parse_openodd_yaml(text: str) -> dict[str, Any]:
     except OpenODDValidationError:
         raise
     except yaml.YAMLError as error:
-        raise OpenODDValidationError(f"invalid YAML: {error}") from error
+        raise InvalidYAMLError(error) from error
     validate_openodd_document(document)
     return cast("dict[str, Any]", document)
 

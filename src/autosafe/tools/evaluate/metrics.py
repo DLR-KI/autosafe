@@ -13,7 +13,14 @@ import numpy as np
 import polars as pl
 
 from autosafe import _jax_config  # ruff:ignore[unused-import]
-from autosafe.exceptions import LinearAffinityDecisionWarning
+from autosafe.exceptions import (
+    LengthMismatchError,
+    LinearAffinityDecisionWarning,
+    MissingColumnError,
+    NonPositiveParameterError,
+    UnknownOptionError,
+    ValueBelowMinimumError,
+)
 from autosafe.tools.evaluate.core import calculate_performance_metrics
 from autosafe.tools.monte_carlo.dicts import ConfusionMatrixDict
 from autosafe.typing import AffinityVector
@@ -36,15 +43,16 @@ def build_affinity_thresholds(mode: str = "linear", count: int = 100) -> Affinit
         AffinityVector: array of affinity threshold values.
 
     Raises:
-        ValueError: If `count` is not positive or mode is invalid.
+        NonPositiveParameterError: If `count` is not positive.
+        UnknownOptionError: If mode is invalid.
     """
     if count <= 0:
-        raise ValueError("count must be positive")
+        raise NonPositiveParameterError("count", count)
     if mode == "log":
         return jnp.logspace(-3, 0, num=count, base=10.0)
     if mode == "linear":
         return jnp.linspace(0.0, 1.0, num=count)
-    raise ValueError("mode must be 'linear' or 'log'")
+    raise UnknownOptionError("mode", mode, ("linear", "log"))
 
 
 _MIN_THRESHOLD_COUNT = 2
@@ -89,10 +97,11 @@ def build_threshold_pairs(  # ruff:ignore[too-many-locals]
             which are de-duplicated.
 
     Raises:
-        ValueError: If `count` is smaller than 2 (the two anchors).
+        ValueBelowMinimumError: If `count` is smaller than 2 (the two
+            anchors).
     """
     if count < _MIN_THRESHOLD_COUNT:
-        raise ValueError("count must be at least 2 to hold both anchors")
+        raise ValueBelowMinimumError("count", count, _MIN_THRESHOLD_COUNT)
 
     affinities = np.asarray(affinities, dtype=float)
     survivals = np.asarray(survivals, dtype=float)
@@ -221,10 +230,12 @@ def evaluate_affinity_metrics(  # ruff:ignore[too-many-locals]
             float stay in the correct (deepest-last) order.
 
     Raises:
-        ValueError: If required columns are missing or labels mismatch.
+        MissingColumnError: If the affinity column is missing.
+        LengthMismatchError: If a reference label vector does not
+            match the sample count.
     """
     if "affinity" not in samples_df.columns:
-        raise ValueError("samples_df must contain an 'affinity' column")
+        raise MissingColumnError("samples_df", "affinity")
 
     has_survival = "survival" in samples_df.columns
     if not has_survival:
@@ -241,10 +252,7 @@ def evaluate_affinity_metrics(  # ruff:ignore[too-many-locals]
 
     for reference_name, labels in reference_labels.items():
         if len(labels) != samples_df.height:
-            raise ValueError(
-                "reference label length does not match sample count "
-                f"for '{reference_name}'"
-            )
+            raise LengthMismatchError(reference_name, len(labels), samples_df.height)
 
         labels_arr = np.asarray(labels, dtype=bool)
         affinity_pos = np.sort(affinity_all[labels_arr])
@@ -322,7 +330,7 @@ def save_metrics_csv(results: pl.DataFrame, output_path: Path) -> Path:
         output_path (Path): Destination CSV file path.
 
     Returns:
-        The written CSV path.
+        Path: The written CSV path.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     results.write_csv(output_path)

@@ -15,9 +15,9 @@ import numpy as np
 class KNNMethodKwargs(TypedDict, total=False):
     """Keyword arguments for KNN comparison method.
 
-    Args:
+    Attributes:
         k (int): Number of nearest neighbors.
-        gamma (float | None): Distance threshold for membership (if
+        gamma (np.float64 | None): Distance threshold for membership (if
             None, auto-detected).
         metric (str): Distance metric for KDTree (default: "euclidean").
         leaf_size (int): KDTree optimization parameter (default: 40).
@@ -32,7 +32,7 @@ class KNNMethodKwargs(TypedDict, total=False):
 class KMeansMethodKwargs(TypedDict, total=False):
     """Keyword arguments for k-means comparison method.
 
-    Args:
+    Attributes:
         n_clusters (int): Number of clusters for k-means.
         metric (str): Distance metric for clustering (default:
             "euclidean").
@@ -48,11 +48,12 @@ class KMeansMethodKwargs(TypedDict, total=False):
 class DensityMethodKwargs(TypedDict, total=False):
     """Keyword arguments for density-based comparison method.
 
-    Args:
-        gamma (float): Density threshold for superlevel set membership.
+    Attributes:
+        gamma (np.float64): Density threshold for superlevel set
+            membership.
         bandwidth (Literal["scott", "silverman"] | None): Bandwidth
             method for KDE (None for auto).
-        sigmoid_weight (float): Weighting factor for sigmoid
+        sigmoid_weight (np.float64): Weighting factor for sigmoid
             transformation of density scores.
     """
 
@@ -64,7 +65,7 @@ class DensityMethodKwargs(TypedDict, total=False):
 class ClusteredHullMethodKwargs(TypedDict, total=False):
     """Keyword arguments for clustered convex hull comparison method.
 
-    Args:
+    Attributes:
         n_clusters (int): Number of clusters for partitioning reference
             points before hull construction.
         method (Literal["kmeans", "dbscan"]): Clustering method to use.
@@ -78,10 +79,11 @@ class ClusteredHullMethodKwargs(TypedDict, total=False):
 class ClusteredDensityMethodKwargs(TypedDict, total=False):
     """Keyword arguments for clustered density comparison method.
 
-    Args:
+    Attributes:
         n_clusters (int): Number of clusters for partitioning reference
             points before density estimation.
-        gamma (float): Density threshold for superlevel set membership.
+        gamma (np.float64): Density threshold for superlevel set
+            membership.
         bandwidth (Literal["scott", "silverman"] | None): Bandwidth
             method for KDE (None for auto).
         min_cluster_size (int): Minimum cluster size to consider for.
@@ -97,15 +99,15 @@ class ClusteredDensityMethodKwargs(TypedDict, total=False):
 class GMMMethodKwargs(TypedDict, total=False):
     """Keyword arguments for the Gaussian-mixture comparison method.
 
-    Args:
+    Attributes:
         random_state (int): Seed for ``GaussianMixture``'s EM
             initialization. Required by ``GaussianMixtureBoundary``
             itself (no default there); a default is only supplied here
             so an omitted spec key does not crash the factory.
         n_components_range (tuple[int, int]): Inclusive
             ``(min, max)`` component count searched by BIC.
-        gamma (float | None): Log-likelihood threshold for superlevel-
-            set membership (None for auto-calibration).
+        gamma (np.float64 | None): Log-likelihood threshold for
+            superlevel-set membership (None for auto-calibration).
     """
 
     random_state: int
@@ -116,9 +118,9 @@ class GMMMethodKwargs(TypedDict, total=False):
 class OneClassSVMMethodKwargs(TypedDict, total=False):
     """Keyword arguments for the one-class SVM comparison method.
 
-    Args:
-        gamma (float | Literal["scale"]): RBF kernel gamma.
-        nu (float): Upper bound on the fraction of margin errors /
+    Attributes:
+        gamma (np.float64 | Literal["scale"]): RBF kernel gamma.
+        nu (np.float64): Upper bound on the fraction of margin errors /
             lower bound on the fraction of support vectors.
         auto_select (bool): Select (gamma, nu) from a small internal
             grid by best mean margin on the reference points.
@@ -132,14 +134,14 @@ class OneClassSVMMethodKwargs(TypedDict, total=False):
 class SVDDMethodKwargs(TypedDict, total=False):
     """Keyword arguments for the SVDD comparison method.
 
-    Args:
+    Attributes:
         kernel (Literal["rbf", "poly", "linear"]): Kernel name.
-        gamma (float | Literal["scale"]): Kernel gamma for "rbf"/
+        gamma (np.float64 | Literal["scale"]): Kernel gamma for "rbf"/
             "poly".
-        nu (float): Nu parameter, same convention as
+        nu (np.float64): Nu parameter, same convention as
             ``OneClassSVMMethodKwargs.nu``.
         degree (int): Polynomial degree for "poly".
-        coef0 (float): Polynomial offset for "poly".
+        coef0 (np.float64): Polynomial offset for "poly".
     """
 
     kernel: Literal["rbf", "poly", "linear"]
@@ -152,7 +154,7 @@ class SVDDMethodKwargs(TypedDict, total=False):
 class DBSCANMethodKwargs(TypedDict, total=False):
     """Keyword arguments for DBSCAN-based comparison method.
 
-    Args:
+    Attributes:
         eps (np.float64): Maximum distance between two samples for them
             to be considered as in the same neighborhood.
         min_samples (int): Minimum number of samples in a neighborhood

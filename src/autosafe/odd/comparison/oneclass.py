@@ -24,6 +24,11 @@ import numpy.typing as npt
 import scipy.optimize
 from sklearn.svm import OneClassSVM
 
+from autosafe.exceptions import (
+    EmptyHyperparameterGridError,
+    NotFittedError,
+    UnknownOptionError,
+)
 from autosafe.odd.comparison.base import (
     DecisionBoundary,
     ODDBoundaryMethod,
@@ -109,9 +114,10 @@ def _select_ocsvm_hyperparameters(
         gamma, selected nu, and the fitted estimator.
 
     Raises:
-        RuntimeError: If no candidate could be fit (unreachable given
-            a non-empty static grid, kept only to satisfy the type
-            checker that ``best`` is not ``None`` below).
+        EmptyHyperparameterGridError: If no candidate could be fit
+            (unreachable given a non-empty static grid, kept only to
+            satisfy the type checker that ``best`` is not ``None``
+            below).
     """
     best: tuple[float | Literal["scale"], float, OneClassSVM] | None = None
     best_margin = -np.inf
@@ -123,7 +129,7 @@ def _select_ocsvm_hyperparameters(
                 best_margin = margin
                 best = (gamma, nu, svm)
     if best is None:
-        raise RuntimeError("hyperparameter grid search produced no candidate")
+        raise EmptyHyperparameterGridError
     return best
 
 
@@ -136,6 +142,16 @@ class OneClassSVMBoundary(ODDBoundaryMethod):
     is exposed via :meth:`decision_function` so the same threshold-
     sweep machinery used elsewhere in the comparison framework applies
     without modification.
+
+    Args:
+        gamma (float | Literal["scale"]): RBF kernel gamma
+            (default ``"scale"``, matching scikit-learn).
+        nu (float): Nu parameter (default 0.05).
+        auto_select (bool): Select (gamma, nu) from the internal
+            grid during ``fit`` instead of using the fixed values
+            above.
+        threshold (FloatType | None): Decision threshold in score
+            space; defaults to 0.0.
 
     Attributes:
         gamma (float | Literal["scale"]): RBF kernel gamma.
@@ -153,6 +169,12 @@ class OneClassSVMBoundary(ODDBoundaryMethod):
             metadata property.
     """
 
+    gamma: float | Literal["scale"]
+    nu: float
+    auto_select: bool
+    threshold: FloatType
+    svm: OneClassSVM | None
+
     def __init__(
         self,
         gamma: float | Literal["scale"] = DEFAULT_GAMMA,
@@ -161,18 +183,6 @@ class OneClassSVMBoundary(ODDBoundaryMethod):
         auto_select: bool = False,
         threshold: FloatType | None = None,
     ) -> None:
-        """Initialize the one-class SVM boundary.
-
-        Args:
-            gamma (float | Literal["scale"]): RBF kernel gamma
-                (default ``"scale"``, matching scikit-learn).
-            nu (float): Nu parameter (default 0.05).
-            auto_select (bool): Select (gamma, nu) from the internal
-                grid during ``fit`` instead of using the fixed values
-                above.
-            threshold (FloatType | None): Decision threshold in score
-                space; defaults to 0.0.
-        """
         self.gamma = gamma
         self.nu = nu
         self.auto_select = auto_select
@@ -279,10 +289,10 @@ class OneClassSVMBoundary(ODDBoundaryMethod):
             npt.NDArray[np.float64]: Decision-function values.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained or self.svm is None:
-            raise RuntimeError("OneClassSVMBoundary not fitted yet")
+            raise NotFittedError(type(self).__name__)
         return cast(
             "npt.NDArray[np.float64]",
             self.svm.decision_function(np.asarray(test_points, dtype=float).T),
@@ -337,7 +347,8 @@ def _pairwise_kernel(  # ruff:ignore[too-many-arguments]
         npt.NDArray[np.float64]: Kernel matrix, shape (n, m).
 
     Raises:
-        ValueError: If ``kernel`` is not one of the supported names.
+        UnknownOptionError: If ``kernel`` is not one of the supported
+            names.
     """
     if kernel == "linear":
         return x @ y.T
@@ -348,7 +359,7 @@ def _pairwise_kernel(  # ruff:ignore[too-many-arguments]
         sq_y = np.sum(y**2, axis=1)[np.newaxis, :]
         sq_dist = np.maximum(sq_x + sq_y - 2.0 * (x @ y.T), 0.0)
         return cast("npt.NDArray[np.float64]", np.exp(-gamma * sq_dist))
-    raise ValueError(f"unknown SVDD kernel {kernel!r}")
+    raise UnknownOptionError("kernel", kernel, ("linear", "poly", "rbf"))
 
 
 def _kernel_self(
@@ -367,7 +378,8 @@ def _kernel_self(
         npt.NDArray[np.float64]: Self-kernel values, shape (n,).
 
     Raises:
-        ValueError: If ``kernel`` is not one of the supported names.
+        UnknownOptionError: If ``kernel`` is not one of the supported
+            names.
     """
     if kernel == "linear":
         return np.sum(x**2, axis=1)
@@ -375,7 +387,7 @@ def _kernel_self(
         return (gamma * np.sum(x**2, axis=1) + coef0) ** degree
     if kernel == "rbf":
         return np.ones(x.shape[0], dtype=float)
-    raise ValueError(f"unknown SVDD kernel {kernel!r}")
+    raise UnknownOptionError("kernel", kernel, ("linear", "poly", "rbf"))
 
 
 def _solve_svdd_dual(
@@ -452,6 +464,23 @@ class SVDDBoundary(ODDBoundaryMethod):
         comparison; the constructor warns at runtime when
         ``kernel="rbf"`` for exactly this reason.
 
+    Args:
+        kernel (SVDDKernel): Kernel name, one of "rbf", "poly",
+            "linear". Default "rbf".
+        gamma (float | Literal["scale"]): Kernel gamma for "rbf"/
+            "poly" (default "scale", matching scikit-learn).
+        nu (float): Nu parameter (default 0.05), same convention as
+            ``OneClassSVMBoundary.nu``.
+        degree (int): Polynomial degree for "poly" (default 3).
+        coef0 (float): Polynomial offset for "poly" (default 0.0).
+        threshold (FloatType | None): Decision threshold in score
+            space; defaults to 0.0.
+
+    Warns:
+        UserWarning: If ``kernel="rbf"``, stating the provable
+            equivalence to ``OneClassSVMBoundary`` under matched
+            hyperparameters (see class docstring).
+
     Attributes:
         kernel (SVDDKernel): Kernel name ("rbf", "poly", or "linear").
         gamma (float | Literal["scale"]): Kernel gamma for "rbf"/
@@ -468,6 +497,14 @@ class SVDDBoundary(ODDBoundaryMethod):
             metadata property.
     """
 
+    kernel: SVDDKernel
+    gamma: float | Literal["scale"]
+    nu: float
+    degree: int
+    coef0: float
+    threshold: FloatType
+    alpha: npt.NDArray[np.float64] | None
+
     def __init__(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
         self,
         kernel: SVDDKernel = DEFAULT_SVDD_KERNEL,
@@ -477,25 +514,6 @@ class SVDDBoundary(ODDBoundaryMethod):
         coef0: float = DEFAULT_COEF0,
         threshold: FloatType | None = None,
     ) -> None:
-        """Initialize the SVDD boundary.
-
-        Args:
-            kernel (SVDDKernel): Kernel name, one of "rbf", "poly",
-                "linear". Default "rbf".
-            gamma (float | Literal["scale"]): Kernel gamma for "rbf"/
-                "poly" (default "scale", matching scikit-learn).
-            nu (float): Nu parameter (default 0.05), same convention as
-                ``OneClassSVMBoundary.nu``.
-            degree (int): Polynomial degree for "poly" (default 3).
-            coef0 (float): Polynomial offset for "poly" (default 0.0).
-            threshold (FloatType | None): Decision threshold in score
-                space; defaults to 0.0.
-
-        Warns:
-            UserWarning: If ``kernel="rbf"``, stating the provable
-                equivalence to ``OneClassSVMBoundary`` under matched
-                hyperparameters (see class docstring).
-        """
         if kernel == "rbf":
             warnings.warn(
                 "SVDDBoundary(kernel='rbf') is mathematically equivalent to "
@@ -676,7 +694,7 @@ class SVDDBoundary(ODDBoundaryMethod):
             npt.NDArray[np.float64]: Decision-function values.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if (
             not self.trained
@@ -685,7 +703,7 @@ class SVDDBoundary(ODDBoundaryMethod):
             or self._r_squared is None
             or self._w_quad is None
         ):
-            raise RuntimeError("SVDDBoundary not fitted yet")
+            raise NotFittedError(type(self).__name__)
 
         test_t = np.asarray(test_points, dtype=float).T
         kernel_kwargs = self._kernel_kwargs()

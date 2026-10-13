@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from autosafe.exceptions import NotFittedError, UnknownOptionError
 from autosafe.odd.comparison import (
     ClusteredConvexHulls,
     ClusteredSuperlevelSetMonitor,
@@ -41,14 +42,12 @@ class FastHullApproximation(ODDBoundaryMethod):
 
     Particularly useful when defining specific comparison methods for
     different experiments.
+
+    No parameters needed. Uses simple geometric heuristics to
+    approximate hull membership, making it fast and robust.
     """
 
     def __init__(self) -> None:
-        """Initialize fast hull approximation.
-
-        No parameters needed. Uses simple geometric heuristics to
-        approximate hull membership, making it fast and robust.
-        """
         self._center: np.ndarray | None = None
         self._max_radius: float | None = None
 
@@ -105,10 +104,10 @@ class FastHullApproximation(ODDBoundaryMethod):
             bool: True when point is inside the hull approximation.
 
         Raises:
-            RuntimeError: If method not yet fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if self._center is None or self._max_radius is None:
-            raise RuntimeError("FastHullApproximation not fitted. Call .fit() first.")
+            raise NotFittedError(type(self).__name__)
 
         test_point = np.asarray(test_point, dtype=float)
         distance_from_center = np.linalg.norm(test_point - self._center)
@@ -131,10 +130,10 @@ class FastHullApproximation(ODDBoundaryMethod):
                 (shape: (n_samples,)).
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if self._center is None or self._max_radius is None:
-            raise RuntimeError("FastHullApproximation not fitted. Call .fit() first.")
+            raise NotFittedError(type(self).__name__)
 
         center_col = self._center[:, np.newaxis]
         distances = np.linalg.norm(test_points - center_col, axis=0)
@@ -202,7 +201,7 @@ def create_comparison_monitor(method_name: str, **params: Any) -> ODDBoundaryMet
         ODDBoundaryMethod: Instantiated monitor instance.
 
     Raises:
-        ValueError: If method name is unrecognized.
+        UnknownOptionError: If method name is unrecognized.
     """
     method_instances = {
         # Original methods from odd.comparison
@@ -246,10 +245,7 @@ def create_comparison_monitor(method_name: str, **params: Any) -> ODDBoundaryMet
     }
 
     if method_name not in method_instances:
-        raise ValueError(
-            f"Unsupported comparison method: {method_name}. "
-            f"Available methods: {list(method_instances.keys())}"
-        )
+        raise UnknownOptionError("method", method_name, method_instances)
 
     return method_instances[method_name]()
 
@@ -282,14 +278,12 @@ def validate_method_names(method_names: list[str]) -> None:
         method_names (list[str]): Method names to validate.
 
     Raises:
-        ValueError: If unsupported methods are provided.
+        UnknownOptionError: If unsupported methods are provided.
     """
     available = get_available_method_names()
     for name in method_names:
         if name not in available:
-            raise ValueError(
-                f"Unsupported comparison method: {name}. Available methods: {available}"
-            )
+            raise UnknownOptionError("method", name, available)
 
 
 __all__ = [

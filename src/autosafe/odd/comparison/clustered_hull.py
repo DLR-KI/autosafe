@@ -11,6 +11,7 @@ import scipy.spatial
 from scipy.spatial import ConvexHull
 from sklearn.cluster import KMeans
 
+from autosafe.exceptions import NotFittedError, UnknownOptionError
 from autosafe.odd.comparison.base import (
     DecisionBoundary,
     ODDBoundaryMethod,
@@ -107,10 +108,11 @@ class ClusteredConvexHulls(ODDBoundaryMethod):
             Self: Self for method chaining.
 
         Raises:
-            ValueError: If unsupported clustering method is requested.
+            UnknownOptionError: If unsupported clustering method is
+                requested.
         """
         if self.method != "kmeans":
-            raise ValueError("Only 'kmeans' clustering is currently supported")
+            raise UnknownOptionError("method", self.method, ("kmeans",))
 
         data_t = reference_points.T
         kmeans = KMeans(n_clusters=self.n_clusters, random_state=42)
@@ -153,10 +155,10 @@ class ClusteredConvexHulls(ODDBoundaryMethod):
             bool: True if point is inside at least one cluster hull.
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("Not fitted")
+            raise NotFittedError(type(self).__name__)
 
         point_array = np.asarray(test_point, dtype=float)
         for i, hull in enumerate(self.hulls):
@@ -193,10 +195,10 @@ class ClusteredConvexHulls(ODDBoundaryMethod):
                 (shape: (n_samples,)).
 
         Raises:
-            RuntimeError: If the monitor is not fitted.
+            NotFittedError: If the monitor is not fitted.
         """
         if not self.trained:
-            raise RuntimeError("Not fitted")
+            raise NotFittedError(type(self).__name__)
 
         n_samples = test_points.shape[1]
         result = np.zeros(n_samples, dtype=bool)

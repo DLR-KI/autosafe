@@ -17,6 +17,11 @@ from loguru import logger
 from tqdm import TqdmExperimentalWarning
 
 from autosafe import ROOT_FOLDER
+from autosafe.exceptions import (
+    NoInputFilesError,
+    NotADirectoryParameterError,
+    ParameterTypeError,
+)
 from autosafe.samples import Samples
 from autosafe.tools.monte_carlo import MC_APP
 from autosafe.tools.monte_carlo._sample import (
@@ -60,7 +65,8 @@ def _resolve_odd(
             optional description.
 
     Raises:
-        ValueError: If the custom ODD configuration cannot be parsed.
+        ParameterTypeError: If the custom ODD configuration is neither
+            a YAML path nor a mapping.
         NotImplementedError: If the ODD type is not supported.
     """
     # `config` is a MonteCarloConfig, i.e. a TypedDict, which is a plain
@@ -77,8 +83,8 @@ def _resolve_odd(
         elif isinstance(custom_odd_config, dict):
             odd_config = custom_odd_config
         else:
-            raise ValueError(
-                "custom_odd_config must be either a YAML path or a mapping",
+            raise ParameterTypeError(
+                "custom_odd_config", custom_odd_config, (str, Path, dict)
             )
 
         odd_factory = ODDFactory(odd_config)
@@ -381,9 +387,6 @@ def sample(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
         odd_type (Literal["box"] | None): The type of the ODD polytope.
             Currently, "box" is supported, and custom polytopes can be
             defined via odd_config.
-        odd_config (str | None): Path to YAML file or inline JSON with
-            custom ODD configuration. Allows defining inequality
-            constraints and complex polytopes beyond simple boxes.
         odd_limits (float | None): The limits of the ODD box in each
             dimension. This allows to set a symmetric box around the
             origin.
@@ -404,21 +407,26 @@ def sample(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
             will be saved.
         config_file (str | None): Path to the configuration file. If
             provided, all other parameters are ignored.
+        odd_config (str | None): Path to YAML file or inline JSON with
+            custom ODD configuration. Allows defining inequality
+            constraints and complex polytopes beyond simple boxes.
         config_file_folder (str | None): Path to the folder where the
             configuration files are located. If provided, the Monte-
             Carlo-sampling is ran for all configuration files in this
             folder overwriting all other parameters.
 
     Raises:
-        ValueError: If the provided config file folder is not a
-            directory or does not contain any configuration files.
+        NotADirectoryParameterError: If the provided config file folder
+            is not a directory.
+        NoInputFilesError: If the folder does not contain any
+            configuration files.
     """
     if config_file_folder is not None:
         config_folder_path = Path(config_file_folder)
         if not config_folder_path.is_absolute():
             config_folder_path = ROOT_FOLDER / config_folder_path
         if not config_folder_path.is_dir():
-            raise ValueError("The provided config file folder is not a directory.")
+            raise NotADirectoryParameterError("config_file_folder", config_folder_path)
 
         config_files = [
             *config_folder_path.glob("*.json"),
@@ -426,7 +434,7 @@ def sample(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
             *config_folder_path.glob("*.yml"),
         ]
         if len(config_files) == 0:
-            raise ValueError("No configuration files found in the provided folder.")
+            raise NoInputFilesError(config_folder_path)
 
         for config_path in config_files:
             logger.info(
