@@ -20,6 +20,7 @@ from autosafe.exceptions import (
     UnknownOptionError,
 )
 from autosafe.odd.comparison.base import (
+    DecisionBoundary,
     ODDBoundaryMethod,
     ODDComparisonConfig,
     validate_comparison_config,
@@ -57,7 +58,7 @@ class _TinyMethod(ODDBoundaryMethod):
         return "tiny"
 
     @property
-    def decision_boundary(self) -> dict[str, Any]:
+    def decision_boundary(self) -> DecisionBoundary:
         return {
             "type": "tiny",
             "parameters": {},
