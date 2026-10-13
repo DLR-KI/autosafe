@@ -18,7 +18,7 @@ RESULTS_DIR = export_paper_data.DEFAULT_RESULTS_DIR
 #: Committed artifacts per suffix: one results.csv and config.json per
 #: experiment (permutation stability writes a single JSON report), plus
 #: the pgfplots-ready .dat files.
-EXPECTED_SUFFIX_COUNTS = {".dat": 51, ".csv": 11, ".json": 13}
+EXPECTED_SUFFIX_COUNTS = {".dat": 51, ".csv": 12, ".json": 14}
 
 
 def test_results_tree_holds_exactly_the_audited_artifacts() -> None:

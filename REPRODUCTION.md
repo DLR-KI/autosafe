@@ -37,7 +37,7 @@ Run `uv run reuse lint` at any time to re-verify every license annotation.
 
 ## 3. Fast path: the committed results (recommended)
 
-The results of the twelve synthetic benchmark experiments are committed to this repository under `experiments/benchmark/results/`, licensed CC-BY-4.0 (see `experiments/benchmark/results/REUSE.toml`).
+The results of the thirteen benchmark experiments are committed to this repository under `experiments/benchmark/results/`, licensed CC-BY-4.0 (see `experiments/benchmark/results/REUSE.toml`).
 They are the files the paper's benchmark figures and tables were built from, committed as produced; see the provenance note in `experiments/benchmark/README.md` for the code revisions they came from.
 
 Rebuild the paper's benchmark data files from the committed results:
@@ -54,13 +54,13 @@ The output was checked cell by cell against the data files used in the paper: al
 
 To regenerate every result from scratch:
 
-- All twelve synthetic benchmark experiments (`experiments/benchmark/run_all.py`, see command 1 below): **up to ~30 minutes each** at full size.
+- All thirteen benchmark experiments (`experiments/benchmark/run_all.py`, see command 1 below): **up to ~30 minutes each** at full size.
 - The real-data (HCAS/VCAS) evaluations in `experiments/run_all_spec.yaml` (command 2 below), specifically `eval-vcas-rbf`, `eval-hcas-rbf`, and the OOD/subsample items: **on the order of a day each** (622k anchors, global closest-sample mode).
   These are not something to run in a dev session or CI; they need a dedicated machine.
 
 ## 4. The two run commands
 
-**1. The synthetic benchmark suite** (twelve experiments backing every figure/table not tied to real aviation data):
+**1. The benchmark suite** (thirteen experiments: the synthetic studies, the held-out VCAS hole, and the aviation conformal thresholds):
 
 ```shell
 # Validate the whole path in seconds:
@@ -106,7 +106,7 @@ Purely illustrative figures with no underlying data (domain-geometry diagrams, t
 | Permutation-stability discussion (text only, no figure/table)       | --                                                                                              | `permutation_stability/permutation_report.json`                                      | `run_all` -> `permutation_stability`               |
 | Tab. AviationReferenceAgreement                                     | -- (real data)                                                                                  | `eval-vcas-rbf` / `eval-hcas-rbf` `results.csv`                                      | `autosafe experiments run-spec`                    |
 | Tab. AviationSubsetStability                                        | -- (real data)                                                                                  | `eval-vcas-rbf-sub5000-s1` / `-s2` `results.csv`                                     | `autosafe experiments run-spec`                    |
-| Fig. VCAS-PR (VCAS precision/recall curves)                         | -- (real data)                                                                                  | `eval-vcas-rbf` `results.csv`                                                        | `autosafe experiments run-spec`                    |
+| Fig. VCAS-PR (VCAS/HCAS precision/recall curves)                    | -- (real data)                                                                                  | `eval-*-rbf-figure` CSVs + `aviation_conformal/results.csv`                          | `run-spec` + `run_all`                             |
 
 ## 6. Seeds and configurations
 

@@ -18,6 +18,7 @@ import polars as pl
 from experiments.benchmark import (
     run_anchor_count_sweep,
     run_anchor_subset_stability,
+    run_aviation_conformal,
     run_baseline_comparison,
     run_conformal_threshold,
     run_covariance_structure,
@@ -219,3 +220,18 @@ def test_held_out_vcas_hole(tmp_path: Path) -> None:
     assert {"autosafe_no_ood", "autosafe_with_ood", "convex_hull"} <= set(methods)
     hull_fp = df.filter(pl.col("method") == "convex_hull")["fp_rate_in_hole"][0]
     assert hull_fp >= 0.5  # hull cannot exclude the hole
+
+
+def test_aviation_conformal(tmp_path: Path) -> None:
+    """Aviation conformal thresholds increase with eps and hold their level."""
+    out = tmp_path / "aviation_conformal"
+    run_aviation_conformal.main(quick=True, seed=0, outdir=out)
+    df = pl.read_csv(out / "results.csv").sort("eps")
+    assert df["dataset"].unique().to_list() == ["vcas"]
+    thresholds = df["log_threshold"].to_list()
+    assert thresholds == sorted(thresholds)
+    _assert_metric_range(df, "zeta_hat")
+    # Finite-sample split-conformal: test false exclusion near eps.
+    for eps, fe in zip(df["eps"], df["test_false_exclusion"], strict=True):
+        assert fe <= eps + 0.05
+    assert (out / "config.json").exists()

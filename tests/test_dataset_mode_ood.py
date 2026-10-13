@@ -94,13 +94,21 @@ def test_ood_cache_hit_is_idempotent(tmp_path: Path) -> None:
             ood_xi=0.1,
         )
 
-    _, _csv1, odd1 = _run()
+    _, csv1, odd1 = _run()
     mtime1 = odd1.stat().st_mtime
+    first = _sidecar(csv1)
     _, csv2, odd2 = _run()
+    second = _sidecar(csv2)
 
     assert odd1 == odd2
     assert odd1.stat().st_mtime == mtime1  # adjusted ODD not rewritten
-    assert int(_sidecar(csv2)["ood_iterations"]) == 0
+    # The cache hit reports the adjustment that built the cached ODD, not
+    # the no-op re-check.
+    assert first["ood_adjusted_cache_hit"] is False
+    assert second["ood_adjusted_cache_hit"] is True
+    assert int(first["ood_iterations"]) >= 1
+    assert second["ood_iterations"] == first["ood_iterations"]
+    assert second["ood_adjusted_kernel_count"] == first["ood_adjusted_kernel_count"]
 
 
 def test_no_ood_keys_leave_base_cache_untagged(tmp_path: Path) -> None:

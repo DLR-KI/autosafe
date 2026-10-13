@@ -41,6 +41,10 @@ class DatasetLoadOptions:
         polars_kwargs (dict[str, Any] | None): Additional keyword
             arguments to pass to Polars read functions (e.g.,
             `read_csv`, `read_parquet`).
+        categories (dict[str, list[str]] | None): Categorical columns
+            to encode, mapped to their categories in code order: each
+            value becomes its index in that list (``Int64``). A value
+            not in the list raises.
     """
 
     file_type: str | None = None
@@ -48,6 +52,7 @@ class DatasetLoadOptions:
     normalize: bool = True
     normalization_method: Literal["iqr", "minmax"] = "iqr"
     polars_kwargs: dict[str, Any] | None = None
+    categories: dict[str, list[str]] | None = None
 
 
 def load_dataset(
@@ -92,6 +97,9 @@ def load_dataset(
     if filters:
         df = apply_filters(df, filters)
 
+    if options.categories:
+        df = encode_categories(df, options.categories)
+
     if normalize:
         df = normalize_dataset(
             df,
@@ -99,6 +107,40 @@ def load_dataset(
         )
 
     return df, file_type
+
+
+def encode_categories(
+    df: pl.DataFrame, categories: dict[str, list[str]]
+) -> pl.DataFrame:
+    """Replace categorical columns by their integer codes.
+
+    Args:
+        df (pl.DataFrame): Loaded dataset.
+        categories (dict[str, list[str]]): Column name to its
+            categories; a category's code is its index in the list.
+
+    Returns:
+        pl.DataFrame: ``df`` with each listed column as ``Int64`` codes.
+
+    Raises:
+        ValueError: If a listed column is missing or holds a value that
+            is not one of its categories.
+    """
+    for column, values in categories.items():
+        if column not in df.columns:
+            raise ValueError(f"Categorical column {column!r} is not in the dataset")
+        as_text = df[column].cast(pl.String)
+        unknown = as_text.filter(~as_text.is_in(values) & as_text.is_not_null())
+        if unknown.len() or as_text.null_count():
+            bad = unknown.unique().head(5).to_list()
+            raise ValueError(
+                f"Column {column!r} holds values outside its categories: {bad}"
+            )
+        mapping = {value: code for code, value in enumerate(values)}
+        df = df.with_columns(
+            as_text.replace_strict(mapping, return_dtype=pl.Int64).alias(column)
+        )
+    return df
 
 
 def normalize_dataset(

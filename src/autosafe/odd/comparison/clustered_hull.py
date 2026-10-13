@@ -23,6 +23,39 @@ MIN_CONSENSUS_EPSILON = 1e-10
 MIN_HULL_POINTS = 3
 
 
+# Upper bound on the (points x facets) block evaluated at once. A hull
+# of a dense cluster in 7D can have millions of facets (1.5 million on
+# HCAS), so a full product per 5000-point chunk would need ~60 GB.
+_MAX_BLOCK_ENTRIES = 2**24
+
+
+def _inside_hull(
+    points: npt.NDArray[np.float64], equations: npt.NDArray[np.float64]
+) -> npt.NDArray[np.bool_]:
+    """Return whether each point satisfies every facet inequality.
+
+    Evaluates the facets in blocks of at most `_MAX_BLOCK_ENTRIES`
+    point-facet pairs, so memory stays bounded for any facet count.
+
+    Args:
+        points (npt.NDArray[np.float64]): Query points, shape
+            (n_samples, n_features).
+        equations (npt.NDArray[np.float64]): Qhull facet equations,
+            shape (n_facets, n_features + 1), with ``a @ x + b <= 0``
+            inside.
+
+    Returns:
+        npt.NDArray[np.bool_]: Membership, shape (n_samples,).
+    """
+    eps = np.finfo(float).eps
+    inside = np.ones(points.shape[0], dtype=bool)
+    block = max(1, _MAX_BLOCK_ENTRIES // max(points.shape[0], 1))
+    for start in range(0, equations.shape[0], block):
+        facets = equations[start : start + block]
+        inside &= np.all(points @ facets[:, :-1].T + facets[:, -1] <= eps, axis=1)
+    return inside
+
+
 class ClusteredConvexHulls(ODDBoundaryMethod):
     """Hierarchical approach using convex hulls of data sub-clusters.
 
@@ -167,16 +200,14 @@ class ClusteredConvexHulls(ODDBoundaryMethod):
 
         n_samples = test_points.shape[1]
         result = np.zeros(n_samples, dtype=bool)
-        eps = np.finfo(float).eps
-        pts_t = test_points.T  # (n_samples, n_features)
+        # Host NumPy array: a device array would materialize the whole
+        # (n_samples, n_facets) product on the accelerator.
+        pts_t = np.asarray(test_points, dtype=float).T  # (n_samples, n_features)
 
         for i, hull in enumerate(self.hulls):
             if hull is not None:
                 try:
-                    a_hull = hull.equations[:, :-1]
-                    b_hull = hull.equations[:, -1]
-                    in_hull = np.all(pts_t @ a_hull.T + b_hull <= eps, axis=1)
-                    result |= in_hull
+                    result |= _inside_hull(pts_t, hull.equations)
                     continue
                 except (
                     ValueError,

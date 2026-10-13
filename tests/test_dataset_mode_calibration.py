@@ -158,8 +158,72 @@ def test_discrete_limits_reach_sampler_and_labels(tmp_path: Path) -> None:
 
     sidecar = json.loads(csv_path.with_name(csv_path.stem + "-params.json").read_text())
     assert sidecar["discrete_columns"] == [1]
+    assert sidecar["wrapped_columns"] == []
     gt = results.filter(pl.col("reference") == "ground_truth")
     # Codes stay valid, so only the 10 % margin in h is outside: about
     # 1/1.2 of the uniform half plus all local samples are inside.
     prevalence = gt["prevalence"][0]
     assert 0.85 < prevalence < 0.97
+
+
+def test_categorical_column_runs_end_to_end(tmp_path: Path) -> None:
+    rng = np.random.default_rng(8)
+    vehicles = ["car", "bus", "airplane"]
+    rows = ["speed,vehicle,hour"] + [
+        f"{rng.uniform(0, 100):.6f},{rng.choice(vehicles)},{rng.choice([0, 6, 12, 18])}"
+        for _ in range(80)
+    ]
+    ds = tmp_path / "traffic.csv"
+    ds.write_text("\n".join(rows), encoding="utf-8")
+    (tmp_path / "traffic.yml").write_text(
+        "limits:\n"
+        "  speed:\n    type: range\n    values: [0, 100]\n"
+        "  vehicle:\n    type: categorical\n    values: [car, bus, airplane]\n"
+        "  hour:\n    type: wrapped_discrete\n    values: [0, 6, 12, 18]\n",
+        encoding="utf-8",
+    )
+
+    results, csv_path, odd_path = evaluate_dataset_mode(
+        ds,
+        closest_sample_mode="global",
+        kernel_kwargs={"calibration": "auto"},
+        references=["ground_truth"],
+        n_samples=1000,
+        threshold_count=11,
+    )
+
+    sidecar = json.loads(csv_path.with_name(csv_path.stem + "-params.json").read_text())
+    assert sidecar["categories"] == {"vehicle": vehicles}
+    assert sidecar["discrete_columns"] == [1, 2]
+    assert sidecar["wrapped_columns"] == []
+    assert "-cat" in odd_path.name
+    prevalence = results.filter(pl.col("reference") == "ground_truth")["prevalence"][0]
+    assert 0.85 < prevalence < 0.97
+
+
+def test_default_baselines_can_be_skipped(tmp_path: Path) -> None:
+    ds = _make_synthetic_dataset(tmp_path)
+
+    def run(name: str, *, include_default_baselines: bool) -> tuple:
+        return evaluate_dataset_mode(
+            ds,
+            closest_sample_mode="global",
+            kernel_kwargs={"calibration": "auto"},
+            references=["ground_truth"],
+            n_samples=500,
+            threshold_count=11,
+            csv_output=tmp_path / f"{name}.csv",
+            include_default_baselines=include_default_baselines,
+        )
+
+    only_gt, csv_path, _ = run("gt", include_default_baselines=False)
+    assert set(only_gt["reference"].unique().to_list()) == {"ground_truth"}
+    sidecar = json.loads(csv_path.with_name(csv_path.stem + "-params.json").read_text())
+    assert sidecar["include_default_baselines"] is False
+
+    with_defaults, _, _ = run("all", include_default_baselines=True)
+    assert len(with_defaults["reference"].unique()) > 1
+    # The ground-truth rows do not depend on which baselines ran.
+    key = ["affinity_threshold", "true_positive", "false_positive"]
+    gt_rows = with_defaults.filter(pl.col("reference") == "ground_truth").select(key)
+    assert gt_rows.equals(only_gt.select(key))

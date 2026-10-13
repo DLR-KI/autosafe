@@ -6,7 +6,7 @@
 # abort the batch); scoped per file since this is a reproduction-package
 # driver, not library code.
 # ruff: file-ignore[blind-except, boolean-type-hint-positional-argument, boolean-default-value-positional-argument, too-many-arguments, too-many-positional-arguments]
-"""Run the twelve benchmark experiment scripts in a fixed order.
+"""Run the thirteen benchmark experiment scripts in a fixed order.
 
 This is the single entry point for reproducing every result in
 ``experiments/benchmark/results/``: one process, one fixed order, one
@@ -15,7 +15,7 @@ completed/failed/updated_at contract as
 :class:`autosafe.tools.experiments.core.ExperimentManager` (the manager
 used for the real-data/mc-sample spec in
 ``experiments/run_all_spec.yaml``) -- that manager does not cover these
-twelve scripts, which keep their own documented runner.
+thirteen scripts, which keep their own documented runner.
 
 Usage::
 
@@ -38,6 +38,7 @@ import typer
 from experiments.benchmark import (
     run_anchor_count_sweep,
     run_anchor_subset_stability,
+    run_aviation_conformal,
     run_baseline_comparison,
     run_conformal_threshold,
     run_covariance_structure,
@@ -58,8 +59,8 @@ DEFAULT_STATE_PATH = (
     REPO_ROOT / "experiments" / "benchmark" / "run_all.state.local.json"
 )
 
-#: The twelve scripts, in the fixed order they run in; each name is both
-#: the state-file id and the results subdirectory (matching each
+#: The thirteen scripts, in the fixed order they run in; each name is
+#: both the state-file id and the results subdirectory (matching each
 #: script's own ``DEFAULT_OUTDIR``). Order follows the paper's
 #: presentation, not the alphabet, so a partial/resumed run finishes the
 #: earlier claims first.
@@ -76,6 +77,7 @@ _EXPERIMENTS: list[tuple[str, MainFn]] = [
     ("duplicate_sensitivity", run_duplicate_sensitivity.main),
     ("anchor_subset_stability", run_anchor_subset_stability.main),
     ("covariance_structure", run_covariance_structure.main),
+    ("aviation_conformal", run_aviation_conformal.main),
 ]
 
 EXPERIMENT_NAMES = [name for name, _ in _EXPERIMENTS]
@@ -123,7 +125,7 @@ def run(
     resume: bool = True,
     stop_on_error: bool = False,
 ) -> dict[str, str]:
-    """Run the twelve benchmark scripts in order, with resume support.
+    """Run the thirteen benchmark scripts in order, with resume support.
 
     Args:
         outdir (Path): Root results directory; each experiment writes to
@@ -140,7 +142,7 @@ def run(
             instead of continuing with the rest.
 
     Returns:
-        dict[str, str]: ``{name: status}`` for every one of the twelve
+        dict[str, str]: ``{name: status}`` for every one of the thirteen
             experiments, status one of
             ``"skipped (already completed)"``, ``"completed (N.Ns)"``,
             or ``"failed: <message>"``.
@@ -190,7 +192,7 @@ def main(
     stop_on_error: bool = False,
     state_path: Path = DEFAULT_STATE_PATH,
 ) -> None:
-    """Run all twelve benchmark experiments in their fixed order.
+    """Run all thirteen benchmark experiments in their fixed order.
 
     Args:
         seed (int): Random seed forwarded to every script.

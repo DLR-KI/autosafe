@@ -84,8 +84,10 @@ from autosafe.tools.evaluate.dataset.sampling import (
     _sample_points_with_bounds,
 )
 from autosafe.tools.evaluate.dataset.yaml_spec import (
+    _categories_from_yaml,
     _infer_ground_truth_yaml,
     _sampling_bounds_from_yaml,
+    _wrapped_columns_from_yaml,
 )
 from autosafe.tools.evaluate.metrics import (
     build_affinity_thresholds,
@@ -277,6 +279,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
     dedup_policy: DeduplicationPolicy | None = None,
     dedup_n_calibration_reserved: int = 0,
     dedup_strict_label_conflict: bool = False,
+    include_default_baselines: bool = True,
 ) -> tuple[pl.DataFrame, Path, Path]:
     """Evaluate real-data workflow with optional ground truth YAML.
 
@@ -341,6 +344,11 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             per iteration instead of one. Faster but may over-shrink
             relative to the one-shrink-per-iteration procedure; off by
             default.
+        include_default_baselines (bool): With a ground-truth YAML, also
+            evaluate every default baseline next to ``references``
+            (the default). ``False`` evaluates exactly ``references``,
+            e.g. ``["ground_truth"]`` for a fine threshold sweep that
+            would otherwise spend hours on unused baselines.
         baselines_only (bool): Skip building/refreshing the affinity
             ODD and require ``odd_json`` to already hold one matching
             the requested ``closest_sample_mode``/``kernel_type``/
@@ -415,8 +423,18 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
     )
 
     yaml_normalizer = None
+    categories: dict[str, list[str]] = {}
     if effective_ground_truth_yaml is not None:
         yaml_normalizer = _normalizer_from_yaml_bounds(effective_ground_truth_yaml)
+        categories = _categories_from_yaml(effective_ground_truth_yaml)
+    # The category order fixes the integer encoding, which the ODD and
+    # nearest-neighbor caches cannot see; tag them so a reordered YAML
+    # never reuses caches built from another encoding.
+    category_tag = (
+        "-cat" + hashlib.sha256(json.dumps(categories).encode()).hexdigest()[:8]
+        if categories
+        else ""
+    )
 
     yaml_norm = yaml_normalizer is not None
     normalize_data = True
@@ -462,6 +480,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
                 dataset_path,
                 yaml_normalizer=yaml_normalizer,
                 normalize_data=normalize_data,
+                categories=categories,
             )
 
     # De-duplication: OFF BY DEFAULT. Reached only when the caller
@@ -487,6 +506,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             normalize_data=normalize_data,
             n_calibration_reserved=dedup_n_calibration_reserved,
             strict_label_conflict=dedup_strict_label_conflict,
+            categories=categories,
         )
         preloaded_anchor_array = dedup_outcome.id_points_normalized
         ood_norm = dedup_outcome.ood_points_normalized
@@ -504,8 +524,9 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         subsample_anchors=subsample_anchors,
         seed=seed,
         exclude_points=ood_norm if dedup_policy is None else None,
-        extra_filename_tag=ood_file_tag + dedup_tag,
+        extra_filename_tag=ood_file_tag + dedup_tag + category_tag,
         preloaded_anchor_array=preloaded_anchor_array,
+        categories=categories,
     )
 
     # OOD consistency adjustment.
@@ -513,12 +534,19 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
     # overwrites the unadjusted cache; on a cache hit, enforcement is a
     # no-op (idempotent), so the file is not rewritten.
     ood_summary: dict[str, object] | None = None
+    # On a cache hit the re-run enforcement is a no-op (0 iterations);
+    # the adjustment that produced the cached ODD is reported from its
+    # stored summary instead, so the sidecar never claims a free one.
+    ood_adjustment: dict[str, object] | None = None
+    ood_cache_hit = False
     if ood_norm is not None:
         ood_xi = cast("float", ood_xi)
         adjusted_path = odd_export_path.with_name(
             f"{odd_export_path.stem}{ood_run_tag}{odd_export_path.suffix}"
         )
+        summary_path = adjusted_path.with_name(f"{adjusted_path.stem}-summary.json")
         if adjusted_path.exists():
+            ood_cache_hit = True
             odd = autosafe.from_json(adjusted_path)
             ood_summary = odd.enforce_ood_consistency(
                 ood_norm,
@@ -527,6 +555,8 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
                 max_iterations=ood_max_iterations,
                 batch_jump=ood_batch_jump,
             )
+            if summary_path.exists():
+                ood_adjustment = json.loads(summary_path.read_text(encoding="utf-8"))
         else:
             ood_summary = odd.enforce_ood_consistency(
                 ood_norm,
@@ -536,6 +566,13 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
                 batch_jump=ood_batch_jump,
             )
             autosafe.to_json(odd, adjusted_path)
+            ood_adjustment = {
+                "iterations": ood_summary["iterations"],
+                "adjusted_kernel_count": len(
+                    cast("dict[int, int]", ood_summary["adjusted_kernels"])
+                ),
+            }
+            summary_path.write_text(json.dumps(ood_adjustment) + "\n", encoding="utf-8")
         odd_export_path = adjusted_path
 
     anchor_points = _extract_anchor_points(odd)
@@ -587,6 +624,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
 
     sampling_bounds = None
     discrete_values: dict[int, npt.NDArray[np.float64]] = {}
+    wrapped_columns: list[int] = []
     if effective_ground_truth_yaml is not None:
         sampling_bounds = _sampling_bounds_from_yaml(effective_ground_truth_yaml)
 
@@ -604,12 +642,16 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         else:
             lower_norm = sampling_bounds[0]
             upper_norm = sampling_bounds[1]
-        # Discrete YAML variables stay on their valid codes; the
-        # ground-truth labeller requires the same.
+        # Discrete YAML variables stay on their valid codes and
+        # wrapped ranges are wrapped; the ground-truth labeller
+        # applies the same semantics.
         discrete_values = _normalized_discrete_values(
             cast("Path", effective_ground_truth_yaml),
             sampling_bounds[0],
             yaml_normalizer,
+        )
+        wrapped_columns = _wrapped_columns_from_yaml(
+            cast("Path", effective_ground_truth_yaml)
         )
         test_points = _sample_points_with_bounds(
             anchor_points,
@@ -619,6 +661,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
             seed=seed,
             local_noise_std=local_noise_std,
             discrete_values=discrete_values,
+            wrapped_columns=wrapped_columns,
         )
     else:
         test_points = _sample_points_around_odd(
@@ -647,6 +690,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         ground_truth_yaml=effective_ground_truth_yaml,
         normalizer=yaml_normalizer,
         method_params=resolved_baseline_params,
+        include_default_baselines=include_default_baselines,
     )
 
     if not reference_labels:
@@ -732,18 +776,23 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         "ood_xi": ood_xi,
         "ood_shrink_factor": ood_shrink_factor if ood_path is not None else None,
         "ood_iterations": (
-            ood_summary["iterations"] if ood_summary is not None else None
+            ood_adjustment["iterations"] if ood_adjustment is not None else None
         ),
         "ood_max_affinity_final": (
             ood_summary["max_ood_affinity"] if ood_summary is not None else None
         ),
         "ood_adjusted_kernel_count": (
-            len(cast("dict[int, int]", ood_summary["adjusted_kernels"]))
-            if ood_summary is not None
+            ood_adjustment["adjusted_kernel_count"]
+            if ood_adjustment is not None
             else None
         ),
+        # A cached adjusted ODD without a stored summary (built before
+        # summaries were stored) reports None for the two values above.
+        "ood_adjusted_cache_hit": ood_cache_hit if ood_path is not None else None,
         "n_anchors": int(anchor_points.shape[0]),
         "discrete_columns": sorted(discrete_values),
+        "wrapped_columns": wrapped_columns,
+        "categories": categories or None,
         "width_multiple_realized": width_realized,
         "ood_n_points": int(ood_norm.shape[0]) if ood_norm is not None else None,
         "ood_anchor_exclusion_tag": ood_file_tag or None,
@@ -757,6 +806,7 @@ def evaluate_dataset_mode(  # ruff:ignore[complex-structure, too-many-branches, 
         "ood_max_iterations": (ood_max_iterations if ood_path is not None else None),
         "ood_batch_jump": ood_batch_jump if ood_path is not None else None,
         "baselines_only": baselines_only,
+        "include_default_baselines": include_default_baselines,
         "dedup_enabled": dedup_outcome is not None,
         "dedup_policy": (
             {

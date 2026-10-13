@@ -68,6 +68,7 @@ def _normalize_ood_points(
     *,
     yaml_normalizer: RangeNormalizer | None,
     normalize_data: bool,
+    categories: dict[str, list[str]] | None = None,
 ) -> npt.NDArray[np.float64]:
     """Load OOD points and map them into the anchors' coordinate system.
 
@@ -84,12 +85,15 @@ def _normalize_ood_points(
             fit on YAML bounds, if any.
         normalize_data (bool): Whether the anchor pipeline normalized
             the data (always ``True`` in dataset mode).
+        categories (dict[str, list[str]] | None): Categorical columns
+            to encode on load (see `DatasetLoadOptions.categories`).
 
     Returns:
         npt.NDArray[np.float64]: OOD points in normalized space,
             shape (M, n_dims).
     """
-    raw_df, _ = load_dataset(ood_path, options=DatasetLoadOptions(normalize=False))
+    options = DatasetLoadOptions(normalize=False, categories=categories)
+    raw_df, _ = load_dataset(ood_path, options=options)
     ood_raw = _numeric_array(raw_df)
 
     if yaml_normalizer is not None:
@@ -99,7 +103,7 @@ def _normalize_ood_points(
 
     # Reproduce the built-in IQR normalization (see normalize_dataset):
     # fit on the raw dataset's numeric columns, then transform the OOD.
-    ds_df, _ = load_dataset(dataset_path, options=DatasetLoadOptions(normalize=False))
+    ds_df, _ = load_dataset(dataset_path, options=options)
     normalizer = create_robust_normalization_pipeline(
         target_range=(-1.0, 1.0), method="iqr"
     )

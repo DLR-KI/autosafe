@@ -15,6 +15,7 @@ from autosafe.tools.evaluate.dataset.normalization import (
 from autosafe.tools.evaluate.dataset.yaml_spec import (
     _discrete_values_from_yaml,
     _legacy_limits_yaml_to_odd_config,
+    _periodic_columns_from_yaml,
 )
 from autosafe.tools.monte_carlo.inequality_utils import ODDFactory, load_yaml_odd_config
 from autosafe.typing import (
@@ -48,6 +49,32 @@ def _on_valid_code(
     return np.asarray(distance <= tol, dtype=bool)
 
 
+def _wrap_columns(
+    points: npt.NDArray[np.float64],
+    periodic: dict[int, tuple[float, float]],
+) -> npt.NDArray[np.float64]:
+    """Wrap periodic columns into ``[low, low + period)`` in place.
+
+    Args:
+        points (npt.NDArray[np.float64]): Points, shape (n, n_dims).
+        periodic (dict[int, tuple[float, float]]): Column index to its
+            lower end and period.
+
+    Returns:
+        npt.NDArray[np.float64]: ``points`` with wrapped columns.
+    """
+    for index, (low, period) in periodic.items():
+        wrapped = low + np.mod(points[:, index] - low, period)
+        # Round-trip noise just below `low` must land on `low`, not on
+        # `low + period` (which is not a valid code of a wrapped set).
+        # Clamp instead of subtracting the period, so a value just below
+        # `low + period` never ends up below `low`, outside the box.
+        fold = wrapped >= low + period * (1.0 - _DISCRETE_CODE_RTOL)
+        wrapped[fold] = low
+        points[:, index] = wrapped
+    return points
+
+
 def _ground_truth_labels_from_yaml(
     ground_truth_yaml: Path,
     test_points: Matrix | NPMatrix,
@@ -69,7 +96,9 @@ def _ground_truth_labels_from_yaml(
     Returns:
         npt.NDArray[np.bool_]: Boolean membership labels. Variables a
             limits YAML declares as `type: discrete` must additionally
-            lie on one of their valid codes.
+            lie on one of their valid codes (likewise `wrapped_discrete`
+            and `categorical`); `wrapped_range` and `wrapped_discrete`
+            variables are wrapped into their period first.
     """
     config = load_yaml_odd_config(ground_truth_yaml)
     if "type" not in config and "limits" in config:
@@ -80,8 +109,9 @@ def _ground_truth_labels_from_yaml(
     if normalizer is not None:
         test_points = _denormalize_points_to_yaml_space(test_points, normalizer)
 
-    labels = np.asarray(region.contains(test_points.T), dtype=bool)
-    points = np.asarray(test_points, dtype=float)
+    points = np.array(test_points, dtype=float)
+    points = _wrap_columns(points, _periodic_columns_from_yaml(ground_truth_yaml))
+    labels = np.asarray(region.contains(points.T), dtype=bool)
     for index, codes in _discrete_values_from_yaml(ground_truth_yaml).items():
         labels &= _on_valid_code(points[:, index], codes)
     return labels

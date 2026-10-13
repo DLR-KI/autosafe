@@ -39,7 +39,7 @@ uv run python -m experiments.benchmark.run_baseline_comparison --quick
 uv run python -m experiments.benchmark.run_halo_vs_anchor_count   # full config
 ```
 
-`run_all.py` runs all twelve in the fixed order below, with a resumable local state file (`run_all.state.local.json`, same completed/failed/timestamp contract as `ExperimentManager`):
+`run_all.py` runs all thirteen in the fixed order below, with a resumable local state file (`run_all.state.local.json`, same completed/failed/timestamp contract as `ExperimentManager`):
 
 ```bash
 uv run python -m experiments.benchmark.run_all --quick   # validate the path, seconds
@@ -134,6 +134,15 @@ Each section states what the experiment does, the paper artifact it backs, and i
 - **Headline:** `linear2d` at ε=0.1 gives ζ̂ ≈ 0.88 / 0.93 / 0.99 for N_pool = 500 / 1000 / 5000 with specificity_out 0.986 / 0.991 / 0.997; on `poly5d` ζ̂ rounds to 1.0 in linear space while the log-space threshold stays finite and ID false exclusion still tracks ε.
 - **Outputs:** `conformal_coverage.dat`, `zeta_vs_eps_<dataset>_n<N>.dat`.
 
+### Aviation conformal thresholds (`run_aviation_conformal.py`)
+
+- **Backs:** the split-conformal thresholds marked in the aviation precision/recall figure.
+- **What it does:** splits the recorded VCAS and HCAS states at random into 10 000 calibration states, 10 000 test states and the anchors, builds the calibrated ODD on the anchors as the dataset mode does (min-max normalization on the ground-truth YAML bounds, $s_N = \sqrt{\ln N}$), and takes the split-conformal quantile of the calibration states' log-survival scores for $\varepsilon \in \{0.01, 0.05, 0.1\}$; the test states measure the realized false-exclusion rate.
+  Consecutive simulator states are close to each other, so a random split is optimistic relative to a split by trajectory.
+  `--quick` uses a 3000-state VCAS subsample.
+- **Outputs:** `results.csv`.
+- **Figure data:** the curves of the same figure come from the fine ground-truth sweeps of the spec items `eval-vcas-rbf-figure` / `eval-hcas-rbf-figure` in `experiments/run_all_spec.yaml`.
+
 ### Duplicate sensitivity (`run_duplicate_sensitivity.py`)
 
 - **Backs:** the duplicate sensitivity figure.
@@ -195,4 +204,4 @@ These are local debugging aids, not published artifacts — all paper figures ar
 
 `--quick` configs: seconds each.
 Full configs target `< 30 min` each; the baseline-comparison and anchor-count-sweep experiments at the largest N and validation counts are the heaviest.
-Full-size HCAS/VCAS datasets are **not** run here.
+The full-size HCAS/VCAS dataset-mode evaluations are **not** run here (see `experiments/run_all_spec.yaml`); `aviation_conformal` builds its ODDs on the full recorded data and takes about 15 min.

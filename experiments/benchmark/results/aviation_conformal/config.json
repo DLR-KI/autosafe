@@ -1,0 +1,23 @@
+{
+  "experiment": "aviation_conformal",
+  "quick": false,
+  "seed": 42,
+  "datasets": [
+    "vcas",
+    "hcas"
+  ],
+  "n_cal": 10000,
+  "n_test": 10000,
+  "eps": [
+    0.01,
+    0.05,
+    0.1
+  ],
+  "calibration": {
+    "gamma": 1.0,
+    "s": "sqrt_log_n"
+  },
+  "normalization": "min-max to [-1, 1] on the ground-truth YAML bounds",
+  "git_hash": "d76f28b97c3b89130b8a361650441d71fb893126",
+  "wall_time_seconds": 909.9905615551397
+}

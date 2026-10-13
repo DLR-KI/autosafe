@@ -84,10 +84,10 @@ experiments:
   # width multiple never overwrite each other.
   #
   # NOTE (threshold sweep fix): threshold_mode is intentionally unset on
-  # eval-vcas-rbf, eval-hcas-rbf, and eval-minimal-hcas-rbf below. Dataset
-  # mode always sweeps the adaptive two-sided "edges" grid
-  # (build_threshold_pairs) instead of a fixed linear/log grid, which avoids
-  # an affinity-saturation-at-zeta=1 artifact (see docs/log-space-affinity.md).
+  # eval-vcas-rbf and eval-hcas-rbf below. Dataset mode always sweeps the
+  # adaptive two-sided "edges" grid (build_threshold_pairs) instead of a
+  # fixed linear/log grid, which avoids an affinity-saturation-at-zeta=1
+  # artifact (see docs/log-space-affinity.md).
   # ---------------------------------------------------------------------------
   - id: eval-vcas-rbf
     mode: dataset
@@ -120,6 +120,50 @@ experiments:
     local_noise_mode: nn
     local_noise_multiplier: 3.0
     threshold_count: 100
+
+  # Fine ground-truth sweeps behind the precision/recall figure of the
+  # aviation use cases: the same ODDs and evaluation samples as
+  # eval-vcas-rbf / eval-hcas-rbf (identical seed and settings, so the
+  # cached ODDs are reused), but only the ground-truth reference on a
+  # 4000-threshold grid. include_default_baselines: false skips the
+  # default baselines, which would otherwise take most of a day.
+  - id: eval-vcas-rbf-figure
+    mode: dataset
+    dataset_path: data/vcas_state_variables.csv
+    evaluation_samples: 1000000
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_gamma: 1.0
+      calibration_s: sqrt_log_n
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.0
+    threshold_count: 4000
+    references: [ground_truth]
+    include_default_baselines: false
+    csv_output: data/vcas_state_variables-figure-ground-truth.csv
+
+  - id: eval-hcas-rbf-figure
+    mode: dataset
+    dataset_path: data/hcas_state_variables.csv
+    evaluation_samples: 1000000
+    closest_sample_mode: global
+    kernel_type: RBF
+    kernel_kwargs:
+      calibration: auto
+      calibration_gamma: 1.0
+      calibration_s: sqrt_log_n
+    baseline_params:
+      auto_scale: true
+    local_noise_mode: nn
+    local_noise_multiplier: 3.0
+    threshold_count: 4000
+    references: [ground_truth]
+    include_default_baselines: false
+    csv_output: data/hcas_state_variables-figure-ground-truth.csv
 
   # ---------------------------------------------------------------------------
   # OOD consistency loop on real data (VCAS). PREREQUISITE:

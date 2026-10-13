@@ -39,6 +39,7 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-argu
     exclude_points: npt.NDArray[np.float64] | None = None,
     extra_filename_tag: str = "",
     preloaded_anchor_array: npt.NDArray[np.float64] | None = None,
+    categories: dict[str, list[str]] | None = None,
 ) -> tuple["Samples", Path]:
     """Build affinity ODD from dataset or load existing ODD JSON.
 
@@ -81,6 +82,8 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-argu
             internally. Set by the de-duplication pipeline (see
             ``dedup_integration.py``); subsampling still applies
             afterward, per the de-duplication pipeline order.
+        categories (dict[str, list[str]] | None): Categorical columns
+            to encode on load (see `DatasetLoadOptions.categories`).
 
     Returns:
         tuple[Samples, Path]: odd_object, odd_json_path.
@@ -139,14 +142,16 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-argu
         # apply it.
         df, _ = load_dataset(
             dataset_path,
-            options=DatasetLoadOptions(normalize=False),
+            options=DatasetLoadOptions(normalize=False, categories=categories),
         )
         raw_array = np.asarray(df.to_numpy(), dtype=float)
         base_array = np.asarray(normalizer.transform(raw_array), dtype=float)
     else:
         df, _ = load_dataset(
             dataset_path,
-            options=DatasetLoadOptions(normalize=cache_spec.normalize_data),
+            options=DatasetLoadOptions(
+                normalize=cache_spec.normalize_data, categories=categories
+            ),
         )
         base_array = np.asarray(df.to_numpy(), dtype=float)
 

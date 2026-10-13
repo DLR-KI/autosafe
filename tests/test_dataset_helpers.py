@@ -6,6 +6,7 @@
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 import pytest
 
 from autosafe.deduplication import DeduplicationPolicy
@@ -26,10 +27,14 @@ from autosafe.tools.evaluate.dataset.normalization import (
 )
 from autosafe.tools.evaluate.dataset.sampling import _sample_points_with_bounds
 from autosafe.tools.evaluate.dataset.yaml_spec import (
+    _categories_from_yaml,
     _discrete_values_from_yaml,
     _legacy_limits_yaml_to_odd_config,
+    _periodic_columns_from_yaml,
     _sampling_bounds_from_yaml,
+    _wrapped_columns_from_yaml,
 )
+from autosafe.tools.experiments.utils import DatasetLoadOptions, load_dataset
 
 
 def _write_csv(path: Path, points: np.ndarray) -> Path:
@@ -289,3 +294,134 @@ def test_bounded_sampler_keeps_discrete_coordinates_on_codes() -> None:
     # Uniform half covers every code; local half keeps anchor codes.
     assert set(np.unique(fixed[:200, 1])) == set(codes)
     assert set(np.unique(fixed[200:, 1])) <= set(np.unique(anchors[:, 1]))
+
+
+_WRAPPED_LIMITS = """\
+limits:
+    psi:
+        type: wrapped_range
+        values: [-180.0, 180.0]
+    tau:
+        type: range
+        values: [0.0, 40.0]
+"""
+
+
+def test_wrapped_columns_are_read_from_limits(tmp_path: Path) -> None:
+    yaml_path = _write_yaml(tmp_path / "limits.yaml", _WRAPPED_LIMITS)
+    assert _wrapped_columns_from_yaml(yaml_path) == [0]
+    bounds = _sampling_bounds_from_yaml(yaml_path)
+    assert bounds is not None
+    np.testing.assert_array_equal(bounds[0], [-180.0, 0.0])
+    assert (
+        _wrapped_columns_from_yaml(_write_yaml(tmp_path / "plain.yaml", _LEGACY_LIMITS))
+        == []
+    )
+
+
+def test_ground_truth_wraps_periodic_columns(tmp_path: Path) -> None:
+    yaml_path = _write_yaml(tmp_path / "limits.yaml", _WRAPPED_LIMITS)
+    points = np.array([
+        [180.3, 20.0],  # past the face of the wrapped range: inside
+        [-541.0, 20.0],  # several periods away: still inside
+        [0.0, 40.5],  # past the face of an ordinary range: outside
+        [179.9999, 20.0],  # just below the upper end: inside
+        [-180.0000001, 20.0],  # just below the lower end: inside
+    ])
+    labels = _ground_truth_labels_from_yaml(yaml_path, points)
+    np.testing.assert_array_equal(labels, [True, True, False, True, True])
+    # The caller's array is not modified by the wrapping.
+    assert points[0, 0] == pytest.approx(180.3)
+
+
+def test_bounded_sampler_wraps_periodic_coordinates() -> None:
+    rng = np.random.default_rng(2)
+    anchors = np.column_stack([rng.choice([-0.999, 0.999], 60), rng.uniform(-1, 1, 60)])
+    lower, upper = np.array([-1.0, -1.0]), np.array([1.0, 1.0])
+    plain = _sample_points_with_bounds(
+        anchors, lower, upper, n_samples=2000, seed=4, local_noise_std=0.05
+    )
+    wrapped = _sample_points_with_bounds(
+        anchors,
+        lower,
+        upper,
+        n_samples=2000,
+        seed=4,
+        local_noise_std=0.05,
+        wrapped_columns=[0],
+    )
+    np.testing.assert_array_equal(plain[:, 1], wrapped[:, 1])
+    assert (plain[:, 0] < -1).any()
+    assert (plain[:, 0] > 1).any()
+    assert ((wrapped[:, 0] >= -1) & (wrapped[:, 0] < 1)).all()
+    # The uniform half still covers one period uniformly.
+    counts, _ = np.histogram(wrapped[:1000, 0], bins=4, range=(-1, 1))
+    assert int(np.min(counts)) > 200
+
+
+_FINITE_LIMITS = """\
+limits:
+    hour:
+        type: wrapped_discrete
+        values: [0, 6, 12, 18]
+    vehicle:
+        type: categorical
+        values: [car, bus, airplane]
+    weekday:
+        type: wrapped_discrete
+        values: [1, 2, 3, 4, 5]
+        period: 7
+"""
+
+
+def test_finite_limit_types_give_codes_bounds_and_periods(tmp_path: Path) -> None:
+    yaml_path = _write_yaml(tmp_path / "limits.yaml", _FINITE_LIMITS)
+    codes = _discrete_values_from_yaml(yaml_path)
+    np.testing.assert_array_equal(codes[0], [0.0, 6.0, 12.0, 18.0])
+    np.testing.assert_array_equal(codes[1], [0.0, 1.0, 2.0])
+    assert _categories_from_yaml(yaml_path) == {"vehicle": ["car", "bus", "airplane"]}
+    bounds = _sampling_bounds_from_yaml(yaml_path)
+    assert bounds is not None
+    np.testing.assert_array_equal(bounds[0], [0.0, 0.0, 1.0])
+    np.testing.assert_array_equal(bounds[1], [18.0, 2.0, 5.0])
+    # Default period: span plus the code spacing; explicit period wins.
+    assert _periodic_columns_from_yaml(yaml_path) == {0: (0.0, 24.0), 2: (1.0, 7.0)}
+
+
+def test_ground_truth_wraps_discrete_codes(tmp_path: Path) -> None:
+    yaml_path = _write_yaml(tmp_path / "limits.yaml", _FINITE_LIMITS)
+    points = np.array([
+        [24.0, 0.0, 1.0],  # hour 24 == 0
+        [-6.0, 1.0, 8.0],  # hour -6 == 18, weekday 8 == 1
+        [-1e-12, 2.0, 3.0],  # round-trip noise below the lowest code
+        [3.0, 0.0, 1.0],  # hour 3 is not a code
+        [0.0, 1.5, 1.0],  # between two categories
+        [0.0, 0.0, 6.0],  # weekday 6 is not a code (period 7)
+    ])
+    labels = _ground_truth_labels_from_yaml(yaml_path, points)
+    np.testing.assert_array_equal(labels, [True, True, True, False, False, False])
+
+
+def test_wrapped_range_period_rejects_degenerate_interval(tmp_path: Path) -> None:
+    yaml_path = _write_yaml(
+        tmp_path / "limits.yaml",
+        "limits:\n    a:\n        type: wrapped_range\n        values: [5.0, 5.0]\n",
+    )
+    with pytest.raises(ValueError, match="period > 0"):
+        _periodic_columns_from_yaml(yaml_path)
+
+
+def test_categories_are_encoded_on_load(tmp_path: Path) -> None:
+    csv = tmp_path / "vehicles.csv"
+    csv.write_text("speed,vehicle\n1.0,bus\n2.0,airplane\n3.0,car\n", encoding="utf-8")
+    categories = {"vehicle": ["car", "bus", "airplane"]}
+    df, _ = load_dataset(
+        csv, DatasetLoadOptions(normalize=False, categories=categories)
+    )
+    assert df["vehicle"].to_list() == [1, 2, 0]
+    assert df["vehicle"].dtype == pl.Int64
+    csv.write_text("speed,vehicle\n1.0,train\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="outside its categories"):
+        load_dataset(csv, DatasetLoadOptions(normalize=False, categories=categories))
+    with pytest.raises(ValueError, match="is not in the dataset"):
+        load_dataset(csv, DatasetLoadOptions(normalize=False, categories={"x": ["a"]}))

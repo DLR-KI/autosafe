@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Test-point sampling around an ODD's anchor set."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -67,6 +67,7 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
     seed: int = 0,
     local_noise_std: float | None = None,
     discrete_values: Mapping[int, npt.NDArray[np.float64]] | None = None,
+    wrapped_columns: Sequence[int] | None = None,
 ) -> npt.NDArray[np.float64]:
     """Sample points using explicit lower/upper bounds from YAML.
 
@@ -80,6 +81,10 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
     coordinates are drawn first, from the same stream as without
     discrete coordinates, so they do not depend on `discrete_values`.
 
+    Periodic (wrapped-range) coordinates have no outside: the uniform
+    half is rescaled from the expanded interval onto exactly one period,
+    and the local half is wrapped into ``[lower, upper)``.
+
     Args:
         anchor_points (Matrix | NPMatrix): Affinity ODD anchors.
         lower_bounds (npt.NDArray): Lower bounds for sampling.
@@ -92,6 +97,8 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
         discrete_values (Mapping[int, npt.NDArray[np.float64]] | None):
             Column index to the valid codes of that discrete variable,
             in the same (normalized) space as `anchor_points`.
+        wrapped_columns (Sequence[int] | None): Indices of periodic
+            columns whose period is ``upper_bounds - lower_bounds``.
 
     Returns:
         Matrix: Array of sampled points with shape (n_samples, n_dims).
@@ -124,5 +131,13 @@ def _sample_points_with_bounds(  # ruff:ignore[too-many-arguments, too-many-posi
         valid = np.asarray(codes, dtype=float)
         uniform_points[:, index] = rng.choice(valid, size=n_uniform)
         local_points[:, index] = anchors[indices, index]
+
+    for index in wrapped_columns or ():
+        low, period = mins[index], maxs[index] - mins[index]
+        if period <= 0:
+            continue
+        expanded_low = low - 0.1 * span[index]
+        uniform_points[:, index] = low + (uniform_points[:, index] - expanded_low) / 1.2
+        local_points[:, index] = low + np.mod(local_points[:, index] - low, period)
 
     return np.vstack([uniform_points, local_points])

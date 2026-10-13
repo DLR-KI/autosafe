@@ -443,6 +443,7 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # ruff:ignore[too
     ood_max_iterations = int(item.get("ood_max_iterations", 1_000_000))
     ood_batch_jump = bool(item.get("ood_batch_jump"))
     baselines_only = bool(item.get("baselines_only"))
+    include_default_baselines = bool(item.get("include_default_baselines", True))
     dedup_policy = _resolve_dedup_policy(item)
     dedup_n_calibration_reserved = int(item.get("dedup_n_calibration_reserved", 0))
     dedup_strict_label_conflict = bool(item.get("dedup_strict_label_conflict"))
@@ -484,6 +485,7 @@ def glob_run_dataset(item: dict[str, Any]) -> dict[str, Any]:  # ruff:ignore[too
         dedup_policy=dedup_policy,
         dedup_n_calibration_reserved=dedup_n_calibration_reserved,
         dedup_strict_label_conflict=dedup_strict_label_conflict,
+        include_default_baselines=include_default_baselines,
     )
     return {
         "mode": "dataset",

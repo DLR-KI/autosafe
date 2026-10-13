@@ -138,11 +138,24 @@ $$
 $$
 
 default $m = 3$.
-Variables that the ground-truth limits YAML declares as `type: discrete` are never perturbed: uniform test points draw them from the valid codes, perturbed test points keep the code of their source anchor, and ground-truth membership additionally requires a valid code; the sidecar lists these columns as `discrete_columns`.
 A span-proportional noise scale (legacy $0.05 \cdot \text{span}$) probes only the far field once kernels are density-scaled: on HCAS it places every perturbed point dozens of kernel widths off the data manifold, so all affinities vanish and the sweep is again uninformative.
 Matching the sampling scale to the calibrated kernel scale is therefore part of the method, not a tuning trick; both $m$ and the sampling mode are recorded in the run's parameter sidecar.
 
 Empirically (HCAS, 20 000-anchor subsample, $m = 3$): $\approx 19\%$ of test points saturate ($\alpha = 1$ to double precision), $\approx 30\%$ fall in the informative mid-range, the rest are far-field negatives---a well-conditioned operating curve.
+
+The `type` of each entry in a ground-truth limits YAML decides how test points and ground-truth labels treat that variable:
+
+| `type` | `values` | Test points | Ground truth |
+| --- | --- | --- | --- |
+| `range` | `[lo, hi]` | uniform half on the interval widened by 10 %, perturbed half unconstrained | inside iff $lo \le x \le hi$ |
+| `wrapped_range` | `[lo, hi]`, period $hi - lo$ | uniform half spans exactly one period, perturbed half is wrapped into $[lo, hi)$ | always inside after wrapping |
+| `discrete` | codes | uniform half draws a code, perturbed half keeps its anchor's code | inside iff $x$ is a code |
+| `wrapped_discrete` | codes, optional `period` (default: span plus the smallest code spacing, e.g. 24 for the hours 0 to 23) | as `discrete` | inside iff $x$ wraps onto a code |
+| `categorical` | category names, e.g. `[car, bus, airplane]` | as `discrete`, on the codes $0, \dots, k-1$ | inside iff $x$ is a code |
+
+Categorical data columns are encoded on load as the index of their value in the YAML list; a value outside the list is an error, and the ODD and nearest-neighbor caches carry a `-cat<digest>` tag of the categories, so a reordered list never reuses caches built from another encoding.
+The sidecar records `discrete_columns`, `wrapped_columns` (the `wrapped_range` columns) and `categories`.
+These types only affect the evaluation: the kernel metric treats every coordinate as an ordered real number, so it neither wraps periodic variables nor treats categories as unordered.
 
 ## 7. Choice of constants
 

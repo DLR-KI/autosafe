@@ -22,10 +22,7 @@ docs = [
   "sphinx>8",
   "astroid<4"
 ]
-lint = [
-  "pylint-per-file-ignores",
-  "pylint"
-]
+lint = ["pylint-per-file-ignores", "pylint"]
 tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
 
 [project]
@@ -175,7 +172,6 @@ testpaths = ["tests"]
 
 [tool.ruff]
 fix = true
-target-version = "py311"
 unsafe-fixes = true
 
 [tool.ruff.format]

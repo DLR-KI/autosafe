@@ -96,16 +96,21 @@ class DatasetDeduplicationOutcome:
     filename_tag: str
 
 
-def _load_raw_numeric(dataset_path: Path) -> "npt.NDArray[np.float64]":
+def _load_raw_numeric(
+    dataset_path: Path, categories: "dict[str, list[str]] | None" = None
+) -> "npt.NDArray[np.float64]":
     """Load a dataset's numeric columns without normalization.
 
     Args:
         dataset_path (Path): Dataset file path.
+        categories (dict[str, list[str]] | None): Categorical columns
+            to encode on load (see `DatasetLoadOptions.categories`).
 
     Returns:
         npt.NDArray[np.float64]: Shape ``(n_rows, n_dims)`` raw values.
     """
-    df, _ = load_dataset(dataset_path, options=DatasetLoadOptions(normalize=False))
+    options = DatasetLoadOptions(normalize=False, categories=categories)
+    df, _ = load_dataset(dataset_path, options=options)
     return _numeric_array(df)
 
 
@@ -118,6 +123,7 @@ def run_dataset_deduplication(  # ruff:ignore[too-many-arguments, too-many-local
     normalize_data: bool,
     n_calibration_reserved: int = 0,
     strict_label_conflict: bool = False,
+    categories: "dict[str, list[str]] | None" = None,
 ) -> DatasetDeduplicationOutcome:
     """Run the full dedup-enabled dataset-mode pre-processing pipeline.
 
@@ -141,6 +147,8 @@ def run_dataset_deduplication(  # ruff:ignore[too-many-arguments, too-many-local
             candidate pool entirely.
         strict_label_conflict (bool): Raise instead of only reporting
             when an ID and an OOD resolution cell coincide.
+        categories (dict[str, list[str]] | None): Categorical columns
+            to encode on load (see `DatasetLoadOptions.categories`).
 
     Returns:
         DatasetDeduplicationOutcome: The de-duplicated, normalized ID
@@ -156,7 +164,7 @@ def run_dataset_deduplication(  # ruff:ignore[too-many-arguments, too-many-local
             normalization, an OOD representative coincides exactly with
             an ID representative.
     """
-    id_raw = _load_raw_numeric(dataset_path)
+    id_raw = _load_raw_numeric(dataset_path, categories)
     n_id_raw = id_raw.shape[0]
 
     if n_calibration_reserved < 0 or n_calibration_reserved >= max(n_id_raw, 1):
@@ -180,7 +188,7 @@ def run_dataset_deduplication(  # ruff:ignore[too-many-arguments, too-many-local
 
     ood_raw: npt.NDArray[np.float64] | None = None
     if ood_path is not None:
-        ood_raw = _load_raw_numeric(ood_path)
+        ood_raw = _load_raw_numeric(ood_path, categories)
         keep = ~rows_in(candidate_raw, ood_raw)
         candidate_raw = candidate_raw[keep]
         candidate_record_ids = [

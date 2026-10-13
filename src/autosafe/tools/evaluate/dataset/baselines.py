@@ -331,6 +331,7 @@ def _build_dataset_reference_labels(  # ruff:ignore[too-many-arguments]
     ground_truth_yaml: Path | None,
     normalizer: RangeNormalizer | None = None,
     method_params: dict[str, dict[str, object]] | None = None,
+    include_default_baselines: bool = True,
 ) -> dict[str, npt.NDArray[np.bool_]]:
     """Build baseline and ground-truth labels for dataset evaluation.
 
@@ -345,6 +346,9 @@ def _build_dataset_reference_labels(  # ruff:ignore[too-many-arguments]
             YAML ground-truth membership.
         method_params (dict[str, dict[str, object]] | None): Per-method
             parameter overrides forwarded to baseline monitor creation.
+        include_default_baselines (bool): With a ground-truth YAML, add
+            every default baseline to the requested references. When
+            ``False``, only the requested references are evaluated.
 
     Returns:
         dict[str, npt.NDArray[np.bool_]]: Reference labels for
@@ -357,7 +361,7 @@ def _build_dataset_reference_labels(  # ruff:ignore[too-many-arguments]
     requested_baselines = references or DEFAULT_DATASET_BASELINES
     requested_baselines = [ref for ref in requested_baselines if ref != "ground_truth"]
 
-    if effective_ground_truth_yaml is not None:
+    if effective_ground_truth_yaml is not None and include_default_baselines:
         baseline_methods = list(
             dict.fromkeys([*DEFAULT_DATASET_BASELINES, *requested_baselines]),
         )

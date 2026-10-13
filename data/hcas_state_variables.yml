@@ -6,10 +6,10 @@ limits:
     type: range
     values: [0, 50000]
   theta:
-    type: range
+    type: wrapped_range
     values: [-180, 180]
   psi:
-    type: range
+    type: wrapped_range
     values: [-180, 180]
   v_own:
     type: range
