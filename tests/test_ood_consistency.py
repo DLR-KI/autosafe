@@ -234,6 +234,9 @@ def test_final_survival_matches_summary() -> None:
 
 
 @pytest.mark.filterwarnings("ignore:overflow encountered in divide:RuntimeWarning")
+# Whether the near-anchor point's log-survival rounds to -inf (and so
+# triggers the warning) depends on the platform's floating point.
+@pytest.mark.filterwarnings("ignore::autosafe.exceptions.NearAnchorOODWarning")
 def test_saturation_guard_raises() -> None:
     """A kernel driven to float64 saturation raises instead of NaN-ing."""
     # The anchor sits at the ORIGIN so that a 1e-160 offset is actually
