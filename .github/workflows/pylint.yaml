@@ -30,7 +30,7 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           enable-cache: true
           python-version: 3.14
