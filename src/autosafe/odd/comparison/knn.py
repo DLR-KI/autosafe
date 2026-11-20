@@ -301,5 +301,26 @@ class KNNMonitor(ODDBoundaryMethod):
         # distances: (n_samples, k): in ODD if all k distances < gamma
         return np.all(distances < self.gamma, axis=1)
 
+    def score(self, test_points: Matrix | NPMatrix) -> npt.NDArray[np.float64]:
+        """Negative k-th neighbor distance, inside iff above ``-gamma``.
+
+        All k neighbor distances are below ``gamma`` exactly when the
+        largest, the k-th, is.
+
+        Args:
+            test_points (Matrix | NPMatrix): Points to evaluate, shape
+                (n_features, n_samples).
+
+        Returns:
+            npt.NDArray[np.float64]: Shape (n_samples,) scores.
+
+        Raises:
+            NotFittedError: If the monitor is not fitted.
+        """
+        if not self.trained or self.tree is None:
+            raise NotFittedError(type(self).__name__)
+        distances, _ = self.tree.query(test_points.T, k=self.k)
+        return -np.asarray(distances, dtype=np.float64).max(axis=1)
+
 
 __all__ = ["KNNMonitor"]

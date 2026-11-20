@@ -8,7 +8,7 @@ processes.
 """
 
 import dataclasses
-import datetime
+import datetime as dt
 import pathlib
 import secrets
 from typing import Any
@@ -193,9 +193,9 @@ def _benchmark_timings(
         if size > n_samples:
             continue
         points = rng.uniform(lower, upper, size=(size, dataset_dimensions))
-        t0 = datetime.datetime.now(datetime.UTC)
+        t0 = dt.datetime.now(dt.UTC)
         _ = odd(points)
-        t1 = datetime.datetime.now(datetime.UTC)
+        t1 = dt.datetime.now(dt.UTC)
         timings[str(size)] = (t1 - t0).total_seconds()
     return timings
 
@@ -216,7 +216,7 @@ def evaluate_experiment(
             metadata and results.
     """
     request = request or EvaluationExperimentConfig()
-    start_time = datetime.datetime.now(datetime.UTC)
+    start_time = dt.datetime.now(dt.UTC)
     odd, dataset_size, dataset_dimensions, lower, upper = _load_dataset_context(
         dataset_path,
         kernel_type=request.kernel_type,
@@ -233,7 +233,7 @@ def evaluate_experiment(
         n_samples=eval_samples,
     )
 
-    end_time = datetime.datetime.now(datetime.UTC)
+    end_time = dt.datetime.now(dt.UTC)
     processing_time = (end_time - start_time).total_seconds()
 
     # Create experiment ID and timestamp
@@ -296,7 +296,7 @@ def run_benchmark_experiment(
             performance metrics.
     """
     request = request or BenchmarkExperimentConfig()
-    start_time = datetime.datetime.now(datetime.UTC)
+    start_time = dt.datetime.now(dt.UTC)
     odd, dataset_size, dataset_dimensions, lower, upper = _load_dataset_context(
         dataset_path,
         kernel_type=request.kernel_type,
@@ -312,7 +312,7 @@ def run_benchmark_experiment(
         n_samples=request.n_samples,
     )
 
-    end_time = datetime.datetime.now(datetime.UTC)
+    end_time = dt.datetime.now(dt.UTC)
     processing_time = (end_time - start_time).total_seconds()
     samples_per_second = (
         request.n_samples / processing_time if processing_time > 0 else None
@@ -412,7 +412,7 @@ def generate_experiment_id() -> str:
     Returns:
         str: Generated experiment identifier.
     """
-    timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+    timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%d_%H%M%S")
     random_suffix = f"{secrets.randbelow(900) + 100:03d}"
     return f"exp_{timestamp}_{random_suffix}"
 

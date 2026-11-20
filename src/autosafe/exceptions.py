@@ -195,6 +195,13 @@ class NotFittedError(RuntimeError, ValueError):
         super().__init__(f"{estimator} is not fitted yet; call fit() first")
 
 
+class ScoreNotSupportedError(NotImplementedError):
+    """Raised when a boundary method offers no continuous score."""
+
+    def __init__(self, method: str) -> None:
+        super().__init__(f"{method} offers no continuous membership score")
+
+
 class InputFileNotFoundError(FileNotFoundError):
     """Raised when an input file or directory does not exist."""
 
@@ -1030,6 +1037,7 @@ __all__ = [
     "ReservedMetadataKeyError",
     "ResolutionCellOverflowError",
     "RowShapeMismatchError",
+    "ScoreNotSupportedError",
     "ShapeMismatchError",
     "SigmaNotInvertibleError",
     "TooFewAnchorsError",

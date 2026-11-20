@@ -4,6 +4,7 @@
 """Gaussian-mixture ODD boundary comparison method."""
 
 import numpy as np
+import numpy.typing as npt
 from sklearn.mixture import GaussianMixture
 
 from autosafe.exceptions import NotFittedError
@@ -219,23 +220,25 @@ class GaussianMixtureBoundary(SuperlevelSetMonitor):
         if len(pdf_values) == 0:
             return NPFloatType(0.5)
 
-        max_pdf = pdf_values.max()
+        max_pdf = pdf_values.max()  # ty: ignore[invalid-argument-type]
         if max_pdf <= 0.0:
             return NPFloatType(0.5)
 
         normalized_gamma = self.gamma / max_pdf
         return NPFloatType(max(0.0, min(1.0, normalized_gamma)))
 
-    def pdf(self, test_points: Matrix | NPMatrix) -> np.ndarray:
-        """Score test points by GMM log-likelihood (exponentiated).
+    def log_pdf(self, test_points: Matrix | NPMatrix) -> npt.NDArray[np.float64]:
+        """Score test points by GMM log-likelihood.
+
+        ``pdf`` (inherited) exponentiates this, in the same convention
+        as ``SuperlevelSetMonitor.pdf``; ``score`` returns it as is.
 
         Args:
             test_points (Matrix | NPMatrix): Points to evaluate.
 
         Returns:
-            np.ndarray: Score values at test points, in the same
-            (exponentiated log-likelihood) convention as
-            ``SuperlevelSetMonitor.pdf``.
+            npt.NDArray[np.float64]: Scaled log-likelihood values at
+            test points.
 
         Raises:
             NotFittedError: If the monitor is not fitted.
@@ -244,7 +247,7 @@ class GaussianMixtureBoundary(SuperlevelSetMonitor):
             raise NotFittedError(type(self).__name__)
 
         log_likelihood = self.gmm.score_samples(test_points.T)
-        return np.exp(log_likelihood * self.sigmoid_weight)
+        return np.asarray(log_likelihood * self.sigmoid_weight, dtype=np.float64)
 
 
 __all__ = ["GaussianMixtureBoundary"]

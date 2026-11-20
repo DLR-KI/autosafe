@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
-from autosafe.exceptions import RowShapeMismatchError
+from autosafe.exceptions import NonPositiveParameterError, RowShapeMismatchError
 
 if TYPE_CHECKING:
     from autosafe.typing import NPMatrix
@@ -55,3 +55,33 @@ def rows_in(query: "NPMatrix", reference: "NPMatrix") -> npt.NDArray[np.bool_]:
     n_ref = r.shape[0]
     reference_groups = np.unique(inverse[:n_ref])
     return np.isin(inverse[n_ref:], reference_groups)
+
+
+def subsample_indices(count: int, size: int, seed: int) -> npt.NDArray[np.int64]:
+    """Sorted indices of a uniform subsample without replacement.
+
+    Draws ``default_rng(seed).choice(count, size=size, replace=False)``
+    and sorts it, so a subsample keeps the original row order. All rows
+    are returned when ``size >= count``.
+
+    Args:
+        count (int): Number of rows to draw from.
+        size (int): Number of rows to keep.
+        seed (int): Seed of the NumPy random generator.
+
+    Returns:
+        npt.NDArray[np.int64]: Shape ``(min(size, count),)`` ascending
+            row indices.
+
+    Raises:
+        NonPositiveParameterError: If ``size`` is smaller than 1.
+    """
+    if size < 1:
+        raise NonPositiveParameterError("size", size)
+    if size >= count:
+        return np.arange(count, dtype=np.int64)
+    rng = np.random.default_rng(seed)
+    return np.sort(rng.choice(count, size=size, replace=False)).astype(np.int64)
+
+
+__all__ = ["rows_in", "subsample_indices"]

@@ -10,6 +10,11 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from autosafe.deduplication import (
+    DeduplicationPolicy,
+    DeduplicationResult,
+    deduplicate_points,
+)
 from autosafe.exceptions import (
     CalibrationDataRequiredError,
     DuplicateFeatureNameError,
@@ -17,6 +22,7 @@ from autosafe.exceptions import (
     EmptyParameterError,
     LengthMismatchError,
     NonFiniteParameterError,
+    NonPositiveParameterError,
     OODConfigurationMismatchError,
     ParameterOrderError,
     ParameterTypeError,
@@ -25,7 +31,7 @@ from autosafe.exceptions import (
     UnexpectedNoneError,
 )
 from autosafe.kernels.rbf import calibrate_rbf_scale_d_tilde, resolve_width_multiple
-from autosafe.neighbors import find_closest_vectors_by_index
+from autosafe.neighbors import find_closest_vectors
 from autosafe.odd.config import (
     AutoSafeConfig,
     CalibratedRBFConfig,
@@ -37,6 +43,7 @@ from autosafe.odd.config import (
     ResolvedMembershipConfig,
 )
 from autosafe.odd.membership import conformal_membership_threshold
+from autosafe.pointsets import subsample_indices
 from autosafe.preprocessing import RangeNormalizer
 from autosafe.sample import Sample
 from autosafe.samples import Samples
@@ -213,8 +220,15 @@ def _transform(
     return np.asarray(normalizer.transform(data), dtype=np.float64)
 
 
-#: Resolved kernel configuration, kernel arguments, and neighbor mode.
-ResolvedKernel = tuple[ResolvedKernelConfig, dict[str, Any], ClosestSampleModeType]
+#: Resolved kernel configuration, kernel arguments, neighbor mode, and
+#: the nearest-neighbor indices found on the way (``None`` if no search
+#: was needed).
+ResolvedKernel = tuple[
+    ResolvedKernelConfig,
+    dict[str, Any],
+    ClosestSampleModeType,
+    npt.NDArray[np.int64] | None,
+]
 
 
 def _resolve_kernel(
@@ -229,8 +243,10 @@ def _resolve_kernel(
             settings.
 
     Returns:
-        ResolvedKernel: Resolved configuration, kernel arguments, and
-            neighbor mode.
+        ResolvedKernel: Resolved configuration, kernel arguments,
+            neighbor mode, and the global nearest-neighbor indices of
+            the calibrated mode (``None`` in manual mode), which
+            ``Samples`` reuses instead of searching again.
 
     Raises:
         ParameterTypeError: If an unsupported kernel configuration is
@@ -239,11 +255,10 @@ def _resolve_kernel(
     feature_count = anchors.shape[1]
     kernel = config.kernel
     if isinstance(kernel, CalibratedRBFConfig):
-        neighbor_indices = find_closest_vectors_by_index(
+        neighbor_indices, distances = find_closest_vectors(
             anchors,
             disable_tqdm=True,
         )
-        distances = np.linalg.norm(anchors[neighbor_indices] - anchors, axis=1)
         kappa, eta = calibrate_rbf_scale_d_tilde(
             distances,
             gamma=kernel.decay_per_median_gap,
@@ -264,7 +279,12 @@ def _resolve_kernel(
             ),
             relative_variance_floor=kernel.relative_variance_floor,
         )
-        return resolved, {"kappa": kappa, "eta": eta, "lam": lam}, "global"
+        return (
+            resolved,
+            {"kappa": kappa, "eta": eta, "lam": lam},
+            "global",
+            neighbor_indices,
+        )
 
     if not isinstance(kernel, ManualRBFConfig):  # pragma: no cover
         raise ParameterTypeError(
@@ -301,6 +321,7 @@ def _resolve_kernel(
         resolved,
         {"kappa": kappa_arg, "eta": eta_arg, "lam": lam_arg},
         kernel.nearest_neighbor_mode,
+        None,
     )
 
 
@@ -360,7 +381,16 @@ def _conformal_membership(
 
 @dataclass(slots=True)
 class AutoSafeODD:
-    """A fitted autoSAFE ODD including ID and observed OOD data."""
+    """A fitted autoSAFE ODD including ID and observed OOD data.
+
+    ``in_distribution_data`` holds the raw rows that became anchors,
+    i.e. after the optional de-duplication and subsampling of
+    :meth:`fit`. ``deduplication_result`` then records the
+    de-duplication (counts, digests) and ``anchor_indices`` the rows of
+    ``deduplication_result.points`` (or of the given ID rows, without
+    de-duplication) that the subsample kept; both are ``None`` when the
+    step was not applied.
+    """
 
     in_distribution_data: NPMatrix
     out_of_distribution_data: NPMatrix | None
@@ -374,9 +404,11 @@ class AutoSafeODD:
     normalizer: RangeNormalizer | None
     feature_names: tuple[str, ...] | None = None
     ood_consistency_result: dict[str, object] | None = None
+    deduplication_result: DeduplicationResult | None = None
+    anchor_indices: npt.NDArray[np.int64] | None = None
 
     @classmethod
-    def fit(  # ruff:ignore[complex-structure,too-many-branches,too-many-locals]
+    def fit(  # ruff:ignore[complex-structure,too-many-branches,too-many-locals,too-many-statements,too-many-arguments]
         cls,
         in_distribution_data: npt.ArrayLike,
         *,
@@ -384,11 +416,23 @@ class AutoSafeODD:
         out_of_distribution_data: npt.ArrayLike | None = None,
         calibration_data: npt.ArrayLike | None = None,
         feature_names: Sequence[str] | None = None,
+        deduplication: DeduplicationPolicy | None = None,
+        max_anchors: int | None = None,
+        anchor_seed: int = 0,
+        show_progress: bool = False,
     ) -> "AutoSafeODD":
         """Fit a complete kernel ODD from ID and optional OOD samples.
 
+        The anchors are prepared in the order of the paper's
+        Algorithm 1: de-duplicate the ID rows in raw coordinates (if a
+        policy is given), fit the normalizer on the retained
+        representatives, then subsample them uniformly (if
+        ``max_anchors`` is given). Calibration and OOD rows are never
+        de-duplicated or subsampled.
+
         Args:
-            in_distribution_data (npt.ArrayLike): ID anchor rows.
+            in_distribution_data (npt.ArrayLike): ID anchor candidate
+                rows.
             config (AutoSafeConfig | Mapping[str, object]): Typed
                 configuration or an alias mapping.
             out_of_distribution_data (npt.ArrayLike | None): Known OOD
@@ -397,12 +441,28 @@ class AutoSafeODD:
                 used only when membership is conformal.
             feature_names (Sequence[str] | None): Optional ordered
                 names.
+            deduplication (DeduplicationPolicy | None): Resolution-cell
+                de-duplication policy in raw coordinates, applied to
+                ``in_distribution_data`` before anything else; ``None``
+                keeps every row. A policy whose dimension differs from
+                the data raises
+                :class:`~autosafe.exceptions.DeduplicationDimensionMismatchError`.
+            max_anchors (int | None): Keep at most this many anchors,
+                drawn uniformly without replacement after
+                de-duplication (see
+                :func:`~autosafe.pointsets.subsample_indices`); ``None``
+                keeps all.
+            anchor_seed (int): Seed of the anchor subsample.
+            show_progress (bool): Whether to show progress bars.
 
         Returns:
             AutoSafeODD: Fitted, queryable ODD.
 
         Raises:
-            TooFewAnchorsError: If fewer than two ID rows are given.
+            TooFewAnchorsError: If fewer than two anchors remain after
+                de-duplication and subsampling.
+            NonPositiveParameterError: If ``max_anchors`` is smaller
+                than 1.
             LengthMismatchError: If ``feature_names`` does not match the
                 feature count.
             DuplicateFeatureNameError: If ``feature_names`` repeats a
@@ -418,8 +478,19 @@ class AutoSafeODD:
             config = AutoSafeConfig.from_mapping(config)
 
         id_data = _as_matrix(in_distribution_data, "in_distribution_data")
-        if id_data.shape[0] < 2:  # ruff:ignore[magic-value-comparison]
-            raise TooFewAnchorsError(2, id_data.shape[0])
+        dedup_result: DeduplicationResult | None = None
+        if deduplication is not None:
+            dedup_result = deduplicate_points(id_data, deduplication, keep_groups=False)
+            id_data = dedup_result.points
+        if max_anchors is not None and max_anchors < 1:
+            raise NonPositiveParameterError("max_anchors", max_anchors)
+        expected_anchors = (
+            id_data.shape[0]
+            if max_anchors is None
+            else min(max_anchors, id_data.shape[0])
+        )
+        if expected_anchors < 2:  # ruff:ignore[magic-value-comparison]
+            raise TooFewAnchorsError(2, expected_anchors)
         ood_data = (
             None
             if out_of_distribution_data is None
@@ -455,22 +526,37 @@ class AutoSafeODD:
         normalizer = _normalizer_from_config(config)
         if normalizer is not None:
             normalizer.fit(id_data)
+        anchor_indices: npt.NDArray[np.int64] | None = None
+        if max_anchors is not None:
+            anchor_indices = subsample_indices(
+                id_data.shape[0], max_anchors, anchor_seed
+            )
+            id_data = id_data[anchor_indices]
         id_normalized = _transform(normalizer, id_data)
         ood_normalized = _transform(normalizer, ood_data)
         calibration_normalized = _transform(normalizer, held_out)
         if id_normalized is None:  # pragma: no cover
             raise UnexpectedNoneError("id_normalized")
 
-        resolved_kernel, kernel_kwargs, neighbor_mode = _resolve_kernel(
-            id_normalized,
-            config,
+        resolved_kernel, kernel_kwargs, neighbor_mode, neighbor_indices = (
+            _resolve_kernel(id_normalized, config)
         )
-        samples = Samples(
-            [Sample(row) for row in id_normalized],
-            closest_sample_mode=neighbor_mode,
-            kernel_cls="RBF",
-            kernel_kwargs=kernel_kwargs,
-        )
+        if neighbor_mode == "global":
+            samples = Samples.from_array(
+                id_normalized,
+                kernel_kwargs=kernel_kwargs,
+                neighbor_indices=neighbor_indices,
+                show_progress=show_progress,
+            )
+        else:
+            samples = Samples(
+                [Sample(row) for row in id_normalized],
+                closest_sample_mode=neighbor_mode,
+                kernel_cls="RBF",
+                kernel_kwargs=kernel_kwargs,
+                neighbor_indices=neighbor_indices,
+                show_progress=show_progress,
+            )
 
         ood_result: dict[str, object] | None = None
         if ood_normalized is not None:
@@ -485,6 +571,7 @@ class AutoSafeODD:
                 refresh_interval=ood_config.refresh_interval,
                 log_interval=ood_config.log_interval,
                 batch_jump=ood_config.batch_jump,
+                show_progress=show_progress,
             )
 
         membership = config.membership
@@ -519,6 +606,8 @@ class AutoSafeODD:
             normalizer=normalizer,
             feature_names=names,
             ood_consistency_result=ood_result,
+            deduplication_result=dedup_result,
+            anchor_indices=anchor_indices,
         )
 
     def _query_matrix(

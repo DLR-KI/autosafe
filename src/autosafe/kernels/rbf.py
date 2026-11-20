@@ -151,6 +151,67 @@ def _validate_and_broadcast_param(
     raise ParameterTypeError(name, param, (float, np.ndarray))
 
 
+def rbf_diagonal_sigma(
+    anchors: npt.NDArray[np.float64],
+    neighbors: npt.NDArray[np.float64],
+    *,
+    kappa: KernelScaleParam = 1.0,
+    eta: KernelScaleParam = 1.0,
+    lam: KernelScaleParam | None = None,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Diagonal sigma and its inverse for many global-mode RBF kernels.
+
+    Vectorized form of the global-mode affine-floor law of
+    ``RBFKernel._sigma_ii``: per anchor and feature,
+    ``sigma = (kappa - lam) * exp(-eta * |x_nn - x_i|) + lam``. The
+    inverse of a diagonal matrix is the elementwise reciprocal.
+
+    Args:
+        anchors (npt.NDArray[np.float64]): Kernel centers, shape
+            ``(N, n)``.
+        neighbors (npt.NDArray[np.float64]): The nearest neighbor of
+            each anchor, shape ``(N, n)``.
+        kappa (KernelScaleParam): Scaling factor, scalar or per
+            feature. Defaults to 1.0.
+        eta (KernelScaleParam): Exponential decay factor, scalar or
+            per feature. Defaults to 1.0.
+        lam (KernelScaleParam | None): Affine lower bound for sigma.
+            If None, uses ``SIGMA_FLOOR_RATIO * kappa``.
+
+    Returns:
+        tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: The
+            diagonals of sigma and of its inverse, each of shape
+            ``(N, n)``.
+
+    Raises:
+        NonPositiveParameterError: If `lam` is not positive.
+        ParameterOrderError: If `lam` is not smaller than `kappa`.
+        ShapeMismatchError: If `neighbors` and `anchors` differ in
+            shape.
+        SigmaNotInvertibleError: If a sigma entry has no finite
+            reciprocal.
+    """
+    dim = anchors.shape[1]
+    kappa_ = _validate_and_broadcast_param(kappa, "kappa", dim)
+    eta_ = _validate_and_broadcast_param(eta, "eta", dim)
+    if lam is None:
+        lam_ = SIGMA_FLOOR_RATIO * kappa_
+    else:
+        lam_ = _validate_and_broadcast_param(lam, "lam", dim)
+        if not np.all(lam_ > 0.0):
+            raise NonPositiveParameterError("lam", lam_)
+    if not np.all(lam_ < kappa_):
+        raise ParameterOrderError("lam", "kappa")
+    if neighbors.shape != anchors.shape:
+        raise ShapeMismatchError("neighbors", neighbors.shape, anchors.shape)
+    displacement = neighbors - anchors
+    sigma = (kappa_ - lam_) * np.exp(-eta_ * np.abs(displacement)) + lam_
+    sigma_inv = 1.0 / sigma
+    if not np.all(np.isfinite(sigma_inv)):
+        raise SigmaNotInvertibleError(dim)
+    return sigma, sigma_inv
+
+
 def _fix_sigma_matrix(sigma: NPSquareMatrix) -> NPSquareMatrix:
     """Ensure the sigma matrix is positive definite.
 
@@ -307,6 +368,42 @@ class RBFKernel(Kernel):
             self._refresh_sigma_cache()
         else:
             raise ParameterTypeError("sigma", sigma, (str, np.ndarray, float))
+
+    @classmethod
+    def from_diagonal(  # ruff:ignore[too-many-arguments]
+        cls,
+        x_i: NPVector,
+        sigma_diag: NPVector,
+        sigma_inv_diag: NPVector,
+        *,
+        kappa: KernelScaleParam = 1.0,
+        eta: KernelScaleParam = 1.0,
+        lam: KernelScaleParam | None = None,
+    ) -> "RBFKernel":
+        """Kernel with a precomputed diagonal sigma and inverse.
+
+        Produces the same state as constructing the kernel and calling
+        ``update(x_nn=...)``, without inverting sigma again.
+
+        Args:
+            x_i (NPVector): The kernel center point.
+            sigma_diag (NPVector): The diagonal of sigma.
+            sigma_inv_diag (NPVector): The diagonal of the inverse of
+                sigma.
+            kappa (KernelScaleParam): Scaling factor. Defaults to 1.0.
+            eta (KernelScaleParam): Exponential decay factor. Defaults
+                to 1.0.
+            lam (KernelScaleParam | None): Affine lower bound for
+                sigma. Defaults to None.
+
+        Returns:
+            RBFKernel: The kernel with sigma and its inverse set.
+        """
+        kernel = cls(x_i=x_i, kappa=kappa, eta=eta, lam=lam)
+        kernel.sigma = np.diag(np.asarray(sigma_diag, NPFloatType))
+        kernel.sigma_inv = np.diag(np.asarray(sigma_inv_diag, NPFloatType))
+        kernel._refresh_sigma_cache()
+        return kernel
 
     def _refresh_sigma_cache(self) -> None:
         """Recompute diagonal flag and invalidate cached JAX arrays.

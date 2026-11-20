@@ -203,9 +203,11 @@ class DeduplicationResult:
             observed representatives, one per occupied cell, in
             canonical (lexicographic cell-id) order. Never a synthetic
             cell mean.
-        groups (tuple[tuple[RecordId, ...], ...]): Per representative,
-            the canonically ordered tuple of source-record identifiers
-            that fell into its cell (length ``n_cells``).
+        groups (tuple[tuple[RecordId, ...], ...] | None): Per
+            representative, the canonically ordered tuple of
+            source-record identifiers that fell into its cell (length
+            ``n_cells``); ``None`` when built with
+            ``keep_groups=False``.
         representative_ids (tuple[RecordId, ...]): Per cell, the
             source-record identifier of the chosen representative
             (the member of ``groups[i]`` matching ``points[i]``).
@@ -228,7 +230,7 @@ class DeduplicationResult:
     """
 
     points: npt.NDArray[np.float64]
-    groups: tuple[tuple[RecordId, ...], ...]
+    groups: tuple[tuple[RecordId, ...], ...] | None
     representative_ids: tuple[RecordId, ...]
     multiplicities: npt.NDArray[np.int64]
     cell_ids: npt.NDArray[np.int64]
@@ -286,7 +288,61 @@ def _id_sort_key(record_id: RecordId) -> tuple[int, RecordId]:
     return (0, record_id)
 
 
-def _digest_rows(points: npt.NDArray[np.float64], ids: Sequence[RecordId]) -> str:
+def _id_keys(ids: Sequence[RecordId]) -> npt.NDArray[np.int64]:
+    """Integer sort keys that order record ids like ``_id_sort_key``.
+
+    Equal ids get distinct keys in row order, which is the same order
+    a stable sort over ``_id_sort_key`` leaves them in.
+
+    Args:
+        ids (Sequence[RecordId]): Length-``n`` record identifiers.
+
+    Returns:
+        npt.NDArray[np.int64]: Shape ``(n,)`` keys; sorting by them
+            (stably) orders the rows by ``_id_sort_key``.
+    """
+    n = len(ids)
+    if isinstance(ids, range):
+        return np.asarray(ids, dtype=np.int64)
+    if all(type(rid) is int for rid in ids):
+        try:
+            return np.fromiter(ids, dtype=np.int64, count=n)
+        except OverflowError:
+            pass
+    order = sorted(range(n), key=lambda i: _id_sort_key(ids[i]))
+    keys = np.empty(n, dtype=np.int64)
+    keys[np.asarray(order, dtype=np.int64)] = np.arange(n, dtype=np.int64)
+    return keys
+
+
+def _canonical_order(
+    columns: Sequence[npt.ArrayLike],
+    id_keys: npt.NDArray[np.int64],
+) -> npt.NDArray[np.intp]:
+    """Stable lexicographic row order by ``columns`` and then ids.
+
+    Equivalent to ``sorted(range(n), key=...)`` over tuples of the
+    columns followed by the record id: :func:`numpy.lexsort` is stable,
+    compares ``-0.0`` equal to ``0.0`` like tuple comparison does, and
+    uses its last key as the primary one.
+
+    Args:
+        columns (Sequence[npt.ArrayLike]): Sort columns,
+            most significant first.
+        id_keys (npt.NDArray[np.int64]): Record-id keys, the least
+            significant sort column.
+
+    Returns:
+        npt.NDArray[np.intp]: Row permutation.
+    """
+    return np.lexsort([id_keys, *reversed(columns)])
+
+
+def _digest_rows(
+    points: npt.NDArray[np.float64],
+    ids: Sequence[RecordId],
+    id_keys: npt.NDArray[np.int64] | None = None,
+) -> str:
     """Order-independent digest of a (points, ids) pair.
 
     Rows are canonically sorted by ``(coordinates, id)`` before hashing
@@ -295,6 +351,8 @@ def _digest_rows(points: npt.NDArray[np.float64], ids: Sequence[RecordId]) -> st
     Args:
         points (npt.NDArray[np.float64]): Shape ``(n, n_dims)``.
         ids (Sequence[RecordId]): Length-``n`` record identifiers.
+        id_keys (npt.NDArray[np.int64] | None): Precomputed
+            :func:`_id_keys` of ``ids``, or ``None`` to compute them.
 
     Returns:
         str: 64-character hex SHA-256 digest.
@@ -302,14 +360,48 @@ def _digest_rows(points: npt.NDArray[np.float64], ids: Sequence[RecordId]) -> st
     n = points.shape[0]
     if n == 0:
         return hashlib.sha256(b"dedup:empty").hexdigest()
-    order = sorted(
-        range(n),
-        key=lambda i: (tuple(float(v) for v in points[i]), _id_sort_key(ids[i])),
-    )
+    keys = _id_keys(ids) if id_keys is None else id_keys
+    order = _canonical_order(list(points.T), keys)
     sorted_points = np.ascontiguousarray(points[order], dtype=np.float64)
-    id_repr = "|".join(repr(ids[i]) for i in order).encode("utf-8")
+    id_repr = "|".join([repr(ids[i]) for i in order.tolist()]).encode("utf-8")
     payload = sorted_points.tobytes() + b":" + id_repr
     return hashlib.sha256(payload).hexdigest()
+
+
+def _cell_means(
+    sorted_points: npt.NDArray[np.float64],
+    starts: npt.NDArray[np.intp],
+    counts: npt.NDArray[np.intp],
+) -> npt.NDArray[np.float64]:
+    """Per-cell float64 means of canonically sorted points.
+
+    Cells of equal size are reduced together as a
+    ``(cells, size, n_dims)`` block along axis 1, which sums in the
+    same order as ``member_points.mean(axis=0)`` on each cell alone
+    (:func:`numpy.add.reduceat` does not). The loop runs over the
+    distinct cell sizes, not over the cells.
+
+    Args:
+        sorted_points (npt.NDArray[np.float64]): Shape
+            ``(n_input, n_dims)``, members of a cell contiguous.
+        starts (npt.NDArray[np.intp]): Shape ``(n_cells,)`` first row
+            of each cell.
+        counts (npt.NDArray[np.intp]): Shape ``(n_cells,)`` rows per
+            cell.
+
+    Returns:
+        npt.NDArray[np.float64]: Shape ``(n_cells, n_dims)`` cell means.
+    """
+    means = np.empty((starts.size, sorted_points.shape[1]), dtype=np.float64)
+    by_size = np.argsort(counts, kind="stable")
+    sizes, first = np.unique(counts[by_size], return_index=True)
+    bounds = [*first.tolist(), by_size.size]
+    for position, size in enumerate(sizes.tolist()):
+        cells = by_size[bounds[position] : bounds[position + 1]]
+        members = starts[cells][:, None] + np.arange(size)[None, :]
+        block = np.asarray(sorted_points[members], dtype=np.float64)
+        means[cells] = block.sum(axis=1) / size
+    return means
 
 
 def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
@@ -317,16 +409,17 @@ def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
     policy: DeduplicationPolicy,
     *,
     record_ids: Sequence[RecordId] | None = None,
+    keep_groups: bool = True,
 ) -> DeduplicationResult:
     """De-duplicate points into resolution cells, deterministically.
 
-    Target complexity is ``O(L n log L)`` time and ``O(L n)`` space for
-    ``L`` input records of dimension ``n``. The result is invariant to
-    the input row order (permutation invariance): the canonical sort
-    key is ``(cell_id tuple, coordinate tuple, record id)``, which
-    never depends on positional index, and ties in representative
-    distance are broken by the earliest element of that same
-    canonical order---exactly lexicographic-by-coordinates-then-id.
+    Runs in ``O(L n log L)`` time and ``O(L n)`` space for ``L`` input
+    records of dimension ``n``, vectorized over the records. The result
+    is invariant to the input row order (permutation invariance): the
+    canonical sort key is ``(cell_id tuple, coordinate tuple, record
+    id)``, which never depends on positional index, and ties in
+    representative distance are broken by the earliest element of that
+    same canonical order---exactly lexicographic-by-coordinates-then-id.
 
     Args:
         points (npt.ArrayLike): Shape ``(n_points, n_dims)`` finite
@@ -337,6 +430,10 @@ def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
         record_ids (Sequence[RecordId] | None): Stable source-record
             identifier per row. When ``None``, the row index is used.
             When supplied, every row must have a non-``None`` entry.
+        keep_groups (bool): Whether to build ``groups`` (one tuple of
+            record ids per cell). It holds one Python object per input
+            row; pass ``False`` for large inputs that do not need it,
+            and ``groups`` is ``None``.
 
     Returns:
         DeduplicationResult: Representatives, groups, multiplicities,
@@ -365,21 +462,25 @@ def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
             int(bad_mask.sum()), n_input, int(np.argmax(bad_mask))
         )
 
+    ids: Sequence[RecordId]
     if record_ids is None:
-        ids: tuple[RecordId, ...] = tuple(range(n_input))
+        # A range indexes to plain ints like the tuple of row indices
+        # it replaces, without holding one Python object per row.
+        ids = range(n_input)
     else:
         ids = tuple(record_ids)
         n_usable = sum(1 for rid in ids if rid is not None)
         if len(ids) != n_input or n_usable != n_input:
             raise MissingRecordIdentifierError(n_input, n_usable)
 
-    input_digest = _digest_rows(pts, ids)
+    id_keys = _id_keys(ids)
+    input_digest = _digest_rows(pts, ids, id_keys)
 
     if n_input == 0:
         empty = np.zeros((0, n_dims), dtype=np.float64)
         return DeduplicationResult(
             points=empty,
-            groups=(),
+            groups=() if keep_groups else None,
             representative_ids=(),
             multiplicities=np.zeros((0,), dtype=np.int64),
             cell_ids=np.zeros((0, n_dims), dtype=np.int64),
@@ -403,63 +504,46 @@ def deduplicate_points(  # ruff:ignore[too-many-locals, too-many-statements]
             dim, int(overflow[:, dim].sum()), float(resolution[dim])
         )
     cell_ids_all = cell_ids_float.astype(np.int64)
+    del cell_ids_float, overflow
 
     # Canonical global order: (cell_id tuple, coordinate tuple, id).
     # Primarily sorting by cell id groups every cell's members
     # contiguously AND emits cells in lexicographic order in one pass.
-    order = sorted(
-        range(n_input),
-        key=lambda i: (
-            tuple(int(v) for v in cell_ids_all[i]),
-            tuple(float(v) for v in pts[i]),
-            _id_sort_key(ids[i]),
-        ),
-    )
+    order = _canonical_order([*cell_ids_all.T, *pts.T], id_keys)
+    sorted_points = pts[order]
+    sorted_cells = cell_ids_all[order]
+    del cell_ids_all
 
-    rep_points: list[np.ndarray] = []
-    rep_cell_ids: list[tuple[int, ...]] = []
-    groups: list[tuple[RecordId, ...]] = []
-    representative_ids: list[RecordId] = []
-    multiplicities: list[int] = []
+    changes = np.any(sorted_cells[1:] != sorted_cells[:-1], axis=1)
+    starts = np.concatenate(([0], np.flatnonzero(changes) + 1)).astype(np.intp)
+    counts = np.diff(np.append(starts, n_input)).astype(np.intp)
 
-    group_start = 0
-    n_sorted = len(order)
-    current_cell = tuple(int(v) for v in cell_ids_all[order[0]])
-    for i in range(1, n_sorted + 1):
-        next_cell = (
-            tuple(int(v) for v in cell_ids_all[order[i]]) if i < n_sorted else None
+    # Members are canonically sorted (coordinates, then record id)
+    # within the cell, so the mean is a deterministic,
+    # order-independent reduction and the earliest minimal-distance
+    # member IS the documented tie-break.
+    means = _cell_means(sorted_points, starts, counts)
+    scaled = (sorted_points - np.repeat(means, counts, axis=0)) / resolution
+    distances = np.linalg.norm(scaled, axis=1)
+    del scaled
+    cell_minimum = np.minimum.reduceat(distances, starts)
+    at_minimum = distances == np.repeat(cell_minimum, counts)
+    candidates = np.where(at_minimum, np.arange(n_input), n_input)
+    best = np.minimum.reduceat(candidates, starts)
+
+    points_out = np.ascontiguousarray(sorted_points[best], dtype=np.float64)
+    cell_ids_out = np.ascontiguousarray(sorted_cells[starts], dtype=np.int64)
+    multiplicities_out = counts.astype(np.int64)
+    representative_ids_out = tuple(ids[i] for i in order[best].tolist())
+
+    groups_out: tuple[tuple[RecordId, ...], ...] | None = None
+    if keep_groups:
+        sorted_ids = [ids[i] for i in order.tolist()]
+        ends = [*starts[1:].tolist(), n_input]
+        groups_out = tuple(
+            tuple(sorted_ids[start:end])
+            for start, end in zip(starts.tolist(), ends, strict=True)
         )
-        if next_cell == current_cell:
-            continue
-        member_idx = order[group_start:i]
-        # Members are already canonically sorted (coordinates, then
-        # record id) within the cell, so the mean is a deterministic,
-        # order-independent reduction and the earliest minimal-distance
-        # member IS the documented tie-break.
-        member_points = pts[member_idx]
-        mean = member_points.mean(axis=0, dtype=np.float64)
-        scaled = (member_points - mean) / resolution
-        distances = np.linalg.norm(scaled, axis=1)
-        best = int(np.argmin(distances))
-
-        rep_points.append(member_points[best])
-        rep_cell_ids.append(current_cell)
-        groups.append(tuple(ids[j] for j in member_idx))
-        representative_ids.append(ids[member_idx[best]])
-        multiplicities.append(len(member_idx))
-
-        group_start = i
-        current_cell = next_cell if next_cell is not None else current_cell
-
-    points_out = (
-        np.stack(rep_points).astype(np.float64)
-        if rep_points
-        else np.zeros((0, n_dims), dtype=np.float64)
-    )
-    cell_ids_out = np.asarray(rep_cell_ids, dtype=np.int64)
-    multiplicities_out = np.asarray(multiplicities, dtype=np.int64)
-    groups_out = tuple(groups)
-    representative_ids_out = tuple(representative_ids)
 
     output_digest = _digest_rows(points_out, representative_ids_out)
 

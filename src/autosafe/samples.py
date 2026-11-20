@@ -10,6 +10,7 @@ how likely any given vector is in the ODD.
 """
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any, cast, overload
 
 import jax
@@ -28,11 +29,12 @@ from autosafe.exceptions import (
     EmptyODDError,
     ParameterTypeError,
     ShapeMismatchError,
+    TooFewAnchorsError,
     UnknownOptionError,
 )
 from autosafe.kernels import KernelDict
 from autosafe.kernels.kernel import Kernel
-from autosafe.kernels.rbf import RBFKernel
+from autosafe.kernels.rbf import RBFKernel, rbf_diagonal_sigma
 from autosafe.neighbors import (
     find_closest_vectors_by_index,
     find_closest_vectors_by_index_per_dimension,
@@ -53,6 +55,28 @@ from autosafe.typing import (
     SampleLike,
     Vector,
 )
+
+_MIN_ANCHORS = 2
+_ARRAY_KERNEL_KWARGS = ("kappa", "eta", "lam")
+
+
+@dataclass(frozen=True)
+class _ArrayKernels:
+    """Kernels of an array-built ``Samples`` before materialization.
+
+    Attributes:
+        anchors (NPMatrix): Owned copy of the anchors, shape (N, n).
+        sigma_diag (NPMatrix): Diagonals of sigma, shape (N, n).
+        sigma_inv_diag (NPMatrix): Diagonals of the inverse of sigma,
+            shape (N, n).
+        neighbor_indices (npt.NDArray[np.int64]): Index of the
+            nearest neighbor of each anchor, shape (N,).
+    """
+
+    anchors: NPMatrix
+    sigma_diag: NPMatrix
+    sigma_inv_diag: NPMatrix
+    neighbor_indices: npt.NDArray[np.int64]
 
 
 class Samples:
@@ -80,9 +104,16 @@ class Samples:
             arguments to pass to the kernel class constructor.
         skip_updates (bool): Whether to skip updating closest samples
             and kernels after initialization.
+        neighbor_indices (npt.NDArray[np.int64] | None): Precomputed
+            nearest-neighbor indices for the initial samples, used
+            instead of a fresh search: shape (N,) in "global" mode
+            (the indices of
+            :func:`~autosafe.neighbors.find_closest_vectors`) or
+            (n_dims, N) in "per_dimension" mode. Ignored with
+            ``skip_updates``.
+        show_progress (bool): Whether to show tqdm progress bars.
 
     Attributes:
-        samples (list[Sample]): The list of samples in the set.
         dim (int | None): The dimension of the samples in the set.
         closest_sample_mode (ClosestSampleModeType): Mode to determine
             how closest samples are found.
@@ -91,18 +122,24 @@ class Samples:
             samples.
         kernel_kwargs (dict[str, Any]): Additional keyword arguments
             passed to the kernel class constructor.
+        show_progress (bool): Whether to show tqdm progress bars.
+        samples (list[Sample]): The list of samples in the set. For
+            a set built by :meth:`from_array` the per-anchor objects
+            are built on first access.
+        kernels_materialized (bool): Whether the per-anchor
+            ``Sample``/kernel objects exist.
         shape (tuple[int, int]): The shape of the samples set, as a
             tuple of (number of samples, dimension of samples).
     """
 
-    samples: list[Sample]
     dim: int | None
     closest_sample_mode: ClosestSampleModeType
     kernel_cls_str: KernelType
     kernel_cls: type[Kernel]
     kernel_kwargs: dict[str, Any]
+    show_progress: bool
 
-    def __init__(
+    def __init__(  # ruff:ignore[too-many-arguments]
         self,
         samples: SampleLike,
         *,
@@ -110,17 +147,160 @@ class Samples:
         kernel_cls: KernelType = "RBF",
         kernel_kwargs: dict[str, Any] | None = None,
         skip_updates: bool = False,
+        neighbor_indices: npt.NDArray[np.int64] | None = None,
+        show_progress: bool = True,
     ) -> None:
-        self.samples: list[Sample] = []
+        self._samples: list[Sample] = []
+        self._lazy: _ArrayKernels | None = None
         self.dim: int | None = None
         self.closest_sample_mode = closest_sample_mode
         self.kernel_cls_str = kernel_cls
         self.kernel_cls = KernelDict[kernel_cls]
         self.kernel_kwargs = kernel_kwargs if kernel_kwargs is not None else {}
+        self.show_progress = show_progress
         self._batch_cache_valid = False
-        self.append(samples, skip_updates=skip_updates)
+        self.append(
+            samples, skip_updates=skip_updates, neighbor_indices=neighbor_indices
+        )
 
-    def append(self, samples: SampleLike, *, skip_updates: bool = False) -> None:
+    @property
+    def samples(self) -> list[Sample]:
+        """The samples; builds per-anchor kernels on first access.
+
+        Returns:
+            list[Sample]: The samples of the set.
+        """
+        if self._lazy is not None:
+            self._materialize()
+        return self._samples
+
+    @samples.setter
+    def samples(self, value: list[Sample]) -> None:
+        self._lazy = None
+        self._samples = value
+        self._batch_cache_valid = False
+
+    @property
+    def kernels_materialized(self) -> bool:
+        """Whether the per-anchor ``Sample``/kernel objects exist.
+
+        Returns:
+            bool: False while the kernels exist only as arrays.
+        """
+        return self._lazy is None
+
+    @classmethod
+    def from_array(
+        cls,
+        anchors: "Matrix | NPMatrix",
+        *,
+        kernel_kwargs: dict[str, Any] | None = None,
+        neighbor_indices: npt.NDArray[np.int64] | None = None,
+        show_progress: bool = False,
+    ) -> "Samples":
+        """Global-mode RBF samples built from arrays, kernels on demand.
+
+        Equivalent to ``Samples(list_of_Sample_rows,
+        closest_sample_mode="global", kernel_cls="RBF",
+        kernel_kwargs=kernel_kwargs)`` (same kernels, bit for bit), but
+        computes all kernel widths with array operations and builds
+        the per-anchor ``Sample``/``RBFKernel`` objects only when
+        something accesses them (``samples``, iteration, indexing,
+        equality, serialization, OOD adjustment). Scoring
+        (``__call__``, ``affinity_dual``, ``batch_arrays``) never
+        builds them.
+
+        Args:
+            anchors (Matrix | NPMatrix): The anchors, shape (N, n).
+            kernel_kwargs (dict[str, Any] | None): Keyword arguments
+                of the RBF kernel; only ``kappa``, ``eta`` and
+                ``lam`` are allowed.
+            neighbor_indices (npt.NDArray[np.int64] | None):
+                Precomputed nearest-neighbor indices of shape (N,),
+                or ``None`` to search.
+            show_progress (bool): Whether to show tqdm progress bars.
+
+        Returns:
+            Samples: The samples with unmaterialized kernels.
+
+        Raises:
+            ShapeMismatchError: If `anchors` is not a matrix or
+                `neighbor_indices` does not have shape (N,).
+            TooFewAnchorsError: If there are fewer than two anchors.
+            UnknownOptionError: If `kernel_kwargs` has a key other than
+                ``kappa``, ``eta`` or ``lam``.
+        """
+        points = np.array(anchors, dtype=NPFloatType)
+        if points.ndim != 2:  # ruff:ignore[magic-value-comparison]
+            raise ShapeMismatchError("anchors", points.shape, (None, None))
+        if points.shape[0] < _MIN_ANCHORS:
+            raise TooFewAnchorsError(_MIN_ANCHORS, points.shape[0])
+        kwargs = dict(kernel_kwargs) if kernel_kwargs is not None else {}
+        for key in kwargs:
+            if key not in _ARRAY_KERNEL_KWARGS:
+                raise UnknownOptionError("kernel_kwargs", key, _ARRAY_KERNEL_KWARGS)
+        if neighbor_indices is None:
+            indices = find_closest_vectors_by_index(
+                points, disable_tqdm=not show_progress
+            )
+        else:
+            indices = np.asarray(neighbor_indices, dtype=np.int64)
+            if indices.shape != (points.shape[0],):
+                raise ShapeMismatchError(
+                    "neighbor_indices", indices.shape, (points.shape[0],)
+                )
+        sigma_diag, sigma_inv_diag = rbf_diagonal_sigma(
+            points,
+            points[indices],
+            kappa=kwargs.get("kappa", 1.0),
+            eta=kwargs.get("eta", 1.0),
+            lam=kwargs.get("lam"),
+        )
+        result = cls(
+            [],
+            closest_sample_mode="global",
+            kernel_cls="RBF",
+            kernel_kwargs=kwargs,
+            skip_updates=True,
+            show_progress=show_progress,
+        )
+        result.dim = points.shape[1]
+        result._lazy = _ArrayKernels(points, sigma_diag, sigma_inv_diag, indices)
+        result._anchors_np = points
+        result._inv_diag_np = sigma_inv_diag
+        result._all_kernels_diagonal_rbf = True
+        result._batch_cache_valid = True
+        return result
+
+    def _materialize(self) -> None:
+        """Build the per-anchor ``Sample``/``RBFKernel`` objects."""
+        lazy = self._lazy
+        if lazy is None:
+            return
+        samples = [Sample(x=row) for row in lazy.anchors]
+        for sample, sigma_row, inv_row in tqdm.rich.tqdm(
+            zip(samples, lazy.sigma_diag, lazy.sigma_inv_diag, strict=True),
+            total=len(samples),
+            desc="Building kernels",
+            disable=not self.show_progress,
+        ):
+            sample.kernel = RBFKernel.from_diagonal(
+                sample.x, sigma_row, inv_row, **self.kernel_kwargs
+            )
+        for sample, neighbor in zip(
+            samples, lazy.neighbor_indices.tolist(), strict=True
+        ):
+            sample.closest_sample = [samples[neighbor]]
+        self._samples = samples
+        self._lazy = None
+
+    def append(
+        self,
+        samples: SampleLike,
+        *,
+        skip_updates: bool = False,
+        neighbor_indices: npt.NDArray[np.int64] | None = None,
+    ) -> None:
         """Append new samples to the list of samples.
 
         Args:
@@ -128,12 +308,16 @@ class Samples:
                 the list.
             skip_updates (bool): Whether to skip updating closest
                 samples and kernels after appending.
+            neighbor_indices (npt.NDArray[np.int64] | None):
+                Precomputed nearest-neighbor indices over all samples
+                after appending (see the class docstring), or ``None``
+                to search.
         """
         samples = self._convert_to_samples(samples)
         self.samples.extend(samples)
 
         if len(self.samples) > 1 and not skip_updates:
-            self._find_closest_samples()
+            self._find_closest_samples(neighbor_indices)
             self.refresh_kernels()
         self._batch_cache_valid = False
 
@@ -184,18 +368,47 @@ class Samples:
 
         raise ParameterTypeError("samples", samplelike, (np.ndarray, list, Samples))
 
-    def _find_closest_samples(self) -> None:
+    def _find_closest_samples(
+        self, neighbor_indices: npt.NDArray[np.int64] | None = None
+    ) -> None:
         """Find the closest samples in the ODD space per dimension.
+
+        Args:
+            neighbor_indices (npt.NDArray[np.int64] | None): Precomputed
+                indices to assign instead of searching, or ``None``.
 
         Raises:
             UnknownOptionError: If the closest_sample_mode is invalid.
+            ShapeMismatchError: If ``neighbor_indices`` does not fit the
+                samples and the neighbor mode.
         """
-        samples_array = cast("Matrix", np.array([sample.x for sample in self.samples]))
-
-        if self.closest_sample_mode == "global":
-            closest_indices = find_closest_vectors_by_index(samples_array)
+        disable_tqdm = not self.show_progress
+        n_samples = len(self.samples)
+        if neighbor_indices is not None:
+            closest_indices = np.asarray(neighbor_indices, dtype=np.int64)
+            expected: tuple[int, ...] = (
+                (n_samples,)
+                if self.closest_sample_mode == "global"
+                else (self.dim or 0, n_samples)
+            )
+            if closest_indices.shape != expected:
+                raise ShapeMismatchError(
+                    "neighbor_indices", closest_indices.shape, expected
+                )
+        elif self.closest_sample_mode == "global":
+            samples_array = cast(
+                "Matrix", np.array([sample.x for sample in self.samples])
+            )
+            closest_indices = find_closest_vectors_by_index(
+                samples_array, disable_tqdm=disable_tqdm
+            )
         elif self.closest_sample_mode == "per_dimension":
-            closest_indices = find_closest_vectors_by_index_per_dimension(samples_array)
+            samples_array = cast(
+                "Matrix", np.array([sample.x for sample in self.samples])
+            )
+            closest_indices = find_closest_vectors_by_index_per_dimension(
+                samples_array, disable_tqdm=disable_tqdm
+            )
         else:
             raise UnknownOptionError(
                 "closest_sample_mode",
@@ -205,8 +418,9 @@ class Samples:
 
         for idx, sample in tqdm.rich.tqdm(
             enumerate(self.samples),
-            total=len(self.samples),
+            total=n_samples,
             desc="Assigning closest samples",
+            disable=disable_tqdm,
         ):
             if self.closest_sample_mode == "global":
                 sample.closest_sample = [self.samples[closest_indices[idx]]]
@@ -237,7 +451,9 @@ class Samples:
             if kernel_kwargs_override is None
             else kernel_kwargs_override
         )
-        for sample in tqdm.rich.tqdm(self.samples, desc="Updating kernels"):
+        for sample in tqdm.rich.tqdm(
+            self.samples, desc="Updating kernels", disable=not self.show_progress
+        ):
             # Update the kernel of each sample
             if sample.kernel is None:
                 sample.kernel = self.kernel_cls(x_i=sample.x, **kwargs)
@@ -325,7 +541,7 @@ class Samples:
             tuple[int, int]: A tuple representing the number of samples
                 and their dimension.
         """
-        return len(self.samples), self.dim if self.dim is not None else 0
+        return len(self), self.dim if self.dim is not None else 0
 
     @overload
     def __call__(self, x: Vector | NPVector) -> Affinity: ...
@@ -356,7 +572,7 @@ class Samples:
         Raises:
             EmptyODDError: If the ODD has no samples.
         """
-        if len(self.samples) == 0:
+        if len(self) == 0:
             raise EmptyODDError
 
         if not self._batch_cache_valid:
@@ -399,7 +615,7 @@ class Samples:
         Raises:
             EmptyODDError: If the ODD has no samples.
         """
-        if len(self.samples) == 0:
+        if len(self) == 0:
             raise EmptyODDError
 
         if not self._batch_cache_valid:
@@ -489,6 +705,7 @@ class Samples:
         refresh_interval: int = 1000,
         log_interval: int = 1000,
         batch_jump: bool = False,
+        show_progress: bool | None = None,
     ) -> dict[str, object]:
         """Enforce alpha(x) <= xi on all OOD points.
 
@@ -537,6 +754,8 @@ class Samples:
                 over-shrink relative to the one-shrink-per-iteration
                 procedure; the constraint is always still satisfied.
                 Default False, and all reported numbers use the default.
+            show_progress (bool | None): Whether to show the progress
+                bar; ``None`` uses ``self.show_progress``.
 
         Returns:
             dict[str, object]: Summary with keys ``iterations``,
@@ -553,6 +772,9 @@ class Samples:
             refresh_interval=refresh_interval,
             log_interval=log_interval,
             batch_jump=batch_jump,
+            show_progress=(
+                self.show_progress if show_progress is None else show_progress
+            ),
         )
 
     def __eq__(self, value: object) -> bool:
@@ -610,7 +832,9 @@ class Samples:
         )
 
     def __len__(self) -> int:
-        return len(self.samples)
+        if self._lazy is not None:
+            return int(self._lazy.anchors.shape[0])
+        return len(self._samples)
 
     def __iter__(self) -> Iterator[Sample]:
         return iter(self.samples)

@@ -471,6 +471,7 @@ def enforce_ood_consistency(  # ruff:ignore[too-many-arguments]
     refresh_interval: int = DEFAULT_REFRESH_INTERVAL,
     log_interval: int = DEFAULT_LOG_INTERVAL,
     batch_jump: bool = False,
+    show_progress: bool = True,
 ) -> dict[str, object]:
     """Enforce alpha(x) <= xi on all OOD points.
 
@@ -488,6 +489,7 @@ def enforce_ood_consistency(  # ruff:ignore[too-many-arguments]
         log_interval (int): Progress-line period; <= 0 disables.
         batch_jump (bool): Use the closed-form shrink count per
             iteration instead of one.
+        show_progress (bool): Whether to show the progress bar.
 
     Returns:
         dict[str, object]: Summary with keys ``iterations``,
@@ -520,6 +522,7 @@ def enforce_ood_consistency(  # ruff:ignore[too-many-arguments]
         total=max_iterations,
         desc="Enforcing OOD consistency",
         unit="it",
+        disable=not show_progress,
     )
     try:
         _adjust_loop(

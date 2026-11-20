@@ -5,7 +5,9 @@
 
 import operator
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
@@ -18,12 +20,17 @@ from autosafe.exceptions import (
     LinearAffinityDecisionWarning,
     MissingColumnError,
     NonPositiveParameterError,
+    ParameterOutOfRangeError,
+    ShapeMismatchError,
     UnknownOptionError,
     ValueBelowMinimumError,
 )
 from autosafe.tools.evaluate.core import calculate_performance_metrics
 from autosafe.tools.monte_carlo.dicts import ConfusionMatrixDict
 from autosafe.typing import AffinityVector
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 # Minimum grid depth (in decades) used at both tails of the adaptive
 # threshold grid when the observed data does not require going deeper.
@@ -337,9 +344,189 @@ def save_metrics_csv(results: pl.DataFrame, output_path: Path) -> Path:
     return output_path
 
 
+@dataclass(frozen=True)
+class MembershipAgreement:
+    """Agreement of a membership decision with a reference decision.
+
+    A ratio whose denominator is empty counts as 1.0: an empty decision
+    makes no wrong claim.
+
+    Attributes:
+        precision (float): ``|R and O| / |O|``, the share of the
+            other decision's members that the reference also accepts.
+        recall (float): ``|R and O| / |R|``, the share of the
+            reference's members that the other decision also accepts.
+        iou (float): ``|R and O| / |R or O|``.
+        n_reference (int): ``|R|``, points the reference accepts.
+        n_other (int): ``|O|``, points the other decision accepts.
+        n_both (int): ``|R and O|``, points both accept.
+    """
+
+    precision: float
+    recall: float
+    iou: float
+    n_reference: int
+    n_other: int
+    n_both: int
+
+
+@dataclass(frozen=True)
+class SubsetAgreement:
+    """Symmetric agreement verdict of two membership decisions.
+
+    Neither decision is ground truth, so each serves once as the
+    reference of the other.
+
+    Attributes:
+        first_vs_second (MembershipAgreement): The first decision
+            against the second as reference.
+        second_vs_first (MembershipAgreement): The second decision
+            against the first as reference.
+        first_precision (float): ``|A and B| / |A|``, the share of the
+            first decision's members that the second also accepts
+            (``first_vs_second.precision``).
+        second_precision (float): ``|A and B| / |B|``
+            (``second_vs_first.precision``).
+        iou (float): ``|A and B| / |A or B|`` (symmetric).
+        tolerance (float): Allowed shortfall of each ratio below 1.
+        agree (bool): Whether both precisions and the IoU are at least
+            ``1 - tolerance``.
+        passed (bool): Same as ``agree``.
+    """
+
+    first_vs_second: MembershipAgreement
+    second_vs_first: MembershipAgreement
+    first_precision: float
+    second_precision: float
+    iou: float
+    tolerance: float
+    agree: bool
+    passed: bool
+
+
+def _membership_vector(values: "npt.ArrayLike", name: str) -> "npt.NDArray[np.bool_]":
+    """Return a one-dimensional boolean membership vector.
+
+    Args:
+        values (npt.ArrayLike): Membership decisions.
+        name (str): Parameter name used in error messages.
+
+    Returns:
+        npt.NDArray[np.bool_]: The decisions as a boolean vector.
+
+    Raises:
+        ShapeMismatchError: If ``values`` is not one-dimensional.
+    """
+    result = np.asarray(values, dtype=np.bool_)
+    if result.ndim != 1:
+        raise ShapeMismatchError(name, result.shape, (None,))
+    return result
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    """Return ``numerator / denominator``, 1.0 for an empty denominator.
+
+    Args:
+        numerator (int): Count in the numerator.
+        denominator (int): Count in the denominator.
+
+    Returns:
+        float: The ratio, or 1.0 if ``denominator`` is 0.
+    """
+    return numerator / denominator if denominator > 0 else 1.0
+
+
+def membership_agreement(
+    reference: "npt.ArrayLike",
+    other: "npt.ArrayLike",
+) -> MembershipAgreement:
+    """Precision, recall and IoU of a decision against a reference.
+
+    Both arguments are membership decisions over the same points.
+    Unlike ``calculate_performance_metrics`` (which reports 0.0), an
+    empty denominator counts as 1.0.
+
+    Args:
+        reference (npt.ArrayLike): Shape (n,) reference decisions.
+        other (npt.ArrayLike): Shape (n,) decisions to compare.
+
+    Returns:
+        MembershipAgreement: Ratios and the underlying counts.
+
+    Raises:
+        LengthMismatchError: If the decisions differ in length.
+    """
+    ref = _membership_vector(reference, "reference")
+    oth = _membership_vector(other, "other")
+    if ref.shape != oth.shape:
+        raise LengthMismatchError("other", oth.shape[0], ref.shape[0])
+    n_reference = int(np.count_nonzero(ref))
+    n_other = int(np.count_nonzero(oth))
+    n_both = int(np.count_nonzero(ref & oth))
+    n_either = n_reference + n_other - n_both
+    return MembershipAgreement(
+        precision=_ratio(n_both, n_other),
+        recall=_ratio(n_both, n_reference),
+        iou=_ratio(n_both, n_either),
+        n_reference=n_reference,
+        n_other=n_other,
+        n_both=n_both,
+    )
+
+
+def subset_agreement(
+    first: "npt.ArrayLike",
+    second: "npt.ArrayLike",
+    tolerance: float = 0.005,
+) -> SubsetAgreement:
+    """Decide whether two membership decisions agree within a tolerance.
+
+    The decisions agree when both precisions (each decision measured
+    against the other) and the IoU are at least ``1 - tolerance``.
+    Empty denominators count as 1.0, as in :func:`membership_agreement`.
+
+    Args:
+        first (npt.ArrayLike): Shape (n,) decisions.
+        second (npt.ArrayLike): Shape (n,) decisions over the same
+            points.
+        tolerance (float): Allowed shortfall below 1, in [0, 1].
+
+    Returns:
+        SubsetAgreement: Both directions, both precisions, the IoU and
+            the verdict.
+
+    Raises:
+        ParameterOutOfRangeError: If ``tolerance`` is outside [0, 1].
+    """
+    if not 0.0 <= tolerance <= 1.0:
+        raise ParameterOutOfRangeError(
+            "tolerance", tolerance, 0.0, 1.0, lower_closed=True, upper_closed=True
+        )
+    first_vs_second = membership_agreement(second, first)
+    second_vs_first = membership_agreement(first, second)
+    verdict = (
+        min(first_vs_second.precision, second_vs_first.precision, second_vs_first.iou)
+        >= 1.0 - tolerance
+    )
+    return SubsetAgreement(
+        first_vs_second=first_vs_second,
+        second_vs_first=second_vs_first,
+        first_precision=first_vs_second.precision,
+        second_precision=second_vs_first.precision,
+        iou=second_vs_first.iou,
+        tolerance=tolerance,
+        agree=verdict,
+        passed=verdict,
+    )
+
+
 __all__ = [
+    "MembershipAgreement",
+    "SubsetAgreement",
     "build_affinity_thresholds",
     "build_threshold_pairs",
     "evaluate_affinity_metrics",
+    "membership_agreement",
     "save_metrics_csv",
+    "subset_agreement",
 ]

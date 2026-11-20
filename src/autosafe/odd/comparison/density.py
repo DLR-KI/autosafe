@@ -148,16 +148,39 @@ class SuperlevelSetMonitor(ODDBoundaryMethod):
         if not self.trained:
             raise NotFittedError(type(self).__name__)
 
-        if self.kde is None:
+        return np.exp(self.log_pdf(test_points))
+
+    def log_pdf(self, test_points: Matrix | NPMatrix) -> npt.NDArray[np.float64]:
+        """Log of :meth:`pdf`, computed without leaving log space.
+
+        Args:
+            test_points (Matrix | NPMatrix): Points to evaluate.
+
+        Returns:
+            npt.NDArray[np.float64]: Log-PDF values at test points.
+
+        Raises:
+            NotFittedError: If the monitor is not fitted or the KDE is
+                missing.
+        """
+        if not self.trained or self.kde is None:
             raise NotFittedError(type(self).__name__)
+        # KDE.score_samples returns the log PDF; scale by the sigmoid
+        # weight like pdf() does.
+        log_pdf = self.kde.score_samples(test_points.T) * self.sigmoid_weight
+        return cast("npt.NDArray[np.float64]", np.asarray(log_pdf, dtype=np.float64))
 
-        # KDE.score_samples returns log PDF, convert to PDF
-        log_pdf = self.kde.score_samples(test_points.T)
-        pdf_values = np.exp(
-            log_pdf * self.sigmoid_weight
-        )  # Apply sigmoid transformation
+    def score(self, test_points: Matrix | NPMatrix) -> npt.NDArray[np.float64]:
+        """Log-PDF score; a point is inside iff ``score > log(gamma)``.
 
-        return cast("npt.NDArray[np.float64]", pdf_values)
+        Args:
+            test_points (Matrix | NPMatrix): Points to evaluate, shape
+                (n_features, n_samples).
+
+        Returns:
+            npt.NDArray[np.float64]: Shape (n_samples,) log-PDF values.
+        """
+        return self.log_pdf(test_points)
 
     def suggest_reasonable_gamma(
         self,
@@ -498,6 +521,34 @@ class ClusteredSuperlevelSetMonitor(ODDBoundaryMethod):
         for monitor in self.monitors:
             decisions |= monitor.evaluate_batch(test_points)
         return decisions
+
+    def score(self, test_points: Matrix | NPMatrix) -> npt.NDArray[np.float64]:
+        """Largest per-cluster log-PDF margin; inside iff ``score > 0``.
+
+        The margin of a cluster is ``log_pdf - log(gamma)`` of its
+        monitor, so the union of the cluster superlevel sets is the set
+        where the largest margin is positive.
+
+        Args:
+            test_points (Matrix | NPMatrix): Points to evaluate, shape
+                (n_features, n_samples).
+
+        Returns:
+            npt.NDArray[np.float64]: Shape (n_samples,) scores;
+                ``-inf`` everywhere when no cluster was large enough to
+                fit.
+
+        Raises:
+            NotFittedError: If the monitor is not fitted.
+        """
+        if not self.trained:
+            raise NotFittedError(type(self).__name__)
+        scores = np.full(test_points.shape[1], -np.inf, dtype=np.float64)
+        with np.errstate(divide="ignore"):
+            for monitor in self.monitors:
+                margin = monitor.log_pdf(test_points) - np.log(monitor.gamma)
+                scores = np.maximum(scores, margin)
+        return scores
 
 
 __all__ = ["ClusteredSuperlevelSetMonitor", "SuperlevelSetMonitor"]

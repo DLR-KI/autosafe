@@ -8,7 +8,7 @@ compared side by side.
 """
 
 import dataclasses
-import datetime
+import datetime as dt
 import pathlib
 from typing import Any
 
@@ -25,7 +25,7 @@ class ExperimentResult:
     Attributes:
         experiment_id (str): Unique identifier for the experiment.
         experiment_type (ExperimentType): Type of the experiment.
-        timestamp (datetime.datetime): Timestamp of when the experiment
+        timestamp (dt.datetime): Timestamp of when the experiment
             was run.
         dataset_path (pathlib.Path): Path to the dataset used in the
             experiment.
@@ -47,7 +47,7 @@ class ExperimentResult:
 
     experiment_id: str
     experiment_type: ExperimentType
-    timestamp: datetime.datetime
+    timestamp: dt.datetime
 
     # Dataset information
     dataset_path: pathlib.Path

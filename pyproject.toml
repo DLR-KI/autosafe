@@ -18,9 +18,8 @@ dev = [
 docs = [
   "sphinx-autoapi",
   "sphinx-autodoc-typehints",
-  "sphinx-rtd-theme>3",
-  "sphinx>8",
-  "astroid<4"
+  "sphinx-rtd-theme>=3.0.0",
+  "sphinx"
 ]
 lint = ["pylint-per-file-ignores", "pylint"]
 tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
@@ -82,7 +81,7 @@ Tracker = "https://github.com/DLR-KI/autosafe/issues"
 
 [tool.codespell]
 builtin = "clear,rare,en-GB_to_en-US"
-ignore-words-list = "astroid,nd,disjointness,fpr"
+ignore-words-list = "nd,disjointness,fpr"
 
 [tool.commitizen]
 bump_message = "bump: version $current_version -> $new_version"
@@ -267,7 +266,7 @@ ban-relative-imports = "all"
 ]
 "tests/*" = [
   "assert",
-  "missing-return-type-undocumented-public-function",
+  "missing-return-type-public-function",
   "missing-return-type-static-method",
   "D",
   "line-too-long",

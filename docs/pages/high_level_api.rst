@@ -40,6 +40,35 @@ The ID anchors and observed OOD points are separate inputs.
 Providing OOD points requires an OOD configuration, and configuring OOD consistency requires OOD points.
 All data are transformed by the same normalizer fitted on ID anchors.
 
+Anchor preparation
+------------------
+
+``fit`` can prepare the ID anchors in the order of the paper's Algorithm 1:
+
+.. no-execute: fragment; ``id_rows`` is a placeholder for raw ID rows, and ``config`` is the configuration above
+.. code-block:: python
+
+    policy = autosafe.deduplication.exact_equality_policy(n_dims=id_rows.shape[1])
+    odd = autosafe.AutoSafeODD.fit(
+        in_distribution_data=id_rows,
+        config=config,
+        deduplication=policy,
+        max_anchors=50_000,
+        anchor_seed=0,
+    )
+
+The policy is applied to ``in_distribution_data`` in raw coordinates, the normalizer is fitted on all retained representatives, and only then are at most ``max_anchors`` of them drawn uniformly without replacement (:func:`~autosafe.pointsets.subsample_indices`).
+Calibration and OOD rows are neither de-duplicated nor subsampled.
+``odd.in_distribution_data`` holds the raw rows that became anchors, ``odd.deduplication_result`` the de-duplication counts and digests, and ``odd.anchor_indices`` the rows the subsample kept.
+Both are ``None`` when the step is not requested.
+
+``fit`` shows no progress bars unless ``show_progress=True``.
+
+In the global neighbor mode, ``fit`` computes all kernel widths as arrays.
+The per-anchor ``Sample``/``RBFKernel`` objects are only built when something accesses them, such as iteration, serialization, OpenODD export or OOD adjustment.
+``contains``, ``affinity`` and ``log_survival`` never build them.
+``odd.samples.kernels_materialized`` tells whether they exist.
+
 Parameter names and paper symbols
 ---------------------------------
 

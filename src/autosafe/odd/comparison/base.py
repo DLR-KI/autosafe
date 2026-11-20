@@ -12,6 +12,7 @@ import numpy.typing as npt
 from autosafe.exceptions import (
     NonPositiveParameterError,
     ParameterOutOfRangeError,
+    ScoreNotSupportedError,
     UnknownOptionError,
 )
 from autosafe.typing import FloatType, Matrix, NPMatrix, NPVector, Vector
@@ -157,6 +158,30 @@ class ODDBoundaryMethod(ABC):
         """
         return np.array([self(test_points[:, i]) for i in range(test_points.shape[1])])
 
+    def score(
+        self,
+        test_points: Matrix | NPMatrix,  # pylint: disable=W0613  # ruff:ignore[unused-method-argument]
+    ) -> npt.NDArray[np.float64]:
+        """Continuous membership score, higher inside.
+
+        Membership is a superlevel set of the score; each method
+        documents its threshold. Density methods score in log space, so
+        the score does not underflow to ties in higher dimensions.
+        Methods without a natural score raise.
+
+        Args:
+            test_points (Matrix | NPMatrix): Matrix of points to
+                evaluate. Shape (n_features, n_samples).
+
+        Returns:
+            npt.NDArray[np.float64]: Shape (n_samples,) scores.
+
+        Raises:
+            ScoreNotSupportedError: If the method has no continuous
+                score.
+        """  # ruff:ignore[docstring-extraneous-returns]
+        raise ScoreNotSupportedError(type(self).__name__)
+
     def get_conservatism_metric(self, reference_points: Matrix | NPMatrix) -> FloatType:
         """Calculate how conservative this boundary method is.
 
@@ -175,6 +200,7 @@ class ODDBoundaryMethod(ABC):
         coverage = ref_results.mean() if len(ref_results) > 0 else 0.5
         return cast("FloatType", 1.0 - coverage)  # More coverage = less conservative
 
+    @staticmethod
     def get_coverage_stats() -> dict[str, Any]:
         """Calculate area/volume coverage statistics.
 

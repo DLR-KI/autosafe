@@ -82,9 +82,10 @@ def validate_odd_config(config: dict) -> dict:
         if len(constraints) == 0:
             raise EmptyParameterError("constraints")
 
-    elif config_type == "box":
-        if "lower_bounds" not in config or "upper_bounds" not in config:
-            raise MissingConfigFieldError("box", ("lower_bounds", "upper_bounds"))
+    elif config_type == "box" and (
+        "lower_bounds" not in config or "upper_bounds" not in config
+    ):
+        raise MissingConfigFieldError("box", ("lower_bounds", "upper_bounds"))
 
     return config
 

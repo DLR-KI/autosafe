@@ -323,6 +323,18 @@ class OneClassSVMBoundary(ODDBoundaryMethod):
         """
         return self.decision_function(test_points) >= self.threshold
 
+    def score(self, test_points: Matrix | NPMatrix) -> npt.NDArray[np.float64]:
+        """Decision-function score; inside iff ``score >= threshold``.
+
+        Args:
+            test_points (Matrix | NPMatrix): Points to evaluate, shape
+                (n_features, n_samples).
+
+        Returns:
+            npt.NDArray[np.float64]: Shape (n_samples,) scores.
+        """
+        return self.decision_function(test_points)
+
 
 def _pairwise_kernel(  # ruff:ignore[too-many-arguments]
     x: NPMatrix,
@@ -740,6 +752,18 @@ class SVDDBoundary(ODDBoundaryMethod):
             npt.NDArray[np.bool_]: Boolean membership array.
         """
         return self.decision_function(test_points) >= self.threshold
+
+    def score(self, test_points: Matrix | NPMatrix) -> npt.NDArray[np.float64]:
+        """Decision-function score; inside iff ``score >= threshold``.
+
+        Args:
+            test_points (Matrix | NPMatrix): Points to evaluate, shape
+                (n_features, n_samples).
+
+        Returns:
+            npt.NDArray[np.float64]: Shape (n_samples,) scores.
+        """
+        return self.decision_function(test_points)
 
 
 __all__ = ["OneClassSVMBoundary", "SVDDBoundary"]

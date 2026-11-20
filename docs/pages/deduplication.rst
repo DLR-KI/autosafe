@@ -50,6 +50,11 @@ Fixed by the paper's Algorithm 1, not a design choice made in this module:
 
 Because every step of grouping, representative selection, and tie-breaking is defined in terms of a canonical sort key that does not depend on input row position, the output (representatives, their order, multiplicities, and provenance groups) is **order-independent**: permuting the input rows never changes the result.
 
+:func:`~autosafe.deduplication.deduplicate_points` is vectorized: one stable lexicographic sort over the cell ids, the coordinates and the record ids, with the cell means and representatives computed per contiguous cell.
+It needs ``O(L n log L)`` time and ``O(L n)`` memory for ``L`` records of dimension ``n``.
+The ``groups`` field holds one Python object per input record; pass ``keep_groups=False`` for large inputs that do not need it (it is then ``None``).
+``AutoSafeODD.fit`` does so.
+
 Pipeline placement
 --------------------
 

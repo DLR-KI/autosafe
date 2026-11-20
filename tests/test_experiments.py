@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Basic tests for experiments module functionality."""
 
-import datetime
+import datetime as dt
 import pathlib
 import tempfile
 import types
@@ -86,7 +86,7 @@ def test_experiment_id_generation():
     structured_id = construct_experiment_id(
         ExperimentType.EVALUATION,
         test_path,
-        timestamp=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        timestamp=dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
         suffix="test",
     )
     assert "evaluation" in structured_id
@@ -176,7 +176,7 @@ def test_benchmark_result_creation():
     result = BenchmarkResult(
         experiment_id="test_001",
         experiment_type=ExperimentType.BENCHMARK,
-        timestamp=datetime.datetime.now(datetime.UTC),
+        timestamp=dt.datetime.now(dt.UTC),
         dataset_path=test_path,
         dataset_size=1000,
         dataset_dimensions=5,
@@ -196,7 +196,7 @@ def test_evaluation_result_creation():
     result = EvaluationResult(
         experiment_id="eval_001",
         experiment_type=ExperimentType.EVALUATION,
-        timestamp=datetime.datetime.now(datetime.UTC),
+        timestamp=dt.datetime.now(dt.UTC),
         dataset_path=test_path,
         dataset_size=5000,
         dataset_dimensions=7,
@@ -215,7 +215,7 @@ def test_result_export_functionality():
     result = BenchmarkResult(
         experiment_id="test_export",
         experiment_type=ExperimentType.BENCHMARK,
-        timestamp=datetime.datetime.now(datetime.UTC),
+        timestamp=dt.datetime.now(dt.UTC),
         dataset_path=pathlib.Path("test.csv"),
         dataset_size=100,
         dataset_dimensions=2,
@@ -368,7 +368,7 @@ def test_experiment_result_serialization():
     result = EvaluationResult(
         experiment_id="serialization_test",
         experiment_type=ExperimentType.EVALUATION,
-        timestamp=datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC),
+        timestamp=dt.datetime(2026, 1, 1, 12, 0, 0, tzinfo=dt.UTC),
         dataset_path=pathlib.Path("data/test.csv"),
         dataset_size=1000,
         dataset_dimensions=3,
@@ -410,7 +410,7 @@ def test_experiment_manager_save_results_and_factory(tmp_path: pathlib.Path):
     result = EvaluationResult(
         experiment_id="exp_test",
         experiment_type=ExperimentType.EVALUATION,
-        timestamp=datetime.datetime.now(datetime.UTC),
+        timestamp=dt.datetime.now(dt.UTC),
         dataset_path=tmp_path / "dataset.csv",
         dataset_size=10,
         dataset_dimensions=2,
@@ -449,7 +449,7 @@ def test_manager_run_experiments_with_monkeypatched_module(
         return EvaluationResult(
             experiment_id="temp",
             experiment_type=ExperimentType.EVALUATION,
-            timestamp=datetime.datetime.now(datetime.UTC),
+            timestamp=dt.datetime.now(dt.UTC),
             dataset_path=dataset_path,
             dataset_size=3,
             dataset_dimensions=2,
@@ -466,7 +466,7 @@ def test_manager_run_experiments_with_monkeypatched_module(
         return BenchmarkResult(
             experiment_id="temp",
             experiment_type=ExperimentType.BENCHMARK,
-            timestamp=datetime.datetime.now(datetime.UTC),
+            timestamp=dt.datetime.now(dt.UTC),
             dataset_path=dataset_path,
             dataset_size=3,
             dataset_dimensions=2,

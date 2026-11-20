@@ -49,8 +49,15 @@ MethodName: TypeAlias = Literal[
 """Supported ODD comparison method name."""
 
 # JAX compute types: used for __call__ return values and computation
-FloatType: TypeAlias = jnp.float64
-"""JAX scalar float dtype used for all kernel computations."""
+if TYPE_CHECKING:
+    # JAX's stubs declare jnp.float64 as a variable, not a class, so
+    # type checkers reject it in annotations. With x64 enabled it is
+    # the same dtype as np.float64.
+    FloatType: TypeAlias = np.float64
+    """JAX scalar float dtype used for all kernel computations."""
+else:
+    FloatType = jnp.float64
+    """JAX scalar float dtype used for all kernel computations."""
 
 Vector: TypeAlias = Float[Array, "n"]  # ruff:ignore[undefined-name, quoted-type-alias]
 """1-D JAX float array of length n."""

@@ -4,7 +4,7 @@
 """Utility functions for experiments."""
 
 import dataclasses
-import datetime
+import datetime as dt
 import logging
 import pathlib
 import sys
@@ -407,7 +407,7 @@ def get_dataset_type(file_path: pathlib.Path) -> str:
 def construct_experiment_id(
     experiment_type: ExperimentType,
     dataset_path: pathlib.Path,
-    timestamp: datetime.datetime | None = None,
+    timestamp: dt.datetime | None = None,
     suffix: str | None = None,
 ) -> str:
     """Construct a standardized experiment ID.
@@ -415,14 +415,14 @@ def construct_experiment_id(
     Args:
         experiment_type (ExperimentType): Experiment type.
         dataset_path (pathlib.Path): Dataset file path.
-        timestamp (datetime.datetime | None): Optional timestamp.
+        timestamp (dt.datetime | None): Optional timestamp.
         suffix (str | None): Optional suffix.
 
     Returns:
         str: Standardized experiment identifier.
     """
     if timestamp is None:
-        timestamp = datetime.datetime.now(datetime.UTC)
+        timestamp = dt.datetime.now(dt.UTC)
 
     timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
     dataset_stem = dataset_path.stem.replace("-", "_")

@@ -101,6 +101,37 @@ Monte Carlo result evaluation (``autosafe evaluate sampling-results``):
 - Uses ``in_odd`` from MC JSON as ``ground_truth`` when requested.
 - Baseline methods are evaluated from anchors and sampled points.
 
+Continuous scores
+-----------------
+
+Besides the boolean ``evaluate_batch``, the score-based methods offer ``score(test_points)``, higher inside, for threshold-free metrics such as AUROC and AUPR.
+Each membership decision is a superlevel set of the score:
+
+.. list-table::
+    :header-rows: 1
+
+    * - Method
+        - Score
+        - Inside iff
+    * - ``SuperlevelSetMonitor`` (KDE)
+        - log-PDF
+        - ``score > log(gamma)``
+    * - ``GaussianMixtureBoundary``
+        - log-likelihood
+        - ``score > log(gamma)``
+    * - ``ClusteredSuperlevelSetMonitor``
+        - largest per-cluster ``log-PDF - log(gamma)``
+        - ``score > 0``
+    * - ``KNNMonitor``
+        - negative distance to the k-th neighbor
+        - ``score > -gamma``
+    * - ``OneClassSVMBoundary``, ``SVDDBoundary``
+        - decision function
+        - ``score >= threshold``
+
+The density methods score in log space, because the PDF underflows to ties in higher dimensions.
+Methods without a natural score (hulls, k-means, DBSCAN) raise :class:`~autosafe.exceptions.ScoreNotSupportedError`.
+
 Parameter reference and helpers
 --------------------------------
 

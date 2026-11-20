@@ -95,11 +95,11 @@ def test_idempotent() -> None:
     """A second call does nothing and changes no sigma."""
     odd, ood = _build_fixture()
     odd.enforce_ood_consistency(ood, xi=0.05)
-    sigmas_before = [np.array(s.kernel.sigma, copy=True) for s in odd.samples]  # ty: ignore[unresolved-attribute]
+    sigmas_before = [np.array(s.kernel.sigma, copy=True) for s in odd.samples]  # ty: ignore[missing-attribute]
     summary2 = odd.enforce_ood_consistency(ood, xi=0.05)
     assert int(cast("int", summary2["iterations"])) == 0
     for before, s in zip(sigmas_before, odd.samples, strict=True):
-        assert np.array_equal(before, np.asarray(s.kernel.sigma))  # ty: ignore[unresolved-attribute]
+        assert np.array_equal(before, np.asarray(s.kernel.sigma))  # ty: ignore[missing-attribute]
 
 
 def test_order_independent() -> None:
@@ -110,8 +110,8 @@ def test_order_independent() -> None:
     odd_rev.enforce_ood_consistency(ood[::-1], xi=0.05)
     for s_fwd, s_rev in zip(odd_fwd.samples, odd_rev.samples, strict=True):
         assert np.array_equal(
-            np.asarray(s_fwd.kernel.sigma),  # ty: ignore[unresolved-attribute]
-            np.asarray(s_rev.kernel.sigma),  # ty: ignore[unresolved-attribute]
+            np.asarray(s_fwd.kernel.sigma),  # ty: ignore[missing-attribute]
+            np.asarray(s_rev.kernel.sigma),  # ty: ignore[missing-attribute]
         )
 
 
@@ -215,8 +215,8 @@ def test_incremental_matches_full_recompute() -> None:
     )
     for s_exact, s_incr in zip(odd_exact.samples, odd_incr.samples, strict=True):
         assert np.allclose(
-            np.asarray(s_exact.kernel.sigma),  # ty: ignore[unresolved-attribute]
-            np.asarray(s_incr.kernel.sigma),  # ty: ignore[unresolved-attribute]
+            np.asarray(s_exact.kernel.sigma),  # ty: ignore[missing-attribute]
+            np.asarray(s_incr.kernel.sigma),  # ty: ignore[missing-attribute]
             rtol=1e-9,
             atol=0.0,
         )

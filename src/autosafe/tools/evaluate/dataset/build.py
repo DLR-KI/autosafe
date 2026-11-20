@@ -10,6 +10,7 @@ import numpy.typing as npt
 
 import autosafe
 from autosafe.exceptions import EmptyAnchorPoolError
+from autosafe.pointsets import subsample_indices
 from autosafe.preprocessing import RangeNormalizer
 from autosafe.sample import Sample
 from autosafe.samples import (
@@ -165,12 +166,10 @@ def _build_or_load_affinity_odd(  # ruff:ignore[complex-structure, too-many-argu
         if base_array.shape[0] == 0:
             raise EmptyAnchorPoolError(dataset_path)
 
-    if subsample_anchors is not None and base_array.shape[0] > subsample_anchors:
-        rng = np.random.default_rng(seed)
-        keep = np.sort(
-            rng.choice(base_array.shape[0], size=subsample_anchors, replace=False)
-        )
-        base_array = base_array[keep]
+    if subsample_anchors is not None:
+        base_array = base_array[
+            subsample_indices(base_array.shape[0], subsample_anchors, seed)
+        ]
 
     base_samples = [
         Sample(x=np.asarray(row, dtype=float).reshape(-1))

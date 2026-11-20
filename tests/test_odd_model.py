@@ -4,23 +4,31 @@
 # ruff:file-ignore[ambiguous-unicode-character-string]
 """Tests for fitting and querying a complete autoSAFE ODD."""
 
+import warnings
 from typing import cast
 
 import numpy as np
 import pytest
+from tqdm import TqdmExperimentalWarning
 
+from autosafe.deduplication import deduplicate_points, exact_equality_policy
 from autosafe.exceptions import (
     CalibrationSetTooSmallError,
     EmptyParameterError,
     InvalidLogSurvivalError,
     NonFiniteParameterError,
+    NonPositiveParameterError,
     ParameterOrderError,
     ParameterOutOfRangeError,
     ShapeMismatchError,
     TooFewAnchorsError,
     UncertifiableThresholdError,
 )
+from autosafe.neighbors import find_closest_vectors_by_index
 from autosafe.odd import AutoSafeConfig, AutoSafeODD
+from autosafe.pointsets import subsample_indices
+from autosafe.sample import Sample
+from autosafe.samples import Samples
 
 
 def test_calibrated_fit_resolves_paper_parameters() -> None:
@@ -251,4 +259,128 @@ def test_resolved_conformal_threshold_must_exceed_xi() -> None:
                 "ood_batch_jump": True,
                 "normalize": False,
             },
+        )
+
+
+def _calibrated_config() -> AutoSafeConfig:
+    return AutoSafeConfig.from_mapping({
+        "γ": 1.2,
+        "s": 2.0,
+        "λ_rel": 1e-4,
+        "ζ": 0.5,
+    })
+
+
+def test_fit_deduplicates_normalizes_then_subsamples() -> None:
+    rng = np.random.default_rng(3)
+    rows = np.repeat(rng.normal(size=(40, 2)), 3, axis=0)
+    policy = exact_equality_policy(2)
+
+    model = AutoSafeODD.fit(
+        rows,
+        config=_calibrated_config(),
+        deduplication=policy,
+        max_anchors=25,
+        anchor_seed=4,
+    )
+
+    dedup = deduplicate_points(rows, policy)
+    keep = subsample_indices(dedup.n_output, 25, 4)
+    assert model.deduplication_result is not None
+    assert model.deduplication_result.n_input == rows.shape[0]
+    assert model.deduplication_result.n_output == 40
+    assert model.deduplication_result.output_digest == dedup.output_digest
+    assert model.deduplication_result.groups is None
+    np.testing.assert_array_equal(model.anchor_indices, keep)
+    np.testing.assert_array_equal(model.in_distribution_data, dedup.points[keep])
+    assert len(model.samples) == 25
+    # The normalizer is fit on all 40 representatives, not on the 25
+    # subsampled anchors.
+    reference = AutoSafeODD.fit(dedup.points, config=_calibrated_config())
+    assert reference.normalizer is not None
+    np.testing.assert_array_equal(
+        model.normalized_in_distribution_data,
+        reference.normalizer.transform(dedup.points[keep]),
+    )
+
+
+def test_fit_without_preparation_records_nothing() -> None:
+    model = AutoSafeODD.fit(
+        np.array([[0.0], [1.0], [2.0]]), config=_calibrated_config()
+    )
+
+    assert model.deduplication_result is None
+    assert model.anchor_indices is None
+
+
+def test_fit_validates_anchor_preparation() -> None:
+    rows = np.array([[0.0, 0.0], [0.0, 0.0], [1.0, 1.0]])
+    with pytest.raises(NonPositiveParameterError):
+        AutoSafeODD.fit(rows, config=_calibrated_config(), max_anchors=0)
+    with pytest.raises(TooFewAnchorsError):
+        AutoSafeODD.fit(rows, config=_calibrated_config(), max_anchors=1)
+    with pytest.raises(TooFewAnchorsError):
+        AutoSafeODD.fit(
+            rows[:2],
+            config=_calibrated_config(),
+            deduplication=exact_equality_policy(2),
+        )
+
+
+def _tqdm_warnings(rows: np.ndarray, *, show_progress: bool) -> int:
+    # autosafe filters TqdmExperimentalWarning on import; "always"
+    # takes precedence inside the context, so bars would be recorded.
+    # The OOD adjustment always draws a bar when enabled, and it builds
+    # the per-anchor kernels, so every bar of fit is exercised.
+    config = AutoSafeConfig.from_mapping({
+        "γ": 1.2,
+        "s": 2.0,
+        "λ_rel": 1e-4,
+        "ζ": 0.5,
+        "ξ": 0.1,
+        "c": 0.9,
+    })
+    observed_ood = rows[:3] + 0.01
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        AutoSafeODD.fit(
+            rows,
+            config=config,
+            out_of_distribution_data=observed_ood,
+            show_progress=show_progress,
+        )
+    return sum(issubclass(w.category, TqdmExperimentalWarning) for w in caught)
+
+
+def test_fit_reuses_calibration_neighbors() -> None:
+    rng = np.random.default_rng(6)
+    rows = rng.normal(size=(60, 3))
+
+    model = AutoSafeODD.fit(rows, config=_calibrated_config())
+
+    anchors = model.normalized_in_distribution_data
+    expected = find_closest_vectors_by_index(anchors, disable_tqdm=True)
+    for index, sample in enumerate(model.samples):
+        assert sample.closest_sample is not None
+        np.testing.assert_array_equal(
+            sample.closest_sample[0].x, model.samples[int(expected[index])].x
+        )
+    rebuilt = Samples(
+        [Sample(row) for row in anchors],
+        kernel_kwargs=model.samples.kernel_kwargs,
+        show_progress=False,
+    )
+    np.testing.assert_array_equal(
+        np.asarray(model.samples(anchors * 1.01)),
+        np.asarray(rebuilt(anchors * 1.01)),
+    )
+
+
+def test_samples_reject_misshaped_neighbor_indices() -> None:
+    with pytest.raises(ShapeMismatchError):
+        Samples(
+            [Sample(np.array([0.0])), Sample(np.array([1.0]))],
+            kernel_kwargs={"kappa": 1.0, "eta": 1.0, "lam": 1e-4},
+            neighbor_indices=np.array([1, 0, 0]),
+            show_progress=False,
         )

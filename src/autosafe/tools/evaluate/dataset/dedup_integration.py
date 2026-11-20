@@ -47,6 +47,7 @@ from autosafe.exceptions import (
     EmptyAnchorPoolError,
     OODAnchorCoincidenceError,
     ParameterOutOfRangeError,
+    UnexpectedNoneError,
 )
 from autosafe.pointsets import rows_in
 from autosafe.preprocessing import RangeNormalizer, create_robust_normalization_pipeline
@@ -280,7 +281,12 @@ def _provenance_rows(
 
     Returns:
         list[dict[str, object]]: One row per (cell, source-record).
+
+    Raises:
+        UnexpectedNoneError: If ``result`` was built without groups.
     """
+    if result.groups is None:
+        raise UnexpectedNoneError("result.groups")
     rows: list[dict[str, object]] = []
     for cell_index, (group, representative_id) in enumerate(
         zip(result.groups, result.representative_ids, strict=False)

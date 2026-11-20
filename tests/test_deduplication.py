@@ -8,6 +8,7 @@ import pytest
 
 from autosafe.deduplication import (
     DeduplicationPolicy,
+    DeduplicationResult,
     check_label_conflicts,
     deduplicate_points,
     exact_equality_policy,
@@ -21,6 +22,7 @@ from autosafe.exceptions import (
     ResolutionCellOverflowError,
     ShapeMismatchError,
 )
+from tests.dedup_reference import reference_deduplicate_points
 
 
 def test_exact_duplicates_collapse_and_preserve_ids() -> None:
@@ -32,6 +34,7 @@ def test_exact_duplicates_collapse_and_preserve_ids() -> None:
     assert result.n_output == 2
     assert result.n_input == 4
     assert result.n_duplicates == 2
+    assert result.groups is not None
     groups_by_size = sorted(result.groups, key=len)
     assert groups_by_size[0] == ("d",)
     assert set(groups_by_size[1]) == {"a", "b", "c"}
@@ -354,3 +357,75 @@ def test_cell_index_just_inside_int64_is_accepted() -> None:
         pts, DeduplicationPolicy(resolution=(1.0,), origin=(0.0,))
     )
     assert result.points.shape == (2, 1)
+
+
+def _assert_identical(
+    result: DeduplicationResult, reference: DeduplicationResult
+) -> None:
+    assert result.points.tobytes() == reference.points.tobytes()
+    assert result.groups == reference.groups
+    assert result.representative_ids == reference.representative_ids
+    np.testing.assert_array_equal(result.multiplicities, reference.multiplicities)
+    np.testing.assert_array_equal(result.cell_ids, reference.cell_ids)
+    assert result.input_digest == reference.input_digest
+    assert result.output_digest == reference.output_digest
+    assert result.constant_dims == reference.constant_dims
+    assert result.n_input == reference.n_input
+
+
+def _random_points(rng: np.random.Generator, layout: str) -> np.ndarray:
+    n_rows = int(rng.integers(1, 300))
+    n_dims = int(rng.integers(1, 6))
+    if layout == "lattice":
+        # Exact lattice points: symmetric cells with tied distances.
+        return rng.integers(-3, 3, size=(n_rows, n_dims)) * 0.5
+    if layout == "repeated":
+        base = rng.normal(size=(max(n_rows // 4, 1), n_dims))
+        return np.repeat(base, 4, axis=0)
+    if layout == "signed_zero":
+        cells = rng.integers(-2, 2, size=(n_rows, n_dims))
+        points = cells.astype(float)
+        # Mix -0.0 and 0.0, which compare equal but differ in their bytes.
+        points[(cells == 0) & (rng.random(cells.shape) < 0.5)] = -0.0
+        return points
+    return rng.normal(size=(n_rows, n_dims)) * 10.0 ** rng.uniform(-3, 3)
+
+
+@pytest.mark.parametrize("layout", ["normal", "lattice", "repeated", "signed_zero"])
+@pytest.mark.parametrize("id_kind", ["none", "int", "mixed"])
+def test_vectorized_matches_reference_implementation(layout: str, id_kind: str) -> None:
+    rng = np.random.default_rng([ord(c) for c in layout + id_kind])
+    for _ in range(25):
+        pts = _random_points(rng, layout)
+        n_rows, n_dims = pts.shape
+        policy = DeduplicationPolicy(
+            resolution=tuple(rng.uniform(0.2, 2.0, size=n_dims)),
+            origin=tuple(rng.uniform(-1.0, 1.0, size=n_dims)),
+        )
+        permutation = rng.permutation(n_rows).tolist()
+        record_ids = {
+            "none": None,
+            "int": permutation,
+            "mixed": [f"r{i}" if i % 2 else i for i in permutation],
+        }[id_kind]
+
+        result = deduplicate_points(pts, policy, record_ids=record_ids)
+        reference = reference_deduplicate_points(pts, policy, record_ids=record_ids)
+
+        _assert_identical(result, reference)
+
+
+def test_keep_groups_false_only_drops_groups() -> None:
+    rng = np.random.default_rng(5)
+    pts = rng.integers(0, 4, size=(400, 3)) * 0.25
+    policy = DeduplicationPolicy(resolution=(0.5, 0.5, 0.5), origin=(0.0, 0.0, 0.0))
+
+    full = deduplicate_points(pts, policy)
+    lean = deduplicate_points(pts, policy, keep_groups=False)
+
+    assert lean.groups is None
+    assert full.groups is not None
+    assert lean.points.tobytes() == full.points.tobytes()
+    assert lean.representative_ids == full.representative_ids
+    assert lean.output_digest == full.output_digest
+    assert lean.input_digest == full.input_digest
