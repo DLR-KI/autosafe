@@ -69,6 +69,8 @@ The per-anchor ``Sample``/``RBFKernel`` objects are only built when something ac
 ``contains``, ``affinity`` and ``log_survival`` never build them.
 ``odd.samples.kernels_materialized`` tells whether they exist.
 
+:func:`autosafe.kernels.rbf.diagonal_widths` computes the kernel widths of many anchors at once from their nearest neighbors, with the same rule each kernel applies.
+
 Parameter names and paper symbols
 ---------------------------------
 

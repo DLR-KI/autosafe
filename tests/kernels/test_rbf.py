@@ -6,15 +6,22 @@
 import copy
 import math
 import re
+import warnings
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pytest
+from _pytest.mark.structures import ParameterSet
 
 from autosafe.exceptions import (
     ArrayDtypeError,
     KernelParametersNotSetError,
     MissingParameterError,
+    NonPositiveParameterError,
     NotPositiveSemidefiniteError,
+    ParameterOrderError,
     ParameterTypeError,
     ShapeMismatchError,
     SigmaNotInvertibleError,
@@ -25,7 +32,10 @@ from autosafe.kernels.rbf import (
     SIGMA_FLOOR_RATIO,
     GaussianKernel,
     RBFKernel,
+    _invert_sigma,
     _validate_and_broadcast_param,
+    diagonal_widths,
+    rbf_diagonal_sigma,
 )
 from autosafe.typing import FloatType
 
@@ -447,11 +457,6 @@ class TestRBFKernel:
         ):
             kernel.update(sigma=np.eye(3, dtype=np.float32))  # ty: ignore[invalid-argument-type]
 
-    def test_rbf_kernel_set_sigma_sigma_not_valid_string(self):
-        kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(UnknownOptionError, match="unknown sigma "):
-            kernel.update(sigma="not_a_valid_string")  # ty: ignore[invalid-argument-type]
-
     def test_rbf_kernel_set_sigma_success_eye(self):
         kernel = copy.deepcopy(self.kernel)
         dim = kernel.x_i.shape[0]
@@ -495,15 +500,38 @@ class TestRBFKernel:
         ):
             kernel.update()
 
-    def test_rbf_kernel_set_sigma_x_nn_not_array(self):
+    @pytest.mark.parametrize(
+        ("error", "match", "bad_argument"),
+        [
+            pytest.param(
+                UnknownOptionError,
+                "unknown sigma ",
+                {"sigma": "not_a_valid_string"},
+                id="sigma-unknown-string",
+            ),
+            pytest.param(
+                ParameterTypeError,
+                "x_nn must be of type",
+                {"x_nn": 3},
+                id="x_nn-not-array",
+            ),
+            pytest.param(
+                ParameterTypeError,
+                "sigma must be of type",
+                {"sigma": [[1, 2], [3, 4]]},
+                id="sigma-not-array",
+            ),
+        ],
+    )
+    def test_rbf_kernel_update_rejects_bad_argument(
+        self,
+        error: type[Exception],
+        match: str,
+        bad_argument: dict[str, object],
+    ) -> None:
         kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ParameterTypeError, match="x_nn must be of type"):
-            kernel.update(x_nn=3)  # ty: ignore[invalid-argument-type]
-
-    def test_rbf_kernel_set_sigma_not_array(self):
-        kernel = copy.deepcopy(self.kernel)
-        with pytest.raises(ParameterTypeError, match="sigma must be of type"):
-            kernel.update(sigma=[[1, 2], [3, 4]])  # ty: ignore[invalid-argument-type]
+        with pytest.raises(error, match=match):
+            kernel.update(**bad_argument)  # ty: ignore[invalid-argument-type]
 
     def test_rbf_kernel_set_sigma_x_nn_wrong_dtype(self):
         kernel = copy.deepcopy(self.kernel)
@@ -606,8 +634,14 @@ def test_validate_and_broadcast_param_success_float():
     )
 
 
-def test_validate_and_broadcast_param_success_floattype():
-    param = FloatType(math.e)
+@pytest.mark.parametrize(
+    "param",
+    [
+        pytest.param(FloatType(math.e), id="floattype"),
+        pytest.param(math.e, id="float-cast-to-floattype"),
+    ],
+)
+def test_validate_and_broadcast_param_floattype(param: float) -> None:
     name = "test_param"
     dim = 6
     result = _validate_and_broadcast_param(param, name, dim)
@@ -657,21 +691,6 @@ def test_validate_and_broadcast_param_wrong_type():
     dim = 6
     with pytest.raises(ParameterTypeError, match="test_param must be of type"):
         _validate_and_broadcast_param(param, name, dim)  # ty: ignore[invalid-argument-type]
-
-
-def test_validate_and_broadcast_param_cast_floattype():
-    param = math.e
-    name = "test_param"
-    dim = 6
-    result = _validate_and_broadcast_param(param, name, dim)
-    expected = np.array(
-        [math.e, math.e, math.e, math.e, math.e, math.e],
-        dtype=FloatType,
-    )
-    assert result.dtype == expected.dtype, "Result should have FloatType dtype."
-    assert np.array_equal(result, expected), (
-        "FloatType parameter should be broadcasted correctly."
-    )
 
 
 def test_fix_sigma_matrix():
@@ -814,3 +833,173 @@ def test_get_sigma_inv_full_jax_raises_when_sigma_inv_none():
         match="kernel parameter sigma_inv has not been set",
     ):
         kernel._get_sigma_inv_full_jax()
+
+
+def _reference_widths(
+    anchors: npt.NDArray[np.float64],
+    neighbors: npt.NDArray[np.float64],
+    kappa: float | npt.NDArray[np.float64],
+    eta: float | npt.NDArray[np.float64],
+    lam: float | npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    return (kappa - lam) * np.exp(-eta * np.abs(neighbors - anchors)) + lam
+
+
+_KAPPA, _ETA, _LAM = 0.7, 1.3, 0.7e-4
+
+
+def _random_anchor_neighbor(
+    n_points: int, dim: int, seed: int
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    rng = np.random.default_rng(seed)
+    return rng.normal(size=(n_points, dim)), rng.normal(size=(n_points, dim))
+
+
+def _widths_cases() -> list[ParameterSet]:
+    anchors, neighbors = _random_anchor_neighbor(200, 7, 0)
+    return [
+        pytest.param(anchors, neighbors, id="random"),
+        pytest.param(anchors, anchors.copy(), id="zero-displacement"),
+        pytest.param(anchors, anchors + 1e3, id="underflow"),
+    ]
+
+
+@pytest.mark.parametrize(("anchors", "neighbors"), _widths_cases())
+def test_diagonal_widths_matches_formula(
+    anchors: npt.NDArray[np.float64], neighbors: npt.NDArray[np.float64]
+) -> None:
+    widths = diagonal_widths(anchors, neighbors, kappa=_KAPPA, eta=_ETA, lam=_LAM)
+    assert widths.dtype == np.float64
+    assert widths.shape == anchors.shape
+    assert np.array_equal(
+        widths, _reference_widths(anchors, neighbors, _KAPPA, _ETA, _LAM)
+    )
+
+
+def test_diagonal_widths_per_feature_parameters():
+    anchors, neighbors = _random_anchor_neighbor(30, 5, 1)
+    dim = anchors.shape[1]
+    kappa = np.full(dim, 0.5)
+    eta = np.linspace(0.5, 2, dim)
+    widths = diagonal_widths(anchors, neighbors, kappa=kappa, eta=eta, lam=None)
+    expected = _reference_widths(
+        anchors, neighbors, kappa, eta, SIGMA_FLOOR_RATIO * kappa
+    )
+    assert np.array_equal(widths, expected)
+
+
+def test_diagonal_widths_validates():
+    anchors, neighbors = _random_anchor_neighbor(10, 4, 2)
+    with pytest.raises(NonPositiveParameterError):
+        diagonal_widths(anchors, neighbors, kappa=1.0, eta=1.0, lam=0.0)
+    with pytest.raises(ParameterOrderError):
+        diagonal_widths(anchors, neighbors, kappa=0.5, eta=1.0, lam=0.5)
+    with pytest.raises(ShapeMismatchError):
+        diagonal_widths(anchors, neighbors[:, :3])
+    with pytest.raises(ShapeMismatchError):
+        diagonal_widths(anchors, neighbors, kappa=np.ones(3))
+
+
+def test_kernel_update_uses_the_batched_widths():
+    anchors, neighbors = _random_anchor_neighbor(50, 6, 3)
+    expected = diagonal_widths(anchors, neighbors, kappa=_KAPPA, eta=_ETA, lam=_LAM)
+    for i, widths in enumerate(expected):
+        a = np.asarray(anchors[i], dtype=np.float64).reshape(-1)
+        n = np.asarray(neighbors[i], dtype=np.float64).reshape(-1)
+        k = RBFKernel(x_i=a, kappa=_KAPPA, eta=_ETA, lam=_LAM)
+        k.update(x_nn=n, kappa=_KAPPA, eta=_ETA, lam=_LAM)
+        assert k.sigma is not None
+        assert k.sigma_inv is not None
+        assert np.array_equal(np.diag(k.sigma), widths)
+        assert np.array_equal(k.sigma_inv, np.diag(1.0 / np.diag(k.sigma)))
+        assert k.sigma_is_diagonal
+        off = ~np.eye(6, dtype=bool)
+        assert not np.any(k.sigma[off])
+        assert not np.any(k.sigma_inv[off])
+
+
+def test_per_dimension_update_uses_the_batched_widths():
+    rng = np.random.default_rng(4)
+    dim = 6
+    x_i = rng.normal(size=dim)
+    x_nn = rng.normal(size=(dim, dim))
+    k = RBFKernel(x_i=x_i, kappa=_KAPPA, eta=_ETA, lam=_LAM)
+    k.update(x_nn=x_nn)
+    expected = _reference_widths(x_i, np.diag(x_nn), _KAPPA, _ETA, _LAM)
+    assert np.array_equal(np.diag(k.sigma), expected)
+
+
+def _outcome(
+    call: Callable[[], tuple[Any, Any]],
+) -> tuple[type[Exception] | None, tuple[Any, Any] | None, bool]:
+    """Run ``call`` and report how it ended.
+
+    Args:
+        call (Callable[[], tuple[Any, Any]]): The call to run.
+
+    Returns:
+        tuple[type[Exception] | None, tuple[Any, Any] | None, bool]:
+            The sigma error class raised (or None), the result, and
+            whether the repair warning was issued.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            result = call()
+        except SigmaNotInvertibleError as error:
+            return type(error), None, False
+    repaired = any(
+        issubclass(w.category, UserWarning)
+        and "sigma matrix was not invertible" in str(w.message)
+        for w in caught
+    )
+    return None, result, repaired
+
+
+def test_subnormal_width_falls_back_to_repair() -> None:
+    # 1 / width overflows, so the dense repair path runs. Whether the
+    # repair succeeds or fails depends on the JAX backend, so the
+    # kernel must match the repair applied to the same widths.
+    kappa, eta, lam = 1e-309, 1.0, 1e-310
+    x_i, x_nn = np.zeros(3), np.full(3, 1e3)
+    widths = diagonal_widths(x_i[None], x_nn[None], kappa=kappa, eta=eta, lam=lam)[0]
+    error, reference, ref_repaired = _outcome(lambda: _invert_sigma(np.diag(widths)))
+
+    k = RBFKernel(x_i=x_i, kappa=kappa, eta=eta, lam=lam)
+
+    def update() -> tuple[object, object]:
+        k.update(x_nn=x_nn, kappa=kappa, eta=eta, lam=lam)
+        return k.sigma, k.sigma_inv
+
+    k_error, result, k_repaired = _outcome(update)
+    assert k_error is error
+    assert k_repaired == ref_repaired
+    if error is None:
+        assert reference is not None
+        assert result is not None
+        assert np.array_equal(result[0], reference[0])
+        assert np.array_equal(result[1], reference[1])
+
+
+def test_rbf_diagonal_sigma_overflow_raises_custom_error() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(SigmaNotInvertibleError):
+            rbf_diagonal_sigma(
+                np.zeros((2, 3)),
+                np.full((2, 3), 1e3),
+                kappa=1e-309,
+                eta=1.0,
+                lam=1e-310,
+            )
+
+
+def test_per_dimension_column_vector_neighbor():
+    rng = np.random.default_rng(5)
+    dim = 4
+    x_i = rng.normal(size=dim)
+    x_nn = rng.normal(size=(dim, 1))
+    k = RBFKernel(x_i=x_i, kappa=_KAPPA, eta=_ETA, lam=_LAM)
+    k.update(x_nn=x_nn)
+    expected = _reference_widths(x_i, x_nn[:, 0], _KAPPA, _ETA, _LAM)
+    assert np.array_equal(np.diag(k.sigma), expected)

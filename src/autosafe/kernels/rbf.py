@@ -151,6 +151,114 @@ def _validate_and_broadcast_param(
     raise ParameterTypeError(name, param, (float, np.ndarray))
 
 
+def _affine_floor_widths(
+    displacement: npt.NDArray[np.float64],
+    *,
+    kappa: KernelScaleParam,
+    eta: KernelScaleParam,
+    lam: KernelScaleParam | None,
+) -> npt.NDArray[np.float64]:
+    """Affine-floor widths ``(kappa - lam) exp(-eta |d|) + lam``.
+
+    The single home of the width rule and its parameter checks;
+    ``displacement`` has the features on its last axis.
+
+    Args:
+        displacement (npt.NDArray[np.float64]): Neighbor minus anchor,
+            features on the last axis.
+        kappa (KernelScaleParam): Scaling factor, scalar or per
+            feature.
+        eta (KernelScaleParam): Exponential decay factor, scalar or
+            per feature.
+        lam (KernelScaleParam | None): Affine lower bound for sigma.
+            If None, uses ``SIGMA_FLOOR_RATIO * kappa``.
+
+    Returns:
+        npt.NDArray[np.float64]: The widths, shaped like
+            ``displacement``.
+
+    Raises:
+        NonPositiveParameterError: If `lam` is not positive.
+        ParameterOrderError: If `lam` is not smaller than `kappa`.
+    """
+    dim = displacement.shape[-1]
+    kappa_ = _validate_and_broadcast_param(kappa, "kappa", dim)
+    eta_ = _validate_and_broadcast_param(eta, "eta", dim)
+    if lam is None:
+        lam_ = SIGMA_FLOOR_RATIO * kappa_
+    else:
+        lam_ = _validate_and_broadcast_param(lam, "lam", dim)
+        if not np.all(lam_ > 0.0):
+            raise NonPositiveParameterError("lam", lam_)
+    if not np.all(lam_ < kappa_):
+        raise ParameterOrderError("lam", "kappa")
+    return (kappa_ - lam_) * np.exp(-eta_ * np.abs(displacement)) + lam_
+
+
+def diagonal_widths(
+    anchors: "Matrix | NPMatrix",
+    neighbors: "Matrix | NPMatrix",
+    *,
+    kappa: KernelScaleParam = 1.0,
+    eta: KernelScaleParam = 1.0,
+    lam: KernelScaleParam | None = None,
+) -> npt.NDArray[np.float64]:
+    r"""(N, m) diagonal kernel widths of the nearest-neighbor rule.
+
+    Per anchor :math:`z` with nearest neighbor :math:`n` and per
+    feature, the width is
+
+    .. math::
+        (\kappa - \lambda) \exp(-\eta |n - z|) + \lambda.
+
+    ``lam=None`` means ``SIGMA_FLOOR_RATIO * kappa``. ``kappa``,
+    ``eta`` and ``lam`` are scalars or per-feature vectors. This is
+    the rule ``RBFKernel.update`` applies per anchor, computed for
+    all anchors at once.
+
+    Args:
+        anchors (Matrix | NPMatrix): Kernel centers, shape ``(N, m)``.
+        neighbors (Matrix | NPMatrix): The nearest neighbor of each
+            anchor, shape ``(N, m)``.
+        kappa (KernelScaleParam): Scaling factor, scalar or per
+            feature. Defaults to 1.0.
+        eta (KernelScaleParam): Exponential decay factor, scalar or
+            per feature. Defaults to 1.0.
+        lam (KernelScaleParam | None): Affine lower bound for sigma.
+            If None, uses ``SIGMA_FLOOR_RATIO * kappa``.
+
+    Returns:
+        npt.NDArray[np.float64]: The widths, shape ``(N, m)``.
+
+    Raises:
+        ShapeMismatchError: If `neighbors` and `anchors` differ in
+            shape.
+    """
+    anchor_points = _to_np(anchors)
+    neighbor_points = _to_np(neighbors)
+    if neighbor_points.shape != anchor_points.shape:
+        raise ShapeMismatchError(
+            "neighbors", neighbor_points.shape, anchor_points.shape
+        )
+    return _affine_floor_widths(
+        neighbor_points - anchor_points, kappa=kappa, eta=eta, lam=lam
+    )
+
+
+def _reciprocal(widths: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Elementwise ``1 / widths`` without overflow warnings.
+
+    Args:
+        widths (npt.NDArray[np.float64]): The values to invert.
+
+    Returns:
+        npt.NDArray[np.float64]: The reciprocals, ``inf`` where the
+            result overflows.
+    """
+    with np.errstate(over="ignore", divide="ignore"):
+        return 1.0 / widths
+
+
 def rbf_diagonal_sigma(
     anchors: npt.NDArray[np.float64],
     neighbors: npt.NDArray[np.float64],
@@ -161,10 +269,9 @@ def rbf_diagonal_sigma(
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Diagonal sigma and its inverse for many global-mode RBF kernels.
 
-    Vectorized form of the global-mode affine-floor law of
-    ``RBFKernel._sigma_ii``: per anchor and feature,
-    ``sigma = (kappa - lam) * exp(-eta * |x_nn - x_i|) + lam``. The
-    inverse of a diagonal matrix is the elementwise reciprocal.
+    Accepts and validates like :func:`diagonal_widths`, whose widths
+    are the diagonal of sigma. The inverse of a diagonal matrix is the
+    elementwise reciprocal.
 
     Args:
         anchors (npt.NDArray[np.float64]): Kernel centers, shape
@@ -184,31 +291,13 @@ def rbf_diagonal_sigma(
             ``(N, n)``.
 
     Raises:
-        NonPositiveParameterError: If `lam` is not positive.
-        ParameterOrderError: If `lam` is not smaller than `kappa`.
-        ShapeMismatchError: If `neighbors` and `anchors` differ in
-            shape.
         SigmaNotInvertibleError: If a sigma entry has no finite
             reciprocal.
     """
-    dim = anchors.shape[1]
-    kappa_ = _validate_and_broadcast_param(kappa, "kappa", dim)
-    eta_ = _validate_and_broadcast_param(eta, "eta", dim)
-    if lam is None:
-        lam_ = SIGMA_FLOOR_RATIO * kappa_
-    else:
-        lam_ = _validate_and_broadcast_param(lam, "lam", dim)
-        if not np.all(lam_ > 0.0):
-            raise NonPositiveParameterError("lam", lam_)
-    if not np.all(lam_ < kappa_):
-        raise ParameterOrderError("lam", "kappa")
-    if neighbors.shape != anchors.shape:
-        raise ShapeMismatchError("neighbors", neighbors.shape, anchors.shape)
-    displacement = neighbors - anchors
-    sigma = (kappa_ - lam_) * np.exp(-eta_ * np.abs(displacement)) + lam_
-    sigma_inv = 1.0 / sigma
+    sigma = diagonal_widths(anchors, neighbors, kappa=kappa, eta=eta, lam=lam)
+    sigma_inv = _reciprocal(sigma)
     if not np.all(np.isfinite(sigma_inv)):
-        raise SigmaNotInvertibleError(dim)
+        raise SigmaNotInvertibleError(anchors.shape[1])
     return sigma, sigma_inv
 
 
@@ -266,6 +355,44 @@ def _invert_sigma(sigma: NPSquareMatrix) -> tuple[NPSquareMatrix, NPSquareMatrix
     return sigma, sigma_inv
 
 
+def _parse_sigma_spec(sigma: SigmaSpec, dim: int) -> NPSquareMatrix:
+    """Turn an explicit sigma specification into a validated matrix.
+
+    Args:
+        sigma (SigmaSpec): ``"eye"``, a positive scalar multiple of the
+            identity, or a square matrix with positive eigenvalues.
+        dim (int): The dimension of the kernel center.
+
+    Returns:
+        NPSquareMatrix: The sigma matrix as float64.
+
+    Raises:
+        UnknownOptionError: If `sigma` is a string other than
+            ``"eye"``.
+        NotPositiveSemidefiniteError: If `sigma` is not psd.
+        ShapeMismatchError: If `sigma` is not of shape ``(dim, dim)``.
+        ParameterTypeError: If `sigma` is not one of the expected
+            types.
+    """
+    if isinstance(sigma, str):
+        if sigma != "eye":
+            raise UnknownOptionError("sigma", sigma, ("eye",))
+        return np.eye(dim, dtype=NPFloatType)
+    if isinstance(sigma, (NPFloatType, float, int)):
+        sigma_scalar = NPFloatType(sigma)
+        if sigma_scalar <= 0:
+            raise NotPositiveSemidefiniteError("sigma")
+        return cast("NPSquareMatrix", np.eye(dim, dtype=NPFloatType) * sigma_scalar)
+    if isinstance(sigma, (np.ndarray, jax.Array)):
+        sigma_np = _to_np(sigma)
+        if sigma_np.shape != (dim, dim):
+            raise ShapeMismatchError("sigma", sigma_np.shape, (dim, dim))
+        if not np.all(np.asarray(jnp.linalg.eigvals(jnp.asarray(sigma_np)).real) > 0):
+            raise NotPositiveSemidefiniteError("sigma")
+        return cast("NPSquareMatrix", sigma_np)
+    raise ParameterTypeError("sigma", sigma, (str, np.ndarray, float))
+
+
 class RBFKernel(Kernel):
     r"""Implementation of the Radial Basis Function (RBF) kernel.
 
@@ -301,15 +428,6 @@ class RBFKernel(Kernel):
     Attributes:
         sigma_is_diagonal (bool): Whether sigma is set and
             (numerically) diagonal.
-
-    Raises:
-        UnknownOptionError: If `sigma` is a string other than
-            ``"eye"``.
-        NotPositiveSemidefiniteError: If `sigma` is not psd.
-        ShapeMismatchError: If `sigma` does not match the dimension of
-            `x_i`.
-        ParameterTypeError: If `sigma` is not one of the expected
-            types (`"eye"`, a square matrix, a scalar, or `None`).
     """  # ruff:ignore[doc-line-too-long]
 
     def __init__(  # ruff:ignore[too-many-arguments, too-many-positional-arguments]
@@ -338,36 +456,11 @@ class RBFKernel(Kernel):
             self.sigma_inv = None
             if x_nn is not None:
                 self.update(x_nn=x_nn, kappa=kappa, eta=eta, lam=lam)
-        elif isinstance(sigma, str) and sigma == "eye":
-            self.sigma = np.eye(len(self.x_i), dtype=NPFloatType)
-            self.sigma_inv = np.asarray(
-                jnp.linalg.inv(jnp.asarray(self.sigma)), NPFloatType
-            )
-            self._refresh_sigma_cache()
-        elif isinstance(sigma, str):
-            raise UnknownOptionError("sigma", sigma, ("eye",))
-        elif isinstance(sigma, (NPFloatType, float, int)):
-            sigma_scalar = NPFloatType(sigma)
-            if sigma_scalar <= 0:
-                raise NotPositiveSemidefiniteError("sigma")
-            self.sigma, self.sigma_inv = _invert_sigma(
-                np.eye(len(self.x_i), dtype=NPFloatType) * sigma_scalar
-            )
-            self._refresh_sigma_cache()
-        elif isinstance(sigma, (np.ndarray, jax.Array)):
-            sigma_np = _to_np(sigma)
-            if sigma_np.shape != (self.x_i.shape[0], self.x_i.shape[0]):
-                raise ShapeMismatchError(
-                    "sigma", sigma_np.shape, (self.x_i.shape[0], self.x_i.shape[0])
-                )
-            if not np.all(
-                np.asarray(jnp.linalg.eigvals(jnp.asarray(sigma_np)).real) > 0
-            ):
-                raise NotPositiveSemidefiniteError("sigma")
-            self.sigma, self.sigma_inv = _invert_sigma(sigma_np.astype(NPFloatType))
-            self._refresh_sigma_cache()
         else:
-            raise ParameterTypeError("sigma", sigma, (str, np.ndarray, float))
+            self.sigma, self.sigma_inv = _invert_sigma(
+                _parse_sigma_spec(sigma, len(self.x_i))
+            )
+            self._refresh_sigma_cache()
 
     @classmethod
     def from_diagonal(  # ruff:ignore[too-many-arguments]
@@ -400,10 +493,25 @@ class RBFKernel(Kernel):
             RBFKernel: The kernel with sigma and its inverse set.
         """
         kernel = cls(x_i=x_i, kappa=kappa, eta=eta, lam=lam)
-        kernel.sigma = np.diag(np.asarray(sigma_diag, NPFloatType))
-        kernel.sigma_inv = np.diag(np.asarray(sigma_inv_diag, NPFloatType))
-        kernel._refresh_sigma_cache()
+        kernel._set_diagonal_sigma(sigma_diag, sigma_inv_diag)
         return kernel
+
+    def _set_diagonal_sigma(
+        self, sigma_diag: NPVector, sigma_inv_diag: NPVector
+    ) -> None:
+        """Store a diagonal sigma and its inverse without dense algebra.
+
+        Args:
+            sigma_diag (NPVector): The diagonal of sigma.
+            sigma_inv_diag (NPVector): The diagonal of the inverse of
+                sigma.
+        """
+        self.sigma = np.diag(np.asarray(sigma_diag, NPFloatType))
+        self.sigma_inv = np.diag(np.asarray(sigma_inv_diag, NPFloatType))
+        self._sigma_is_diagonal = True
+        self._x_i_jax = None
+        self._sigma_inv_diag_jax = None
+        self._sigma_inv_full_jax = None
 
     def _refresh_sigma_cache(self) -> None:
         """Recompute diagonal flag and invalidate cached JAX arrays.
@@ -449,7 +557,7 @@ class RBFKernel(Kernel):
             self._sigma_inv_full_jax = jnp.asarray(self.sigma_inv)
         return self._sigma_inv_full_jax
 
-    def update(  # pylint: disable=W0221  # ruff:ignore[complex-structure, too-many-branches]
+    def update(  # pylint: disable=W0221
         self,
         *,
         x_nn: Vector | Matrix | NPVector | NPMatrix | None = None,
@@ -474,6 +582,17 @@ class RBFKernel(Kernel):
         :class:`~autosafe.exceptions.SigmaNotInvertibleError` is raised
         and the kernel's sigma is left unchanged.
 
+        Invalid input raises, from the helpers that check it:
+        ``UnknownOptionError`` for a string other than ``"eye"``;
+        ``ParameterTypeError`` for an unsupported `sigma` or a
+        non-array `x_nn`; ``ShapeMismatchError`` for a wrongly shaped
+        `sigma`, `x_nn` or per-feature parameter;
+        ``NotPositiveSemidefiniteError`` for a `sigma` that is not
+        positive definite; ``MissingParameterError`` when neither
+        `sigma` nor `x_nn` is given; ``NonPositiveParameterError`` and
+        ``ParameterOrderError`` unless ``0 < lam < kappa``. All are in
+        :mod:`autosafe.exceptions`.
+
         Args:
             x_nn (Vector | Matrix | NPVector | NPMatrix | None): The
                 nearest neighbor(s) to the kernel center point. If x_nn
@@ -488,18 +607,6 @@ class RBFKernel(Kernel):
                 for the kernel, defaults to 1.0.
             lam (KernelScaleParam | None, optional): Affine lower bound
                 for sigma. If None, uses SIGMA_FLOOR_RATIO * kappa.
-
-        Raises:
-            UnknownOptionError: If `sigma` is a string other than
-                ``"eye"``.
-            ParameterTypeError: If `sigma` is not a string, numpy
-                array or scalar, or if `x_nn` is not a numpy array.
-            ShapeMismatchError: If `sigma` or `x_nn` does not have
-                dimensions compatible with `x_i`.
-            NotPositiveSemidefiniteError: If `sigma` is not positive
-                semidefinite (psd).
-            MissingParameterError: If neither `sigma` nor `x_nn` is
-                provided.
         """
         if kappa is not None:
             self.kappa = kappa
@@ -509,59 +616,58 @@ class RBFKernel(Kernel):
             self.lam = lam
 
         if sigma is not None:
-            if isinstance(sigma, str) and sigma == "eye":
-                sigma = np.eye(self.x_i.shape[0], dtype=NPFloatType)
-            elif isinstance(sigma, str):
-                raise UnknownOptionError("sigma", sigma, ("eye",))
-            elif isinstance(sigma, (NPFloatType, float, int)):
-                sigma_scalar = NPFloatType(sigma)
-                if sigma_scalar <= 0:
-                    raise NotPositiveSemidefiniteError("sigma")
-                sigma = cast(
-                    "NPSquareMatrix",
-                    np.eye(self.x_i.shape[0], dtype=NPFloatType) * sigma_scalar,
-                )
-            elif isinstance(sigma, (np.ndarray, jax.Array)):
-                if isinstance(sigma, np.ndarray) and sigma.dtype != NPFloatType:
-                    warnings.warn(
-                        message=(
-                            "sigma is not of dtype FloatType. Converting to FloatType."
-                        ),
-                        category=UserWarning,
-                        stacklevel=2,
-                    )
-                sigma = _to_np(sigma)
-                if sigma.shape != (self.x_i.shape[0], self.x_i.shape[0]):
-                    raise ShapeMismatchError(
-                        "sigma", sigma.shape, (self.x_i.shape[0], self.x_i.shape[0])
-                    )
-                if not np.all(
-                    np.asarray(jnp.linalg.eigvals(jnp.asarray(sigma)).real) > 0
-                ):
-                    raise NotPositiveSemidefiniteError("sigma")
-            else:
-                raise ParameterTypeError("sigma", sigma, (str, np.ndarray, float))
-            sigma = np.asarray(sigma, NPFloatType)
-        else:
-            if x_nn is None:
-                raise MissingParameterError("x_nn", unless="sigma")
-            if not isinstance(x_nn, (np.ndarray, jax.Array)):
-                raise ParameterTypeError("x_nn", x_nn, np.ndarray)
-            if isinstance(x_nn, np.ndarray) and x_nn.dtype != NPFloatType:
+            if isinstance(sigma, np.ndarray) and sigma.dtype != NPFloatType:
                 warnings.warn(
-                    message="x_nn is not of dtype FloatType. Converting to FloatType.",
+                    message="sigma is not of dtype FloatType. Converting to FloatType.",
                     category=UserWarning,
                     stacklevel=2,
                 )
-            x_nn = _to_np(x_nn)
-            if x_nn.shape[0] != self.x_i.shape[0]:
-                raise ShapeMismatchError(
-                    "x_nn", x_nn.shape, (self.x_i.shape[0], *x_nn.shape[1:])
-                )
-            sigma = self._sigma_ii(x_nn, self.kappa, self.eta, self.lam)
+            sigma_matrix = _parse_sigma_spec(sigma, self.x_i.shape[0])
+        else:
+            widths = self._widths_from_neighbor(x_nn)
+            inverse = _reciprocal(widths)
+            if np.all(np.isfinite(inverse)):
+                self._set_diagonal_sigma(widths, inverse)
+                return
+            sigma_matrix = np.diag(widths)
 
-        self.sigma, self.sigma_inv = _invert_sigma(np.asarray(sigma, NPFloatType))
+        self.sigma, self.sigma_inv = _invert_sigma(sigma_matrix)
         self._refresh_sigma_cache()
+
+    def _widths_from_neighbor(
+        self, x_nn: Vector | Matrix | NPVector | NPMatrix | None
+    ) -> NPVector:
+        """Diagonal widths of sigma from the nearest neighbor(s).
+
+        Args:
+            x_nn (Vector | Matrix | NPVector | NPMatrix | None): The
+                nearest neighbor(s) to the kernel center point.
+
+        Returns:
+            NPVector: The diagonal of sigma.
+
+        Raises:
+            MissingParameterError: If `x_nn` is None.
+            ParameterTypeError: If `x_nn` is not an array.
+            ShapeMismatchError: If `x_nn` does not have as many rows as
+                `x_i`.
+        """
+        if x_nn is None:
+            raise MissingParameterError("x_nn", unless="sigma")
+        if not isinstance(x_nn, (np.ndarray, jax.Array)):
+            raise ParameterTypeError("x_nn", x_nn, np.ndarray)
+        if isinstance(x_nn, np.ndarray) and x_nn.dtype != NPFloatType:
+            warnings.warn(
+                message="x_nn is not of dtype FloatType. Converting to FloatType.",
+                category=UserWarning,
+                stacklevel=3,
+            )
+        x_nn = _to_np(x_nn)
+        if x_nn.shape[0] != self.x_i.shape[0]:
+            raise ShapeMismatchError(
+                "x_nn", x_nn.shape, (self.x_i.shape[0], *x_nn.shape[1:])
+            )
+        return np.diag(self._sigma_ii(x_nn, self.kappa, self.eta, self.lam))
 
     def _sigma_ii(
         self,
@@ -609,8 +715,6 @@ class RBFKernel(Kernel):
                 `NPFloatType`.
             ShapeMismatchError: If `x_nn` does not have as many rows as
                 `x_i`.
-            NonPositiveParameterError: If `lam` is not positive.
-            ParameterOrderError: If `lam` >= `kappa` for any dimension.
         """
         if not isinstance(x_nn, (np.ndarray, jax.Array)):
             raise ParameterTypeError("x_nn", x_nn, np.ndarray)
@@ -618,48 +722,22 @@ class RBFKernel(Kernel):
             raise ArrayDtypeError("x_nn", x_nn.dtype, np.dtype(NPFloatType))
         x_nn = _to_np(x_nn)
 
-        kappa_ = _validate_and_broadcast_param(kappa, "kappa", self.x_i.shape[0])
-        eta_ = _validate_and_broadcast_param(eta, "eta", self.x_i.shape[0])
-
         if x_nn.shape[0] != self.x_i.shape[0]:
             raise ShapeMismatchError(
                 "x_nn", x_nn.shape, (self.x_i.shape[0], *x_nn.shape[1:])
             )
 
         dim = self.x_i.shape[0]
-
-        if lam is None:
-            lam_ = SIGMA_FLOOR_RATIO * kappa_
-        else:
-            lam_ = _validate_and_broadcast_param(lam, "lam", dim)
-            if not np.all(lam_ > 0.0):
-                raise NonPositiveParameterError("lam", lam_)
-        if not np.all(lam_ < kappa_):
-            raise ParameterOrderError("lam", "kappa")
-
-        kappa_col = kappa_.reshape((dim, 1))
-        eta_col = eta_.reshape((dim, 1))
-        lam_col = lam_.reshape((dim, 1))
-
         if x_nn.ndim == 2:  # ruff:ignore[magic-value-comparison]
-            # Per-dimension mode: x_nn is (dim, dim) where column j is
-            # the nearest neighbor found in dimension j.  Only the
-            # diagonal d[i, i] = neighbor_i[i] - x_i[i] drives
-            # sigma[i, i].
-            d_full = x_nn - np.tile(self.x_i.reshape(-1, 1), (1, dim))
-            d_diag = np.diag(d_full).reshape(dim, 1)
-            sigma_diag = np.squeeze(
-                (kappa_col - lam_col) * np.exp(-eta_col * np.abs(d_diag)) + lam_col
-            )
+            # Per-dimension mode: column j of x_nn is the nearest
+            # neighbor in dimension j; only d[j, j] drives sigma[j, j].
+            # Keep the tile: it also defines the result for an (n, 1)
+            # x_nn.
+            displacement = np.diag(x_nn - np.tile(self.x_i.reshape(-1, 1), (1, dim)))
         else:
-            # Global mode: single nearest neighbor vector (dim,) or
-            # (dim, 1).
-            d = x_nn.reshape((dim, -1)) - self.x_i.reshape((dim, 1))
-            sigma_diag = np.mean(
-                (kappa_col - lam_col) * np.exp(-eta_col * np.abs(d)) + lam_col,
-                axis=1,
-            )
-
+            # Global mode: one nearest-neighbor vector.
+            displacement = x_nn.reshape(-1) - self.x_i
+        sigma_diag = _affine_floor_widths(displacement, kappa=kappa, eta=eta, lam=lam)
         return cast("NPSquareMatrix", np.diag(sigma_diag))
 
     @overload
