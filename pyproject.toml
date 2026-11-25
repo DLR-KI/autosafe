@@ -68,7 +68,7 @@ license-files = ["LICENSES/*"]
 name = "autosafe"
 readme = "README.md"
 requires-python = ">=3.11"
-version = "2.1.0"
+version = "2.2.0"
 
 [project.scripts]
 autosafe = "autosafe.__main__:main"
@@ -92,7 +92,7 @@ pre_bump_hooks = [
   "uv lock"
 ]
 tag_format = "$version"
-version = "2.1.0"
+version = "2.2.0"
 version_files = [
   "CITATION.cff:^version",
   "docs/conf.py:release",
