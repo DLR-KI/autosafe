@@ -28,9 +28,12 @@ hooks = [
   { id = "check-yaml", priority = 9999 },
   { id = "debug-statements", priority = 9999 },
   { id = "end-of-file-fixer", priority = 20 },
-  { id = "mixed-line-ending", args = [
-    "--fix=lf"
-  ], exclude = "docs/make.bat", priority = 30 },
+  {
+    id = "mixed-line-ending",
+    args = ["--fix=lf"],
+    exclude = "docs/make.bat",
+    priority = 30
+  },
   { id = "trailing-whitespace", priority = 10 }
 ]
 repo = "https://github.com/pre-commit/pre-commit-hooks"
@@ -39,24 +42,27 @@ rev = "v6.0.0"
 [[repos]]
 hooks = [
   { id = "commitizen", priority = 9999 },
-  { id = "commitizen-branch", stages = [
-    "pre-push"
-  ], priority = 9999 }
+  { id = "commitizen-branch", stages = ["pre-push"], priority = 9999 }
 ]
 repo = "https://github.com/commitizen-tools/commitizen"
-rev = "v4.19.3"
+rev = "v4.19.4"
 
 [[repos]]
 hooks = [
-  { id = "uv-sync", name = "Synchronize uv.lock with pyproject.toml", priority = 110 },
-  { id = "uv-audit", args = [
-    "--frozen",
-    "--preview-features",
-    "audit"
-  ], name = "Audit Python dependencies", priority = 9999 }
+  {
+    id = "uv-sync",
+    name = "Synchronize uv.lock with pyproject.toml",
+    priority = 110
+  },
+  {
+    id = "uv-audit",
+    args = ["--frozen", "--preview-features", "audit"],
+    name = "Audit Python dependencies",
+    priority = 9999
+  }
 ]
 repo = "https://github.com/astral-sh/uv-pre-commit"
-rev = "0.13.8"
+rev = "0.13.9"
 
 [[repos]]
 hooks = [
@@ -67,7 +73,12 @@ rev = "v6.3.0"
 
 [[repos]]
 hooks = [
-  { id = "licensecheck", language = "python", name = "Check licenses of Python dependencies", priority = 9999 }
+  {
+    id = "licensecheck",
+    language = "python",
+    name = "Check licenses of Python dependencies",
+    priority = 9999
+  }
 ]
 repo = "https://github.com/FHPythonUtils/LicenseCheck"
 rev = "2026.0.8"
@@ -97,21 +108,29 @@ rev = "0.39.0"
 
 [[repos]]
 hooks = [
-  { id = "zizmor", name = "Lint GitHub workflow files (zizmor)", args = [
-    "--fix=all"
-  ], priority = 100 }
+  {
+    id = "zizmor",
+    name = "Lint GitHub workflow files (zizmor)",
+    args = ["--fix=all"],
+    priority = 100
+  }
 ]
 repo = "https://github.com/zizmorcore/zizmor-pre-commit"
 rev = "v1.32.0"
 
 [[repos]]
 hooks = [
-  { id = "flake8", name = "Linting Python code (flake8)", additional_dependencies = [
-    "flake8-docstrings",
-    "flake8-docstrings-complete",
-    "flake8-pyproject",
-    "pydoclint[flake8]"
-  ], priority = 9999 }
+  {
+    id = "flake8",
+    name = "Linting Python code (flake8)",
+    additional_dependencies = [
+      "flake8-docstrings",
+      "flake8-docstrings-complete",
+      "flake8-pyproject",
+      "pydoclint[flake8]"
+    ],
+    priority = 9999
+  }
 ]
 repo = "https://github.com/PyCQA/flake8"
 rev = "7.5.0"
@@ -119,7 +138,11 @@ rev = "7.5.0"
 [[repos]]
 hooks = [
   { id = "ruff-check", name = "Linting Python code (ruff)", priority = 40 },
-  { id = "ruff-format", name = "Formatting Python code (ruff)", priority = 50 }
+  {
+    id = "ruff-format",
+    name = "Formatting Python code (ruff)",
+    priority = 50
+  }
 ]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
 rev = "v0.17.5"
@@ -129,42 +152,60 @@ hooks = [
   { id = "ty", name = "Type-checking Python code (ty)", priority = 9999 }
 ]
 repo = "https://github.com/astral-sh/ty-pre-commit"
-rev = "v0.0.102"
+rev = "v0.0.107"
 
 [[repos]]
 hooks = [
-  { id = "codespell", name = "Fixing common spelling mistakes", args = [
-    "--write-changes"
-  ], exclude = "uv.lock|^LICENSES/", priority = 90 }
+  {
+    id = "codespell",
+    name = "Fixing common spelling mistakes",
+    args = ["--write-changes"],
+    exclude = "uv.lock|^LICENSES/",
+    priority = 90
+  }
 ]
 repo = "https://github.com/codespell-project/codespell"
 rev = "v2.4.3"
 
+# mdlint is not math-aware: `mdlint-format` escapes the LaTeX math in docs/*.md (`\` -> `\\`, `_` -> `\_`), so only `mdlint-check` runs.
+# `mdlint-check` auto-fixes, so besides MD013/MD033 the rules that misread math are ignored, otherwise their fixes corrupt it: MD027 (aligned `$$` lines in blockquotes), MD049 (`_` subscripts read as emphasis, rewritten to `*`), MD055 (`|` in inline math read as table rows), MD060 (right-aligned numeric table columns).
 [[repos]]
 hooks = [
-  { id = "markdownlint", name = "Fixing markdown linting errors", args = [
-    "--disable",
-    "MD013",
-    "MD033",
-    "--fix"
-  ], priority = 80 }
+  {
+    id = "mdlint-check",
+    name = "Fixing markdown linting errors (mdlint)",
+    args = ["--ignore", "MD013,MD027,MD033,MD049,MD055,MD060"],
+    priority = 80
+  }
 ]
-repo = "https://github.com/igorshubovych/markdownlint-cli"
-rev = "v0.50.0"
+repo = "https://github.com/swanysimon/mdlint"
+rev = "v0.4.2"
 
 [[repos]]
 hooks = [
-  { id = "pretty-format-toml", args = [
-    "--autofix"
-  ], exclude = "uv.lock", priority = 60 },
-  { id = "pretty-format-yaml", args = [
-    "--autofix",
-    "--indent",
-    "2",
-    "--offset",
-    "2",
-    "--preserve-quotes"
-  ], priority = 70 }
+  {
+    id = "tombi-format",
+    name = "Formatting TOML files (tombi)",
+    exclude = "uv.lock",
+    priority = 60
+  },
+  {
+    id = "tombi-lint",
+    name = "Linting TOML files (tombi)",
+    exclude = "uv.lock",
+    priority = 9999
+  }
+]
+repo = "https://github.com/tombi-toml/tombi-pre-commit"
+rev = "v1.11.3"
+
+[[repos]]
+hooks = [
+  {
+    id = "pretty-format-yaml",
+    args = ["--autofix", "--indent", "2", "--offset", "2", "--preserve-quotes"],
+    priority = 70
+  }
 ]
 repo = "https://github.com/macisamuele/language-formatters-pre-commit-hooks"
 rev = "v2.16.0"

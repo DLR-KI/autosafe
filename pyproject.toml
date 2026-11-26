@@ -2,50 +2,35 @@
 #
 # SPDX-License-Identifier: MIT
 
-[build-system]
-build-backend = "uv_build"
-requires = ["uv_build>=0.11.18,<1.0.0"]
-
-[dependency-groups]
-dev = [
-  "commitizen>=4.15.1",
-  "prek>=0.3.5",
-  "reuse>=6.2.0",
-  "ruff>=0.15.16",
-  "ty>=0.0.21",
-  "uv>=0.10.9"
-]
-docs = [
-  "sphinx-autoapi",
-  "sphinx-autodoc-typehints",
-  "sphinx-rtd-theme>=3.0.0",
-  "sphinx"
-]
-lint = ["pylint-per-file-ignores", "pylint"]
-tests = ["coverage", "pytest-cov", "pytest>=9.0.0"]
-
 [project]
+name = "autosafe"
+version = "2.2.0"
+description = "Reference implementation of the autoSAFE spec"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSES/*"]
 authors = [{ name = "Johann Christensen", email = "johann.christensen@dlr.de" }]
 classifiers = [
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Science/Research",
   "Natural Language :: English",
   "Operating System :: OS Independent",
-  "Development Status :: 5 - Production/Stable",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: 3.15",
-  "Typing :: Typed",
+  "Programming Language :: Python :: Implementation :: CPython",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
-  "Programming Language :: Python :: Implementation :: CPython"
+  "Typing :: Typed"
 ]
 dependencies = [
   "annotated-types>=0.7.0",
   "faiss-cpu>=1.13.2",
-  "jax[cuda13]>=0.6.2 ; sys_platform == 'linux'",
   "jax>=0.6.2 ; sys_platform != 'linux'",
+  "jax[cuda13]>=0.6.2 ; sys_platform == 'linux'",
   "jaxtyping>=0.3.7",
   "jsonschema>=4.25.1",
   "loguru>=0.7.3",
@@ -62,22 +47,37 @@ dependencies = [
   "tqdm>=4.67.1",
   "typer>=0.16.1"
 ]
-description = "Reference implementation of the autoSAFE spec"
-license = "MIT"
-license-files = ["LICENSES/*"]
-name = "autosafe"
-readme = "README.md"
-requires-python = ">=3.11"
-version = "2.2.0"
-
-[project.scripts]
-autosafe = "autosafe.__main__:main"
 
 [project.urls]
 Documentation = "https://autosafe.readthedocs.io/"
 Homepage = "https://github.com/DLR-KI/autosafe/"
 Source = "https://github.com/DLR-KI/autosafe/"
 Tracker = "https://github.com/DLR-KI/autosafe/issues"
+
+[project.scripts]
+autosafe = "autosafe.__main__:main"
+
+[dependency-groups]
+dev = [
+  "commitizen>=4.15.1",
+  "prek>=0.3.5",
+  "reuse>=6.2.0",
+  "ruff>=0.15.16",
+  "ty>=0.0.21",
+  "uv>=0.10.9"
+]
+docs = [
+  "sphinx",
+  "sphinx-autoapi",
+  "sphinx-autodoc-typehints",
+  "sphinx-rtd-theme>=3.0.0"
+]
+lint = ["pylint", "pylint-per-file-ignores"]
+tests = ["coverage", "pytest>=9.0.0", "pytest-cov"]
+
+[build-system]
+requires = ["uv_build>=0.11.18,<1.0.0"]
+build-backend = "uv_build"
 
 [tool.codespell]
 builtin = "clear,rare,en-GB_to_en-US"
@@ -154,7 +154,7 @@ zero = true
 extension-pkg-allow-list = ["orjson"]
 load-plugins = ["pylint_per_file_ignores"]
 
-[tool.pylint.'MESSAGES CONTROL']
+[tool.pylint."MESSAGES CONTROL"]
 max-line-length = "88"
 
 [tool.pylint.SIMILARITIES]
@@ -284,6 +284,9 @@ max-doc-length = 72
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.tombi.format.rules]
+line-width = 80
 
 [tool.uv]
 default-groups = "all"

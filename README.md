@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2026 German Aerospace Center (DLR e.V.) <https://dlr.de>
 SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
-<!-- markdownlint-disable MD033 -->
+<!-- markdownlint-disable MD033 MD041 -->
 <h1 align="center">
 <img src="https://raw.githubusercontent.com/DLR-KI/autosafe/main/docs/_static/autoSAFE.svg" alt="autoSAFE logo" width="300">
 </h1><br>
